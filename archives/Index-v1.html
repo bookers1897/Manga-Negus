@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manga Downloader Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #121212; color: #e0e0e0; font-family: system-ui, sans-serif; }
+        .glass { background: rgba(30, 30, 30, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        .btn { transition: all 0.2s; }
+        .btn:active { transform: scale(0.95); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+        
+        /* Drag Handle */
+        #resize-handle {
+            height: 12px;
+            cursor: row-resize;
+            background: #1f1f1f;
+            border-top: 1px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #resize-handle:hover { background: #333; }
+        .handle-bar { width: 40px; height: 4px; background: #666; border-radius: 2px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <div class="glass p-4 flex justify-between items-center z-10 flex-shrink-0">
+        <h1 class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">MangaPro</h1>
+        <div class="flex gap-2">
+            <button onclick="showSearch()" class="px-3 py-1.5 rounded bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 font-bold btn text-sm">Search</button>
+            <button onclick="showLibrary()" class="px-3 py-1.5 rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 font-bold btn text-sm">Library</button>
+            <button onclick="toggleLogs()" class="px-3 py-1.5 rounded bg-gray-600/20 hover:bg-gray-600/40 text-gray-300 font-bold btn text-sm">Logs</button>
+        </div>
+    </div>
+
+    <div class="flex-grow overflow-hidden relative">
+        
+        <div id="view-search" class="absolute inset-0 p-6 overflow-y-auto">
+            <div class="max-w-3xl mx-auto">
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="search-input" placeholder="Search Manga..." class="flex-grow p-3 rounded bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none text-white">
+                    <button onclick="doSearch()" class="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded font-bold text-white btn">Go</button>
+                </div>
+                <div id="search-results" class="grid grid-cols-1 gap-4"></div>
+            </div>
+        </div>
+
+        <div id="view-library" class="absolute inset-0 p-6 overflow-y-auto hidden">
+            <div class="max-w-4xl mx-auto space-y-8">
+                
+                <div>
+                    <h2 class="text-xl font-bold mb-3 text-green-400 border-b border-white/10 pb-2">Currently Reading</h2>
+                    <div id="lib-reading" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-bold mb-3 text-blue-400 border-b border-white/10 pb-2">Want to Read</h2>
+                    <div id="lib-plan_to_read" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+                </div>
+
+                <div>
+                    <h2 class="text-xl font-bold mb-3 text-purple-400 border-b border-white/10 pb-2">Completed</h2>
+                    <div id="lib-completed" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="view-details" class="absolute inset-0 p-6 overflow-y-auto hidden bg-[#121212]">
+            <div class="max-w-3xl mx-auto">
+                <button onclick="back()" class="mb-4 text-gray-400 hover:text-white">← Back</button>
+                <div class="glass p-6 rounded-xl mb-6">
+                    <div class="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                        <h2 id="detail-title" class="text-2xl font-bold mb-2 break-words">Title</h2>
+                        
+                        <select id="status-select" onchange="changeStatus()" class="bg-gray-800 text-white border border-gray-600 rounded px-3 py-1 text-sm focus:outline-none focus:border-purple-500">
+                            <option value="none">Not in Library</option>
+                            <option value="reading">Currently Reading</option>
+                            <option value="plan_to_read">Want to Read</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mt-4 p-4 bg-black/30 rounded border border-white/5">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-purple-400">Batch Download</h3>
+                            <button onclick="downloadAll()" class="text-xs bg-purple-600/20 text-purple-300 px-2 py-1 rounded hover:bg-purple-600/40">Download All</button>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <input type="number" id="dl-start" placeholder="Start" class="w-20 p-2 rounded bg-gray-800 border border-gray-700 text-sm text-white">
+                            <span class="text-gray-500">to</span>
+                            <input type="number" id="dl-end" placeholder="End" class="w-20 p-2 rounded bg-gray-800 border border-gray-700 text-sm text-white">
+                            <button onclick="downloadRange()" class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded font-bold text-sm ml-auto btn text-white">Download</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="chapter-list" class="space-y-2"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="log-container" class="flex-shrink-0 flex flex-col bg-black/90 border-t border-white/10" style="height: 200px;">
+        <div id="resize-handle">
+            <div class="handle-bar"></div>
+        </div>
+        <div class="flex-grow overflow-y-auto p-2 font-mono text-xs text-gray-400" id="logs">
+            <div class="text-center text-gray-600 mb-1">--- System Logs ---</div>
+        </div>
+    </div>
+
+    <script>
+        let currentManga = null;
+        let currentChapters = [];
+
+        async function post(url, data) {
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                return await res.json();
+            } catch (e) { console.error(e); return null; }
+        }
+
+        // --- NAVIGATION ---
+        function switchView(id) {
+            ['view-search', 'view-library', 'view-details'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+        function showSearch() { switchView('view-search'); }
+        function showLibrary() { loadLibrary(); switchView('view-library'); }
+        function back() { if(document.getElementById('view-details').classList.contains('from-lib')) showLibrary(); else showSearch(); }
+
+        // --- CONSOLE RESIZING ---
+        const handle = document.getElementById('resize-handle');
+        const logContainer = document.getElementById('log-container');
+        let isResizing = false;
+
+        handle.addEventListener('mousedown', (e) => { isResizing = true; document.body.style.cursor = 'row-resize'; });
+        document.addEventListener('touchstart', (e) => { 
+            if(e.target === handle || e.target.parentNode === handle) isResizing = true; 
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            const h = window.innerHeight - e.clientY;
+            if (h > 50 && h < window.innerHeight - 100) logContainer.style.height = `${h}px`;
+        });
+        document.addEventListener('touchmove', (e) => {
+            if (!isResizing) return;
+            const h = window.innerHeight - e.touches[0].clientY;
+            if (h > 50 && h < window.innerHeight - 100) logContainer.style.height = `${h}px`;
+        });
+
+        document.addEventListener('mouseup', () => { isResizing = false; document.body.style.cursor = 'default'; });
+        document.addEventListener('touchend', () => { isResizing = false; });
+
+        function toggleLogs() {
+            if (logContainer.style.display === 'none') {
+                logContainer.style.display = 'flex';
+            } else {
+                logContainer.style.display = 'none';
+            }
+        }
+
+        // --- LIBRARY LOGIC ---
+        async function loadLibrary() {
+            const lib = await (await fetch('/api/library')).json();
+            
+            // Clear Shelves
+            document.getElementById('lib-reading').innerHTML = '';
+            document.getElementById('lib-plan_to_read').innerHTML = '';
+            document.getElementById('lib-completed').innerHTML = '';
+            
+            if(Object.keys(lib).length === 0) {
+                document.getElementById('lib-reading').innerHTML = '<div class="text-gray-500">Library is empty.</div>';
+                return;
+            }
+            
+            for (const [id, data] of Object.entries(lib)) {
+                const status = data.status || 'reading';
+                const shelf = document.getElementById(`lib-${status}`) || document.getElementById('lib-reading');
+                
+                shelf.innerHTML += `
+                    <div class="glass p-3 rounded flex justify-between items-center cursor-pointer hover:bg-white/5" onclick="openManga('${id}', '${data.title.replace(/'/g, "\\'")}', true)">
+                        <span class="font-bold text-sm truncate w-2/3">${data.title}</span>
+                        <div class="text-xs text-gray-500 bg-black/40 px-2 py-1 rounded">Open</div>
+                    </div>`;
+            }
+        }
+
+        async function doSearch() {
+            const q = document.getElementById('search-input').value;
+            if(!q) return;
+            const res = document.getElementById('search-results');
+            res.innerHTML = '<div class="text-center text-purple-400">Searching...</div>';
+            
+            const data = await post('/api/search', {query: q});
+            res.innerHTML = '';
+            
+            if (!data || data.length === 0) {
+                res.innerHTML = '<div class="text-center text-gray-500">No results found.</div>';
+                return;
+            }
+
+            data.forEach(m => {
+                const title = m.attributes.title.en || Object.values(m.attributes.title)[0];
+                res.innerHTML += `
+                    <div class="glass p-4 rounded cursor-pointer hover:bg-white/5" onclick="openManga('${m.id}', '${title.replace(/'/g, "\\'")}', false)">
+                        <div class="font-bold text-lg">${title}</div>
+                        <div class="text-sm text-gray-400 mt-1 line-clamp-2">${m.attributes.description.en || 'No description'}</div>
+                    </div>`;
+            });
+        }
+
+        async function openManga(id, title, fromLib) {
+            currentManga = {id, title};
+            document.getElementById('detail-title').innerText = title;
+            document.getElementById('chapter-list').innerHTML = '<div class="text-center p-10">Loading Chapters...</div>';
+            
+            const detailsView = document.getElementById('view-details');
+            if(fromLib) detailsView.classList.add('from-lib');
+            else detailsView.classList.remove('from-lib');
+
+            switchView('view-details');
+            
+            // Sync Status Dropdown
+            const lib = await (await fetch('/api/library')).json();
+            const select = document.getElementById('status-select');
+            
+            if(lib[id]) {
+                select.value = lib[id].status || 'reading';
+            } else {
+                select.value = 'none';
+            }
+
+            const chapters = await post('/api/chapters', {id});
+            currentChapters = chapters;
+            renderChapters(chapters);
+        }
+
+        async function changeStatus() {
+            const status = document.getElementById('status-select').value;
+            if(!currentManga) return;
+
+            if (status === 'none') {
+                if(confirm("Remove from Library?")) {
+                    await post('/api/delete', {id: currentManga.id});
+                }
+            } else {
+                // If it was already saved, this updates status. If new, this saves it.
+                await post('/api/save', {
+                    id: currentManga.id, 
+                    title: currentManga.title,
+                    status: status
+                });
+            }
+        }
+
+        function renderChapters(chapters) {
+            const div = document.getElementById('chapter-list');
+            div.innerHTML = '';
+            chapters.forEach(ch => {
+                div.innerHTML += `
+                    <div class="p-3 border-b border-white/5 flex justify-between items-center text-sm">
+                        <span class="text-gray-300">Ch. <span class="text-white font-bold">${ch.attributes.chapter}</span> - ${ch.attributes.title || ''}</span>
+                    </div>`;
+            });
+        }
+
+        function downloadAll() {
+            if (currentChapters.length === 0) return alert("No chapters loaded!");
+            const first = parseFloat(currentChapters[0].attributes.chapter);
+            const last = parseFloat(currentChapters[currentChapters.length - 1].attributes.chapter);
+            document.getElementById('dl-start').value = first;
+            document.getElementById('dl-end').value = last;
+            downloadRange();
+        }
+
+        async function downloadRange() {
+            const startVal = document.getElementById('dl-start').value;
+            const endVal = document.getElementById('dl-end').value;
+            if(startVal === '' || endVal === '') return alert('Enter start and end chapters');
+            
+            const start = parseFloat(startVal);
+            const end = parseFloat(endVal);
+            const toDl = currentChapters.filter(c => {
+                const num = parseFloat(c.attributes.chapter);
+                return num >= start && num <= end;
+            });
+
+            if(toDl.length === 0) return alert('No chapters in range');
+            
+            if(confirm(`Download ${toDl.length} chapters?`)) {
+                await post('/api/download', {
+                    chapters: toDl,
+                    title: currentManga.title
+                });
+                alert(`Started! Check the system logs.`);
+            }
+        }
+
+        // LOG POLL
+        setInterval(async () => {
+            try {
+                const res = await fetch('/api/logs');
+                const logs = await res.json();
+                const div = document.getElementById('logs');
+                if(logs.logs.length > 0) {
+                    logs.logs.forEach(l => {
+                        div.innerHTML += `<div>${l}</div>`;
+                    });
+                    div.scrollTop = div.scrollHeight;
+                }
+            } catch(e) {}
+        }, 1000);
+    </script>
+</body>
+</html>
