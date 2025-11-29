@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>漫画キング</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <style>
+        :root {
+            --bg-primary: rgba(28, 28, 30, 0.72);
+            --bg-secondary: rgba(44, 44, 46, 0.65);
+            --bg-tertiary: rgba(58, 58, 60, 0.5);
+            --border-color: rgba(255, 255, 255, 0.06);
+            --border-highlight: rgba(255, 255, 255, 0.12);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(235, 235, 245, 0.6);
+            --text-tertiary: rgba(235, 235, 245, 0.3);
+            --accent-color: #ff453a;
+            --accent-secondary: #ff6961;
+            --accent-glow: rgba(255, 69, 58, 0.4);
+            --surface-glow: rgba(255, 255, 255, 0.03);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: rgba(255, 255, 255, 0.72);
+            --bg-secondary: rgba(242, 242, 247, 0.65);
+            --bg-tertiary: rgba(229, 229, 234, 0.5);
+            --border-color: rgba(0, 0, 0, 0.04);
+            --border-highlight: rgba(0, 0, 0, 0.08);
+            --text-primary: #1c1c1e;
+            --text-secondary: rgba(60, 60, 67, 0.6);
+            --text-tertiary: rgba(60, 60, 67, 0.3);
+            --accent-color: #007aff;
+            --accent-secondary: #5ac8fa;
+            --accent-glow: rgba(0, 122, 255, 0.3);
+            --surface-glow: rgba(255, 255, 255, 0.8);
+        }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-primary);
+            margin: 0;
+            background: #000000;
+            overflow: hidden;
+            transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        [data-theme="light"] body {
+            background: #f2f2f7;
+        }
+
+        /* iOS-style animated mesh gradient background */
+        .ambient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -1;
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% 40%, rgba(255, 69, 58, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 80% at 80% 20%, rgba(175, 82, 222, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse 70% 60% at 50% 90%, rgba(255, 159, 10, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse 100% 100% at 50% 50%, rgba(10, 132, 255, 0.08) 0%, transparent 60%);
+            animation: ambientShift 25s ease-in-out infinite;
+        }
+
+        [data-theme="light"] .ambient-bg {
+            background: 
+                radial-gradient(ellipse 80% 50% at 20% 40%, rgba(0, 122, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 80% at 80% 20%, rgba(175, 82, 222, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse 70% 60% at 50% 90%, rgba(255, 159, 10, 0.05) 0%, transparent 50%);
+        }
+
+        @keyframes ambientShift {
+            0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+            33% { transform: scale(1.1) rotate(2deg); opacity: 0.8; }
+            66% { transform: scale(0.95) rotate(-1deg); opacity: 0.9; }
+        }
+
+        /* Liquid Glass Panel - iOS 26 style */
+        .glass-panel {
+            background: var(--bg-primary);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 0.5px solid var(--border-highlight);
+            box-shadow: 
+                0 0 0 0.5px var(--border-color),
+                0 2px 8px rgba(0, 0, 0, 0.12),
+                0 8px 24px rgba(0, 0, 0, 0.16),
+                inset 0 1px 0 var(--surface-glow);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-panel-elevated {
+            background: var(--bg-secondary);
+            backdrop-filter: blur(50px) saturate(200%);
+            -webkit-backdrop-filter: blur(50px) saturate(200%);
+            border: 0.5px solid var(--border-highlight);
+            box-shadow: 
+                0 0 0 0.5px var(--border-color),
+                0 4px 16px rgba(0, 0, 0, 0.2),
+                0 12px 32px rgba(0, 0, 0, 0.24),
+                inset 0 1px 0 var(--surface-glow);
+        }
+
+        .glass-input {
+            background: var(--bg-tertiary);
+            border: 0.5px solid var(--border-color);
+            color: var(--text-primary);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .glass-input:focus {
+            background: var(--bg-secondary);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+            outline: none;
+        }
+
+        .glass-input::placeholder {
+            color: var(--text-tertiary);
+        }
+
+        .glass-btn {
+            background: var(--bg-tertiary);
+            border: 0.5px solid var(--border-color);
+            color: var(--text-primary);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .glass-btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, var(--surface-glow) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        .glass-btn:active { 
+            transform: scale(0.96); 
+            opacity: 0.9;
+        }
+
+        .glass-btn:hover { 
+            background: var(--bg-secondary);
+            border-color: var(--border-highlight);
+        }
+
+        .glass-btn-accent {
+            background: linear-gradient(180deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 85%, black) 100%);
+            border: none;
+            color: white;
+            box-shadow: 0 2px 8px var(--accent-glow);
+        }
+
+        .glass-btn-accent:hover {
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: relative;
+            width: 48px;
+            height: 28px;
+            background: var(--bg-tertiary);
+            border-radius: 14px;
+            border: 0.5px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .theme-toggle-slider {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 24px;
+            height: 24px;
+            background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%);
+            border-radius: 12px;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme="light"] .theme-toggle-slider {
+            transform: translateX(20px);
+        }
+
+        .theme-toggle-slider i {
+            font-size: 12px;
+            color: #ff9500;
+        }
+
+        [data-theme="light"] .theme-toggle-slider i {
+            color: #007aff;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { 
+            background: var(--text-tertiary); 
+            border-radius: 4px; 
+        }
+
+        /* Mobile Menu */
+        #mobile-menu { 
+            transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+            backdrop-filter: blur(60px) saturate(200%);
+            -webkit-backdrop-filter: blur(60px) saturate(200%);
+        }
+        .menu-open { transform: translateX(0) !important; }
+        .menu-closed { transform: translateX(100%); }
+
+        /* Chapter Selection */
+        .chapter-item { 
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .chapter-item.selected { 
+            background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+            border-color: var(--accent-color) !important;
+        }
+
+        /* Console Resize */
+        #resize-handle { 
+            height: 16px; 
+            cursor: row-resize; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
+            background: var(--bg-tertiary);
+        }
+        
+        .handle-bar { 
+            width: 36px; 
+            height: 4px; 
+            background: var(--text-tertiary); 
+            border-radius: 2px; 
+        }
+
+        /* Logo */
+        .logo-container {
+            position: relative;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-glow {
+            position: absolute;
+            inset: -6px;
+            background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+            border-radius: 50%;
+            filter: blur(8px);
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes logoPulse {
+            0%, 100% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.1); }
+        }
+
+        .logo-image {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.3));
+        }
+
+        /* Download Button */
+        .download-btn {
+            background: linear-gradient(180deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 80%, black) 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px var(--accent-glow);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .download-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--accent-glow);
+        }
+
+        .download-btn:active {
+            transform: scale(0.96);
+        }
+
+        /* Floating Action Bar */
+        #floating-bar {
+            transition: all 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        /* Load More Button */
+        .load-more-btn {
+            background: var(--bg-secondary);
+            border: 1px dashed var(--border-highlight);
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        .load-more-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* Chapter Grid */
+        .chapter-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+        }
+
+        @media (min-width: 640px) {
+            .chapter-grid {
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            }
+        }
+
+        /* Console Toggle Button */
+        .console-toggle {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            z-index: 100;
+            width: 44px;
+            height: 44px;
+            border-radius: 22px;
+        }
+
+        .console-toggle.active {
+            background: var(--accent-color) !important;
+            color: white !important;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col pb-safe" data-theme="dark">
+
+    <div class="ambient-bg"></div>
+
+    <!-- Compact Header -->
+    <header class="glass-panel mx-2 mt-2 mb-1 rounded-2xl px-3 py-2 flex justify-between items-center z-50 relative shrink-0">
+        <div class="flex items-center gap-2">
+            <div class="logo-container">
+                <div class="logo-glow"></div>
+                <img src="{{ url_for('static', filename='images/sharingan.png') }}" 
+                     alt="Logo" 
+                     class="logo-image"
+                     id="logo-img"
+                     onerror="this.style.display='none';document.getElementById('fallback-icon').style.display='flex'">
+                <div id="fallback-icon" style="display:none;" class="relative z-10 flex items-center justify-center w-full h-full">
+                    <i class="ph-fill ph-eye text-lg" style="color: var(--accent-color);"></i>
+                </div>
+            </div>
+            <h1 class="text-lg font-bold tracking-tight" style="color: var(--text-primary);">漫画キング</h1>
+        </div>
+        
+        <div class="flex items-center gap-1">
+            <div class="theme-toggle" onclick="toggleTheme()">
+                <div class="theme-toggle-slider">
+                    <i class="ph-fill ph-moon" id="theme-icon"></i>
+                </div>
+            </div>
+            <button onclick="showSearch()" class="glass-btn w-9 h-9 rounded-xl">
+                <i class="ph-bold ph-magnifying-glass text-base"></i>
+            </button>
+            <button onclick="showLibrary()" class="glass-btn w-9 h-9 rounded-xl">
+                <i class="ph-bold ph-books text-base"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow overflow-hidden relative mx-2 my-1 rounded-2xl glass-panel">
+        <!-- Search View -->
+        <div id="view-search" class="absolute inset-0 p-3 overflow-y-auto">
+            <div class="max-w-3xl mx-auto">
+                <!-- Search Input -->
+                <div class="relative mb-5">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="ph-bold ph-magnifying-glass text-sm" style="color: var(--text-tertiary);"></i>
+                    </div>
+                    <input type="text" id="search-input" onkeydown="if(event.key === 'Enter') doSearch()" 
+                           class="glass-input w-full rounded-xl h-11 pl-10 pr-16 text-sm font-medium" 
+                           placeholder="Search manga...">
+                    <button onclick="doSearch()" class="glass-btn-accent absolute right-1.5 top-1/2 -translate-y-1/2 rounded-lg px-3 h-8 text-xs font-semibold">
+                        Search
+                    </button>
+                </div>
+
+                <!-- Section Header -->
+                <div id="search-header" class="flex items-center gap-2 mb-4 hidden">
+                    <i class="ph-fill ph-fire text-base" style="color: var(--accent-color);"></i>
+                    <span class="text-sm font-semibold" style="color: var(--text-primary);">Trending Now</span>
+                </div>
+                
+                <div id="search-results" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-20"></div>
+            </div>
+        </div>
+
+        <!-- Library View -->
+        <div id="view-library" class="absolute inset-0 p-3 overflow-y-auto hidden">
+            <div class="max-w-4xl mx-auto space-y-6 pb-20">
+                <!-- Reading Section -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="ph-fill ph-book-open text-base" style="color: var(--accent-color);"></i>
+                        <span class="text-sm font-semibold" style="color: var(--text-primary);">Currently Reading</span>
+                    </div>
+                    <div id="lib-reading" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                </div>
+                
+                <!-- Plan to Read Section -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="ph-fill ph-bookmark text-base" style="color: var(--text-secondary);"></i>
+                        <span class="text-sm font-semibold" style="color: var(--text-primary);">Want to Read</span>
+                    </div>
+                    <div id="lib-plan_to_read" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                </div>
+                
+                <!-- Completed Section -->
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="ph-fill ph-check-circle text-base" style="color: var(--text-secondary);"></i>
+                        <span class="text-sm font-semibold" style="color: var(--text-primary);">Completed</span>
+                    </div>
+                    <div id="lib-completed" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Details View -->
+        <div id="view-details" class="absolute inset-0 p-3 overflow-y-auto hidden">
+            <div class="max-w-3xl mx-auto pb-28">
+                <!-- Back Button -->
+                <button onclick="back()" class="mb-4 flex items-center gap-1.5 glass-btn rounded-full px-3 h-8 text-xs font-medium">
+                    <i class="ph-bold ph-arrow-left text-sm"></i> Back
+                </button>
+                
+                <!-- Title Card -->
+                <div class="glass-panel-elevated p-4 rounded-2xl mb-4">
+                    <h2 id="detail-title" class="text-xl font-bold leading-tight mb-4" style="color: var(--text-primary);">Title</h2>
+                    
+                    <!-- Status Selector -->
+                    <div class="mb-4">
+                        <select id="status-select" onchange="changeStatus()" 
+                                class="glass-input w-full h-10 px-3 rounded-xl text-sm font-medium cursor-pointer">
+                            <option value="none">Not in Library</option>
+                            <option value="reading">Currently Reading</option>
+                            <option value="plan_to_read">Want to Read</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+
+                    <!-- Quick Batch Download -->
+                    <div class="glass-panel p-3 rounded-xl">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-[10px] font-semibold uppercase tracking-wider" style="color: var(--text-tertiary);">Quick Download</span>
+                            <button onclick="downloadAll()" class="text-[10px] glass-btn px-2 py-1 rounded-lg font-semibold uppercase">
+                                Max Range
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <div class="flex-grow flex items-center gap-2">
+                                <input type="number" id="dl-start" placeholder="Start" 
+                                       class="glass-input flex-1 h-10 rounded-xl text-center font-semibold text-sm">
+                                <span class="font-bold text-sm" style="color: var(--text-tertiary);">→</span>
+                                <input type="number" id="dl-end" placeholder="End" 
+                                       class="glass-input flex-1 h-10 rounded-xl text-center font-semibold text-sm">
+                            </div>
+                            <button onclick="downloadRange()" class="download-btn h-10 w-10 rounded-xl flex items-center justify-center">
+                                <i class="ph-bold ph-download-simple text-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chapter Controls -->
+                <div class="flex justify-between items-center px-1 mb-3">
+                    <span class="font-semibold text-xs uppercase tracking-wider" style="color: var(--text-tertiary);">
+                        Chapters <span id="chapter-count" class="text-xs font-normal">(0)</span>
+                    </span>
+                    <div class="flex gap-1 text-xs font-semibold">
+                        <button onclick="toggleSort()" class="glass-btn h-7 px-2 rounded-lg flex items-center gap-1">
+                            <span id="sort-icon"><i class="ph-bold ph-arrow-down"></i></span>
+                        </button>
+                        <button onclick="selectAll()" class="glass-btn h-7 px-2 rounded-lg" style="color: var(--accent-color);">All</button>
+                        <button onclick="deselectAll()" class="glass-btn h-7 px-2 rounded-lg">Clear</button>
+                    </div>
+                </div>
+
+                <!-- Chapter Grid -->
+                <div id="chapter-list" class="chapter-grid"></div>
+
+                <!-- Load More Button -->
+                <div id="load-more-container" class="mt-4 hidden">
+                    <button onclick="loadMoreChapters()" id="load-more-btn" class="load-more-btn w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+                        <i class="ph-bold ph-plus-circle"></i>
+                        <span>Load More Chapters</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Floating Selection Bar -->
+        <div id="floating-bar" class="absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel-elevated px-4 py-2 rounded-full flex items-center gap-3 translate-y-24 z-40">
+            <div class="download-btn font-bold h-8 w-8 flex items-center justify-center rounded-full text-sm" id="selection-count">0</div>
+            <button onclick="downloadSelection()" class="font-semibold text-sm flex items-center gap-2" style="color: var(--text-primary);">
+                Download Selected
+            </button>
+        </div>
+    </main>
+
+    <!-- Console Toggle Button -->
+    <button id="console-toggle-btn" onclick="toggleLogs()" class="console-toggle glass-btn">
+        <i class="ph-bold ph-terminal text-lg"></i>
+    </button>
+
+    <!-- Collapsible Console -->
+    <div id="log-container" class="glass-panel mx-2 mb-2 rounded-2xl flex flex-col z-30 overflow-hidden hidden" style="height: 140px;">
+        <div id="resize-handle" class="w-full rounded-t-2xl">
+            <div class="handle-bar"></div>
+        </div>
+        <div class="flex-grow overflow-y-auto p-3 font-mono text-[10px] space-y-0.5" id="logs" style="color: var(--text-secondary);">
+            <div class="text-center opacity-50 font-semibold text-[9px] uppercase tracking-widest mb-2">System Logs</div>
+        </div>
+    </div>
+
+    <script>
+        let currentManga = null;
+        let currentChapters = [];
+        let allChaptersLoaded = false;
+        let selectedIndices = new Set();
+        let isAscending = true;
+        let nextOffset = 0;
+        let totalChapters = 0;
+        
+        function toggleTheme() {
+            const body = document.body;
+            const icon = document.getElementById('theme-icon');
+            const currentTheme = body.getAttribute('data-theme');
+            
+            if (currentTheme === 'dark') {
+                body.setAttribute('data-theme', 'light');
+                icon.className = 'ph-fill ph-sun';
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                icon.className = 'ph-fill ph-moon';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.body.setAttribute('data-theme', savedTheme);
+            const icon = document.getElementById('theme-icon');
+            icon.className = savedTheme === 'light' ? 'ph-fill ph-sun' : 'ph-fill ph-moon';
+            loadPopular();
+        });
+        
+        function getEnglishTitle(m) {
+            const a = m.attributes;
+            if (a.title.en) return a.title.en;
+            if (a.altTitles) { 
+                const e = a.altTitles.find(t => t.en); 
+                if (e) return e.en; 
+            }
+            return Object.values(a.title)[0] || "Unknown";
+        }
+        
+        async function post(u, d) {
+            try {
+                const response = await fetch(u, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify(d) 
+                });
+                return await response.json();
+            } catch (e) { 
+                console.error('API Error:', e); 
+                return null; 
+            }
+        }
+        
+        function switchView(i) {
+            ['view-search', 'view-library', 'view-details'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            document.getElementById(i).classList.remove('hidden');
+            updateFloatingBar();
+        }
+        
+        function showSearch() { 
+            if (!document.getElementById('search-input').value) loadPopular(); 
+            switchView('view-search'); 
+        }
+        
+        function showLibrary() { 
+            loadLibrary(); 
+            switchView('view-library'); 
+        }
+        
+        function back() { 
+            showSearch(); 
+        }
+        
+        async function loadPopular() {
+            const r = document.getElementById('search-results');
+            const h = document.getElementById('search-header');
+            if (r.innerHTML.trim() !== '' && r.innerHTML.includes('glass-panel')) return;
+            
+            h.classList.remove('hidden');
+            r.innerHTML = '<div class="col-span-full text-center py-8"><div class="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style="border-color: var(--accent-color); border-top-color: transparent;"></div></div>';
+            
+            try {
+                const results = await fetch('/api/popular').then(r => r.json());
+                renderResults(results);
+            } catch (e) { 
+                console.error('Popular load error:', e); 
+                r.innerHTML = '<div class="col-span-full text-center py-8 text-sm" style="color: var(--text-secondary);">Failed to load</div>'; 
+            }
+        }
+        
+        async function doSearch() {
+            const q = document.getElementById('search-input').value;
+            if (!q) { loadPopular(); return; }
+            
+            document.getElementById('search-header').classList.add('hidden');
+            const r = document.getElementById('search-results');
+            r.innerHTML = '<div class="col-span-full text-center py-8"><div class="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style="border-color: var(--accent-color); border-top-color: transparent;"></div></div>';
+            
+            const results = await post('/api/search', { query: q });
+            renderResults(results);
+        }
+        
+        function renderResults(d) {
+            const r = document.getElementById('search-results');
+            r.innerHTML = '';
+            
+            if (!d || !d.length) {
+                r.innerHTML = '<div class="col-span-full text-center py-8 text-sm" style="color: var(--text-secondary);">No results found</div>';
+                return;
+            }
+            
+            d.forEach(m => {
+                const t = getEnglishTitle(m);
+                const desc = m.attributes.description?.en || 'No description available';
+                const safeTitle = t.replace(/'/g, "\\'");
+                
+                r.innerHTML += `
+                <div class="glass-panel p-3 rounded-xl hover:scale-[1.01] transition-transform flex flex-col">
+                    <div onclick="openManga('${m.id}','${safeTitle}')" class="cursor-pointer flex-grow">
+                        <h3 class="font-semibold text-sm leading-tight mb-1.5 line-clamp-2" style="color: var(--text-primary);">${t}</h3>
+                        <p class="text-xs line-clamp-2" style="color: var(--text-secondary);">${desc}</p>
+                    </div>
+                    <div class="mt-2 pt-2 border-t flex justify-between items-center" style="border-color: var(--border-color);">
+                        <span class="text-[9px] uppercase font-semibold tracking-wider" style="color: var(--text-tertiary);">Manga</span>
+                        <button onclick="event.stopPropagation(); addToLibrary('${m.id}', '${safeTitle}')" 
+                                class="text-[10px] font-semibold px-2 py-1 rounded-lg glass-btn" style="color: var(--accent-color);">
+                            + Add
+                        </button>
+                    </div>
+                </div>`;
+            });
+        }
+        
+        async function addToLibrary(id, title) {
+            const result = await post('/api/save', { id, title, status: 'reading' });
+            if (result) { 
+                alert('✅ Added to library!'); 
+            }
+        }
+        
+        async function openManga(id, t) {
+            currentManga = { id, title: t };
+            currentChapters = [];
+            allChaptersLoaded = false;
+            nextOffset = 0;
+            
+            document.getElementById('detail-title').innerText = t;
+            document.getElementById('chapter-list').innerHTML = '<div class="col-span-full text-center py-8"><div class="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style="border-color: var(--accent-color); border-top-color: transparent;"></div></div>';
+            document.getElementById('dl-start').value = '';
+            document.getElementById('dl-end').value = '';
+            document.getElementById('chapter-count').textContent = '(0)';
+            document.getElementById('load-more-container').classList.add('hidden');
+            
+            deselectAll();
+            isAscending = true;
+            document.getElementById('sort-icon').innerHTML = '<i class="ph-bold ph-arrow-down"></i>';
+            
+            switchView('view-details');
+            
+            const l = await fetch('/api/library').then(r => r.json());
+            document.getElementById('status-select').value = l[id] ? (l[id].status || 'reading') : 'none';
+            
+            await loadChapters();
+        }
+        
+        async function loadChapters() {
+            const result = await post('/api/chapters', { 
+                id: currentManga.id, 
+                offset: nextOffset, 
+                limit: 100 
+            });
+            
+            if (result && result.chapters) {
+                currentChapters = currentChapters.concat(result.chapters);
+                nextOffset = result.nextOffset || currentChapters.length;
+                totalChapters = result.total || currentChapters.length;
+                
+                document.getElementById('chapter-count').textContent = `(${currentChapters.length})`;
+                
+                if (result.hasMore) {
+                    document.getElementById('load-more-container').classList.remove('hidden');
+                } else {
+                    document.getElementById('load-more-container').classList.add('hidden');
+                    allChaptersLoaded = true;
+                }
+                
+                renderChapters();
+            }
+        }
+        
+        async function loadMoreChapters() {
+            const btn = document.getElementById('load-more-btn');
+            btn.innerHTML = '<div class="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style="border-color: var(--accent-color); border-top-color: transparent;"></div> Loading...';
+            btn.disabled = true;
+            
+            await loadChapters();
+            
+            btn.innerHTML = '<i class="ph-bold ph-plus-circle"></i> <span>Load More Chapters</span>';
+            btn.disabled = false;
+        }
+        
+        async function loadLibrary() {
+            const l = await fetch('/api/library').then(r => r.json());
+            ['reading', 'plan_to_read', 'completed'].forEach(s => document.getElementById(`lib-${s}`).innerHTML = '');
+            
+            if (!Object.keys(l).length) {
+                document.getElementById('lib-reading').innerHTML = '<div class="col-span-full text-center py-6 text-sm" style="color: var(--text-secondary);">Your library is empty</div>';
+                return;
+            }
+            
+            for (const [id, d] of Object.entries(l)) {
+                const s = d.status || 'reading';
+                const safeTitle = d.title.replace(/'/g, "\\'");
+                
+                document.getElementById(`lib-${s}`).innerHTML += `
+                <div class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:scale-[1.01] transition-transform" onclick="openManga('${id}','${safeTitle}')">
+                    <span class="font-semibold text-sm truncate pr-3" style="color: var(--text-primary);">${d.title}</span>
+                    <i class="ph-bold ph-caret-right text-sm shrink-0" style="color: var(--text-tertiary);"></i>
+                </div>`;
+            }
+        }
+        
+        async function changeStatus() {
+            const s = document.getElementById('status-select').value;
+            if (!currentManga) return;
+            
+            if (s === 'none') {
+                if (confirm("Remove from library?")) {
+                    await post('/api/delete', { id: currentManga.id });
+                }
+            } else {
+                await post('/api/save', { id: currentManga.id, title: currentManga.title, status: s });
+            }
+        }
+        
+        function renderChapters() {
+            const d = document.getElementById('chapter-list');
+            d.innerHTML = '';
+            
+            const chaptersToRender = isAscending ? [...currentChapters] : [...currentChapters].reverse();
+            
+            chaptersToRender.forEach((ch, displayIndex) => {
+                const actualIndex = isAscending ? displayIndex : currentChapters.length - 1 - displayIndex;
+                const isSelected = selectedIndices.has(actualIndex);
+                const chNum = ch.attributes.chapter;
+                
+                d.innerHTML += `
+                <div id="ch-row-${actualIndex}" onclick="toggleChapter(${actualIndex})" 
+                     class="chapter-item glass-panel p-2.5 rounded-xl flex items-center justify-between cursor-pointer border border-transparent ${isSelected ? 'selected' : ''}">
+                    <div class="flex items-center gap-2">
+                        <div id="check-${actualIndex}" class="h-4 w-4 rounded-full border flex items-center justify-center transition-all text-[10px] ${isSelected ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : ''}" 
+                             style="${!isSelected ? 'border-color: var(--text-tertiary);' : ''}">
+                            <i class="ph-bold ph-check ${isSelected ? '' : 'opacity-0'}"></i>
+                        </div>
+                        <span class="font-semibold text-xs" style="color: var(--text-primary);">Ch. ${chNum}</span>
+                    </div>
+                    <span class="font-medium text-[10px] truncate max-w-[60px]" style="color: var(--text-tertiary);">${ch.attributes.title || ''}</span>
+                </div>`;
+            });
+        }
+        
+        function toggleSort() {
+            isAscending = !isAscending;
+            document.getElementById('sort-icon').innerHTML = isAscending ? '<i class="ph-bold ph-arrow-down"></i>' : '<i class="ph-bold ph-arrow-up"></i>';
+            renderChapters();
+        }
+        
+        function toggleChapter(i) {
+            if (selectedIndices.has(i)) {
+                selectedIndices.delete(i);
+            } else {
+                selectedIndices.add(i);
+            }
+            renderChapters();
+            updateFloatingBar();
+        }
+        
+        function selectAll() {
+            currentChapters.forEach((_, i) => selectedIndices.add(i));
+            renderChapters();
+            updateFloatingBar();
+        }
+        
+        function deselectAll() {
+            selectedIndices.clear();
+            renderChapters();
+            updateFloatingBar();
+        }
+        
+        function updateFloatingBar() {
+            const b = document.getElementById('floating-bar');
+            const c = document.getElementById('selection-count');
+            
+            if (selectedIndices.size > 0) {
+                b.classList.remove('translate-y-24');
+                c.innerText = selectedIndices.size;
+            } else {
+                b.classList.add('translate-y-24');
+            }
+        }
+        
+        function downloadAll() {
+            if (!currentChapters.length) return;
+            document.getElementById('dl-start').value = Math.min(...currentChapters.map(c => parseFloat(c.attributes.chapter)));
+            document.getElementById('dl-end').value = Math.max(...currentChapters.map(c => parseFloat(c.attributes.chapter)));
+        }
+        
+        async function downloadRange() {
+            const s = document.getElementById('dl-start').value;
+            const e = document.getElementById('dl-end').value;
+            
+            if (s === '' || e === '') {
+                alert('Please enter a chapter range');
+                return;
+            }
+            
+            const start = parseFloat(s);
+            const end = parseFloat(e);
+            
+            // If not all chapters are loaded, fetch them for download
+            let chaptersToFilter = currentChapters;
+            if (!allChaptersLoaded) {
+                const allResult = await post('/api/all_chapters', { id: currentManga.id });
+                if (allResult) {
+                    chaptersToFilter = allResult;
+                }
+            }
+            
+            const d = chaptersToFilter.filter(c => { 
+                const n = parseFloat(c.attributes.chapter); 
+                return n >= start && n <= end; 
+            });
+            
+            startDownload(d);
+        }
+        
+        async function downloadSelection() {
+            const d = []; 
+            selectedIndices.forEach(i => d.push(currentChapters[i])); 
+            startDownload(d);
+        }
+        
+        async function startDownload(c) {
+            if (!c.length) {
+                alert('No chapters selected');
+                return;
+            }
+            
+            deselectAll();
+            
+            if (confirm(`Download ${c.length} chapter${c.length > 1 ? 's' : ''}?`)) {
+                const result = await post('/api/download', { chapters: c, title: currentManga.title });
+                if (result) { 
+                    alert('📥 Download started!'); 
+                    // Show console
+                    document.getElementById('log-container').classList.remove('hidden');
+                    document.getElementById('console-toggle-btn').classList.add('active');
+                    refreshLogs(); 
+                }
+            }
+        }
+        
+        async function refreshLogs() {
+            try {
+                const l = await fetch('/api/logs').then(r => r.json());
+                const d = document.getElementById('logs');
+                
+                if (l.logs && l.logs.length) {
+                    l.logs.forEach(x => { 
+                        d.innerHTML += `<div class="py-0.5 border-l-2 pl-2" style="border-color: var(--accent-color);">${x}</div>`; 
+                    });
+                    d.scrollTop = d.scrollHeight;
+                }
+            } catch (e) { 
+                console.error('Logs error:', e); 
+            }
+        }
+        
+        function toggleLogs() { 
+            const container = document.getElementById('log-container');
+            const btn = document.getElementById('console-toggle-btn');
+            
+            container.classList.toggle('hidden');
+            btn.classList.toggle('active');
+            
+            if (!container.classList.contains('hidden')) {
+                refreshLogs();
+            }
+        }
+        
+        // Resize handle
+        const h = document.getElementById('resize-handle');
+        const lc = document.getElementById('log-container');
+        let ir = false;
+        
+        h.addEventListener('mousedown', () => { ir = true; document.body.style.cursor = 'row-resize'; });
+        h.addEventListener('touchstart', () => { ir = true; });
+        
+        ['mousemove', 'touchmove'].forEach(ev => document.addEventListener(ev, e => {
+            if (!ir) return;
+            const y = e.touches ? e.touches[0].clientY : e.clientY;
+            const ht = window.innerHeight - y;
+            if (ht > 60 && ht < 400) lc.style.height = `${ht}px`;
+        }));
+        
+        ['mouseup', 'touchend'].forEach(ev => document.addEventListener(ev, () => { 
+            ir = false; 
+            document.body.style.cursor = 'default'; 
+        }));
+        
+        setInterval(refreshLogs, 2000);
+    </script>
+</body>
+</html>
