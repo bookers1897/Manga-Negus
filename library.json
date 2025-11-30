@@ -1,30 +1,20 @@
 {
     "192aa767-2479-42c1-9780-8d65a2efd36a": {
         "title": "GACHIAKUTA",
-        "status": "reading"
+        "status": "reading",
+        "cover": null,
+        "last_chapter": null
     },
     "0fc2cafc-0c2f-419c-a891-5c0745080800": {
         "title": "Bungou Stray Dogs: STORM BRINGER",
-        "status": "plan_to_read"
+        "status": "plan_to_read",
+        "cover": null,
+        "last_chapter": null
     },
     "65125892-8584-4938-b45c-7a4cd9ad67d7": {
-        "title": "NARUTO: Sasuke Retsuden—Uchiha no Matsuei to Tenkyuu no Hoshikuzu",
-        "status": "plan_to_read"
-    },
-    "77bee52c-d2d6-44ad-a33a-1734c1fe696a": {
-        "title": "The Eminence in Shadow",
-        "status": "plan_to_read"
-    },
-    "a787b10a-02d0-46c0-8236-0d01d69ad4a3": {
-        "title": "Naruto (Official Colored)",
-        "status": "plan_to_read"
-    },
-    "4e494979-ed04-4263-9426-133240fc8e12": {
-        "title": "Naruto: Rin no Sho - Konoha Gaiden: Ichiraku nite…",
-        "status": "plan_to_read"
-    },
-    "aa7f61df-54ec-438e-b194-31b4e18010e0": {
-        "title": "Bungou Stray Dogs - Tantei-sha Setsuritsu Hiwa?",
-        "status": "plan_to_read"
+        "title": "NARUTO: Sasuke Retsuden",
+        "status": "plan_to_read",
+        "cover": null,
+        "last_chapter": null
     }
 }

@@ -1,97 +1,217 @@
-# 漫画キング (Manga King)
+# 👑 MangaNegus v2.1
 
-A native manga downloader and library manager for iOS Code App. Run a local Python server to search MangaDex, track reading progress, and bulk-download chapters as .cbz files directly to your device storage.
+A native manga downloader, library manager, and **in-app reader** for iOS Code App. Run a local Python server to search MangaDex, track reading progress, read chapters online, and bulk-download as .cbz files.
 
-## 🆕 Updates in This Version
+![MangaNegus](https://img.shields.io/badge/version-2.1-red)
+![Python](https://img.shields.io/badge/python-3.8+-blue)
+![Flask](https://img.shields.io/badge/flask-3.0-green)
 
-### UI/UX Improvements
-- **iOS Liquid Glass Design** - Completely revamped UI with modern glassmorphism inspired by iOS design language
-- **Compact Header** - Reduced padding, smaller logo, more efficient use of screen space
-- **Japanese Title** - Header now shows "漫画キング" (Manga King)
-- **Square Navigation Buttons** - Replaced oval buttons with rounded squares (9x9 with rounded-xl)
-- **Inline Navigation** - Search and Library buttons are now in the header (no more hamburger menu needed)
-- **Toggle Console** - Console is now hidden by default with a floating toggle button in the bottom-right corner
-- **Better Spacing** - Reduced padding throughout the entire app for a tighter, more modern feel
+**Author:** [@bookers1897](https://github.com/bookers1897)  
+**Repository:** [github.com/bookers1897/Manga-Negus](https://github.com/bookers1897/Manga-Negus)
 
-### Chapter Loading Fixes
-- **Pagination Support** - Large manga (Naruto, One Piece, etc.) now load in batches of 100 chapters
-- **Load More Button** - Easily load additional chapters when available
-- **Grid Layout** - Chapters now display in a responsive grid (2-4+ columns depending on screen width) instead of a single column
-- **Full Download Support** - When downloading a range, the app fetches ALL chapters even if they're not displayed yet
+---
 
-### Bug Fixes
-- **Logo Path Fixed** - Uses proper Flask syntax: `{{ url_for('static', filename='images/sharingan.png') }}`
-- **Fallback Icon** - Shows a styled eye icon if the logo image fails to load
+## ✨ What's New in v2.1
+
+### 🐛 Bug Fixes
+- **Fixed:** Start/End chapter inputs no longer overflow on mobile devices (iPhone)
+- **Fixed:** Console panel now slides smoothly with proper cubic-bezier animation
+- **Fixed:** Improved API error handling - chapters should load more reliably now
+- **Fixed:** Added retry logic for failed requests (rate limiting, timeouts)
+
+### 🎨 UI/UX Improvements
+- **Hamburger Navigation:** Slide-out menu for cleaner mobile experience
+- **Manga Cover Art:** Covers now display in search results and library
+- **Animated Background:** Subtle ambient gradient animation
+- **Footer with Socials:** GitHub link and author credit
+- **iOS Liquid Glass Design:** Refined glassmorphism throughout
+
+### 📖 New Features
+- **In-App Manga Reader:** Read chapters directly in the browser!
+  - Stream from MangaDex (no download required)
+  - Read downloaded CBZ files (coming soon)
+  - HD/SD quality toggle (data saver mode)
+  - Chapter navigation (prev/next)
+- **Reading Progress Tracking:** Saves your last read chapter
+- **Downloaded Chapter Indicators:** See which chapters you already have
+
+### 🛠️ Code Quality
+- **Separated CSS:** Styles moved to `static/css/styles.css`
+- **Comprehensive Comments:** Every function documented with purpose and parameters
+- **Improved Efficiency:** Better API error handling, reduced redundant calls
+
+---
 
 ## 📁 Project Structure
 
 ```
 manga-negus/
-├── app.py                          # Flask backend
-├── library.json                    # Your saved manga library
+├── app.py                      # Flask backend server (fully commented)
+├── library.json                # User's saved manga library
 ├── templates/
-│   └── index.html                  # Main UI
+│   └── index.html              # Main UI template
 └── static/
+    ├── css/
+    │   └── styles.css          # All styles (fully commented)
     ├── images/
-    │   └── sharingan.png          # ⚠️ YOU NEED TO ADD THIS
-    └── downloads/                  # Downloaded .cbz files appear here
+    │   └── sharingan.png       # App logo (add your own!)
+    └── downloads/              # Downloaded .cbz files
 ```
 
-## ⚠️ IMPORTANT: Logo Setup
-
-The logo won't appear until you place `sharingan.png` in the correct location:
-
-1. Create the folder: `static/images/`
-2. Copy your `sharingan.png` file into `static/images/`
-
-The full path should be: `manga-negus/static/images/sharingan.png`
+---
 
 ## 🚀 Installation
 
-1. Open **Code App** on your iOS device
-2. Create a folder named `manga-negus`
-3. Copy all project files into the folder
-4. Install dependencies:
+### Prerequisites
+- **iOS Code App** ([App Store](https://apps.apple.com/us/app/code-app/id1512938504))
+- Python 3.8+
 
-```bash
-pip install markupsafe==2.1.3
-pip install werkzeug==3.0.1
-pip install flask==3.0.0
-pip install requests
-pip install charset-normalizer
-```
+### Setup Steps
 
-5. Run the server:
+1. **Clone or download** the project into Code App:
+   ```bash
+   git clone https://github.com/bookers1897/Manga-Negus.git
+   cd Manga-Negus
+   ```
 
-```bash
-python app.py
-```
+2. **Install dependencies** (iOS-compatible versions):
+   ```bash
+   pip install markupsafe==2.1.3
+   pip install werkzeug==3.0.1
+   pip install flask==3.0.0
+   pip install requests
+   pip install charset-normalizer
+   ```
 
-6. Open Safari and go to: `http://127.0.0.1:5000`
+3. **Add your logo** (optional):
+   - Place `sharingan.png` in `static/images/`
+   - Or use any PNG image and rename it
 
-## ✨ Features
+4. **Run the server:**
+   ```bash
+   python app.py
+   ```
 
-- **🔍 MangaDex Search** - Search the entire MangaDex library
-- **📚 Library Management** - Organize into Reading, Want to Read, and Completed
-- **⬇️ Batch Downloads** - Download chapters individually, by range, or select multiple
-- **📂 CBZ Export** - Automatically packages chapters into .cbz files
-- **🎛️ Live Console** - Toggle-able log panel to monitor download progress
-- **🌙 Dark/Light Theme** - iOS-style theme switcher
+5. **Open in Safari:**
+   ```
+   http://127.0.0.1:5000
+   ```
+
+---
+
+## 📱 Features
+
+### 🔍 Search & Discovery
+- Search MangaDex's entire library
+- Browse trending/popular manga
+- Cover art displayed for all results
+
+### 📚 Library Management
+- **Currently Reading** - Manga you're actively reading
+- **Want to Read** - Your planned reading list
+- **Completed** - Finished manga
+- Reading progress tracking (last chapter read)
+
+### 📖 In-App Reader
+- **Stream chapters** directly from MangaDex
+- **HD/SD toggle** for slower connections
+- **Chapter navigation** (previous/next)
+- Progress automatically saved
+
+### ⬇️ Downloads
+- Download individual chapters
+- Batch download by range (Ch. 1-50)
+- Select multiple chapters manually
+- Auto-packaged as .cbz files
+
+### 🎛️ Console
+- Real-time download progress
+- System logs and errors
+- Resizable panel
+
+---
 
 ## 🎨 Customization
 
 ### Changing the Logo
-Replace `static/images/sharingan.png` with any PNG image you like.
+Replace `static/images/sharingan.png` with any PNG image.
 
 ### Changing the App Name
-Edit line 100 in `templates/index.html`:
+Edit line in `templates/index.html`:
 ```html
-<h1 class="text-lg font-bold tracking-tight">漫画キング</h1>
+<h1 class="app-title">漫画キング</h1>
 ```
 
 ### Changing the Accent Color
-In the CSS variables (`:root` section), modify:
+Edit `static/css/styles.css`:
 ```css
---accent-color: #ff453a;  /* Change this hex value */
---accent-glow: rgba(255, 69, 58, 0.4);  /* Match the RGB values */
+:root {
+    --accent-color: #ff453a;        /* Primary accent */
+    --accent-glow: rgba(255, 69, 58, 0.4);  /* Glow effect */
+}
 ```
+
+### Adding Anime Background
+In `templates/index.html`, find the `anime-bg` div and add:
+```javascript
+document.getElementById('anime-bg').style.backgroundImage = 'url(/static/images/your-anime.png)';
+```
+
+---
+
+## 🔧 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/library` | GET | Get user's library |
+| `/api/save` | POST | Add manga to library |
+| `/api/delete` | POST | Remove from library |
+| `/api/update_status` | POST | Update reading status |
+| `/api/update_progress` | POST | Save last read chapter |
+| `/api/popular` | GET | Get trending manga |
+| `/api/search` | POST | Search by title |
+| `/api/chapters` | POST | Get chapters (paginated) |
+| `/api/all_chapters` | POST | Get all chapters |
+| `/api/chapter_pages` | POST | Get page URLs for reader |
+| `/api/download` | POST | Start chapter download |
+| `/api/logs` | GET | Get console messages |
+
+---
+
+## 🗺️ Roadmap (Future Features)
+
+- [ ] **Offline CBZ Reader** - Read downloaded files in-app
+- [ ] **Search Filters** - Genre, status, year
+- [ ] **Pull-to-Refresh** - Native mobile feel
+- [ ] **Chapter Read Markers** - Visual indicators
+- [ ] **Night Shift Mode** - Warm tones for nighttime reading
+- [ ] **Swipe Gestures** - Swipe between pages/chapters
+- [ ] **Image Preloading** - Smoother reading experience
+- [ ] **Settings Page** - Customize reader behavior
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Feel free to:
+- Report bugs via GitHub Issues
+- Submit feature requests
+- Create pull requests
+
+---
+
+## 📄 License
+
+MIT License - feel free to use and modify!
+
+---
+
+## 🙏 Acknowledgments
+
+- [MangaDex](https://mangadex.org/) for the API
+- [Phosphor Icons](https://phosphoricons.com/) for the icon set
+- [Tailwind CSS](https://tailwindcss.com/) for utility classes
+
+---
+
+**Made with ❤️ by [@bookers1897](https://github.com/bookers1897)**

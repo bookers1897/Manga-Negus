@@ -1,0 +1,1615 @@
+/*
+================================================================================
+MangaNegus v2.1 - Stylesheet
+================================================================================
+A modern, iOS-inspired glassmorphic design with smooth animations.
+
+Author: bookers1897
+GitHub: https://github.com/bookers1897/Manga-Negus
+
+Table of Contents:
+  1. CSS Variables (Theme Colors)
+  2. Reset & Base Styles
+  3. Background & Ambient Effects
+  4. Glass Panel Components
+  5. Form Elements (Inputs, Buttons)
+  6. Header & Navigation
+  7. Hamburger Menu
+  8. Main Content Areas
+  9. Search & Results
+  10. Library View
+  11. Details View
+  12. Chapter Grid
+  13. Manga Reader
+  14. Console/Logs Panel
+  15. Footer
+  16. Floating Action Bar
+  17. Utility Classes
+  18. Animations
+  19. Media Queries
+================================================================================
+*/
+
+
+/* =============================================================================
+   1. CSS VARIABLES (Theme Colors)
+   =============================================================================
+   Using CSS custom properties for easy theming.
+   Dark theme is default, light theme overrides via [data-theme="light"]
+*/
+
+:root {
+    /* Background colors - layered glass effect */
+    --bg-primary: rgba(28, 28, 30, 0.72);
+    --bg-secondary: rgba(44, 44, 46, 0.65);
+    --bg-tertiary: rgba(58, 58, 60, 0.5);
+    
+    /* Border colors - subtle separators */
+    --border-color: rgba(255, 255, 255, 0.06);
+    --border-highlight: rgba(255, 255, 255, 0.12);
+    
+    /* Text colors - hierarchy of importance */
+    --text-primary: #ffffff;
+    --text-secondary: rgba(235, 235, 245, 0.6);
+    --text-tertiary: rgba(235, 235, 245, 0.3);
+    
+    /* Accent colors - red theme for manga feel */
+    --accent-color: #ff453a;
+    --accent-secondary: #ff6961;
+    --accent-glow: rgba(255, 69, 58, 0.4);
+    
+    /* Surface effects */
+    --surface-glow: rgba(255, 255, 255, 0.03);
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.24);
+}
+
+/* Light theme overrides */
+[data-theme="light"] {
+    --bg-primary: rgba(255, 255, 255, 0.72);
+    --bg-secondary: rgba(242, 242, 247, 0.65);
+    --bg-tertiary: rgba(229, 229, 234, 0.5);
+    
+    --border-color: rgba(0, 0, 0, 0.04);
+    --border-highlight: rgba(0, 0, 0, 0.08);
+    
+    --text-primary: #1c1c1e;
+    --text-secondary: rgba(60, 60, 67, 0.6);
+    --text-tertiary: rgba(60, 60, 67, 0.3);
+    
+    --accent-color: #007aff;
+    --accent-secondary: #5ac8fa;
+    --accent-glow: rgba(0, 122, 255, 0.3);
+    
+    --surface-glow: rgba(255, 255, 255, 0.8);
+}
+
+
+/* =============================================================================
+   2. RESET & BASE STYLES
+   =============================================================================
+   Normalize browser defaults and set up base typography
+*/
+
+/* Remove tap highlight on mobile */
+* {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+
+/* Base body styles */
+body {
+    /* System font stack for native feel on all platforms */
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", 
+                 Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-primary);
+    margin: 0;
+    padding: 0;
+    background: #000000;
+    overflow-x: hidden;
+    min-height: 100vh;
+    
+    /* Smooth theme transitions */
+    transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Light theme body background */
+[data-theme="light"] body {
+    background: #f2f2f7;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--text-tertiary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+
+/* =============================================================================
+   3. BACKGROUND & AMBIENT EFFECTS
+   =============================================================================
+   Animated gradient background for visual depth
+*/
+
+.ambient-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -2;
+    
+    /* Multi-layer radial gradients for organic feel */
+    background: 
+        radial-gradient(ellipse 80% 50% at 20% 40%, rgba(255, 69, 58, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 80% 20%, rgba(175, 82, 222, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 50% 90%, rgba(255, 159, 10, 0.1) 0%, transparent 50%),
+        radial-gradient(ellipse 100% 100% at 50% 50%, rgba(10, 132, 255, 0.08) 0%, transparent 60%);
+    
+    /* Subtle animation for living feel */
+    animation: ambientShift 25s ease-in-out infinite;
+}
+
+/* Lighter gradients for light theme */
+[data-theme="light"] .ambient-bg {
+    background: 
+        radial-gradient(ellipse 80% 50% at 20% 40%, rgba(0, 122, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 80% 20%, rgba(175, 82, 222, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 50% 90%, rgba(255, 159, 10, 0.05) 0%, transparent 50%);
+}
+
+/* Anime background image layer */
+.anime-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    opacity: 0.03;
+    pointer-events: none;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+[data-theme="light"] .anime-bg {
+    opacity: 0.05;
+}
+
+
+/* =============================================================================
+   4. GLASS PANEL COMPONENTS
+   =============================================================================
+   iOS-style frosted glass panels with blur effects
+*/
+
+/* Standard glass panel */
+.glass-panel {
+    background: var(--bg-primary);
+    
+    /* Heavy blur for frosted glass effect */
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    
+    /* Subtle border for definition */
+    border: 0.5px solid var(--border-highlight);
+    
+    /* Layered shadows for depth */
+    box-shadow: 
+        0 0 0 0.5px var(--border-color),
+        var(--shadow-sm),
+        var(--shadow-md),
+        inset 0 1px 0 var(--surface-glow);
+    
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Elevated glass panel (floating above other panels) */
+.glass-panel-elevated {
+    background: var(--bg-secondary);
+    backdrop-filter: blur(50px) saturate(200%);
+    -webkit-backdrop-filter: blur(50px) saturate(200%);
+    border: 0.5px solid var(--border-highlight);
+    box-shadow: 
+        0 0 0 0.5px var(--border-color),
+        var(--shadow-md),
+        var(--shadow-lg),
+        inset 0 1px 0 var(--surface-glow);
+}
+
+
+/* =============================================================================
+   5. FORM ELEMENTS
+   =============================================================================
+   Styled inputs, buttons, and interactive elements
+*/
+
+/* Glass-style input fields */
+.glass-input {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    border-radius: 0.75rem;
+    width: 100%;
+    
+    /* Subtle blur on inputs */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Input focus state */
+.glass-input:focus {
+    background: var(--bg-secondary);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    outline: none;
+}
+
+/* Input placeholder text */
+.glass-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* Prevent zoom on iOS when focusing inputs */
+@supports (-webkit-touch-callout: none) {
+    .glass-input {
+        font-size: 16px; /* Prevents iOS zoom */
+    }
+}
+
+/* Standard glass button */
+.glass-btn {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    
+    position: relative;
+    overflow: hidden;
+    
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Subtle top highlight gradient */
+.glass-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, var(--surface-glow) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+/* Button hover state */
+.glass-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border-highlight);
+}
+
+/* Button active/pressed state */
+.glass-btn:active {
+    transform: scale(0.96);
+    opacity: 0.9;
+}
+
+/* Accent colored button (primary actions) */
+.glass-btn-accent {
+    background: linear-gradient(
+        180deg,
+        var(--accent-color) 0%,
+        color-mix(in srgb, var(--accent-color) 85%, black) 100%
+    );
+    border: none;
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.glass-btn-accent:hover {
+    box-shadow: 0 4px 16px var(--accent-glow);
+    transform: translateY(-1px);
+}
+
+/* Download button styling */
+.download-btn {
+    background: linear-gradient(
+        180deg,
+        var(--accent-color) 0%,
+        color-mix(in srgb, var(--accent-color) 80%, black) 100%
+    );
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px var(--accent-glow);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.download-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px var(--accent-glow);
+}
+
+.download-btn:active {
+    transform: scale(0.96);
+}
+
+
+/* =============================================================================
+   6. HEADER & NAVIGATION
+   =============================================================================
+   Compact header with logo and navigation buttons
+*/
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem;
+    border-radius: 1rem;
+}
+
+/* Logo container with glow effect */
+.logo-container {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Animated glow behind logo */
+.logo-glow {
+    position: absolute;
+    inset: -6px;
+    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+    border-radius: 50%;
+    filter: blur(8px);
+    animation: logoPulse 3s ease-in-out infinite;
+}
+
+/* Logo image */
+.logo-image {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.3));
+}
+
+/* App title text */
+.app-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+
+/* Navigation button group */
+.nav-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Square navigation buttons */
+.nav-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 0.625rem;
+}
+
+
+/* =============================================================================
+   7. HAMBURGER MENU
+   =============================================================================
+   Slide-out navigation drawer for mobile
+*/
+
+/* Menu overlay (darkens background) */
+.menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 90;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.menu-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Slide-out menu panel */
+.hamburger-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    max-width: 80vw;
+    height: 100vh;
+    background: var(--bg-primary);
+    backdrop-filter: blur(60px) saturate(200%);
+    -webkit-backdrop-filter: blur(60px) saturate(200%);
+    border-right: 0.5px solid var(--border-highlight);
+    z-index: 100;
+    
+    /* Smooth slide animation */
+    transform: translateX(-100%);
+    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+}
+
+.hamburger-menu.active {
+    transform: translateX(0);
+}
+
+/* Menu header */
+.menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 0.5px solid var(--border-color);
+}
+
+.menu-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Menu navigation items */
+.menu-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex-grow: 1;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-size: 1rem;
+}
+
+.menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.menu-item i {
+    font-size: 1.25rem;
+    color: var(--accent-color);
+    width: 24px;
+    text-align: center;
+}
+
+/* Menu footer (social links) */
+.menu-footer {
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 0.5px solid var(--border-color);
+}
+
+
+/* =============================================================================
+   8. MAIN CONTENT AREAS
+   =============================================================================
+   Container for different views (search, library, details, reader)
+*/
+
+.main-content {
+    flex-grow: 1;
+    overflow: hidden;
+    position: relative;
+    margin: 0.25rem 0.5rem;
+    border-radius: 1.25rem;
+    min-height: 0; /* Important for flex children */
+}
+
+/* View panels (absolute positioned for transitions) */
+.view-panel {
+    position: absolute;
+    inset: 0;
+    padding: 1rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    
+    /* Hide by default */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+.view-panel.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+
+/* =============================================================================
+   9. SEARCH & RESULTS
+   =============================================================================
+   Search bar and manga result cards
+*/
+
+/* Search input container */
+.search-container {
+    position: relative;
+    margin-bottom: 1.25rem;
+}
+
+/* Search icon */
+.search-icon {
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+    pointer-events: none;
+}
+
+/* Search input field */
+.search-input {
+    padding-left: 2.5rem;
+    padding-right: 5rem;
+    height: 2.75rem;
+}
+
+/* Search button (inside input) */
+.search-btn {
+    position: absolute;
+    right: 0.375rem;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 2rem;
+    padding: 0 0.875rem;
+    font-size: 0.75rem;
+}
+
+/* Section header (e.g., "Trending Now") */
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.section-header i {
+    color: var(--accent-color);
+}
+
+.section-header span {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Results grid */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+    padding-bottom: 5rem; /* Space for floating bar */
+}
+
+/* Manga result card */
+.manga-card {
+    padding: 0;
+    border-radius: 1rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.manga-card:hover {
+    transform: translateY(-2px);
+}
+
+/* Card cover image */
+.manga-card-cover {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    background: var(--bg-tertiary);
+}
+
+/* Card content */
+.manga-card-content {
+    padding: 0.875rem;
+}
+
+.manga-card-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.375rem;
+    
+    /* Truncate long titles */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.manga-card-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Card footer */
+.manga-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding-top: 0.625rem;
+    border-top: 0.5px solid var(--border-color);
+}
+
+.manga-card-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+}
+
+.add-btn {
+    font-size: 0.6875rem;
+    padding: 0.25rem 0.625rem;
+    color: var(--accent-color);
+}
+
+
+/* =============================================================================
+   10. LIBRARY VIEW
+   =============================================================================
+   Library sections (Reading, Plan to Read, Completed)
+*/
+
+.library-section {
+    margin-bottom: 1.5rem;
+}
+
+.library-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.library-section-header i {
+    font-size: 1rem;
+}
+
+.library-section-header.reading i {
+    color: var(--accent-color);
+}
+
+.library-section-header span {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Library items grid */
+.library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.5rem;
+}
+
+/* Library item card */
+.library-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.875rem;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.library-item:hover {
+    transform: scale(1.01);
+}
+
+/* Library item cover thumbnail */
+.library-item-cover {
+    width: 48px;
+    height: 64px;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+}
+
+/* Library item info */
+.library-item-info {
+    flex-grow: 1;
+    min-width: 0; /* Allows text truncation */
+}
+
+.library-item-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.library-item-progress {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+
+/* =============================================================================
+   11. DETAILS VIEW
+   =============================================================================
+   Manga details page with chapter list and download options
+*/
+
+/* Back button */
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 2rem;
+}
+
+/* Title card (elevated panel with manga info) */
+.title-card {
+    padding: 1rem;
+    border-radius: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.title-card-header {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+/* Cover image in title card */
+.title-card-cover {
+    width: 80px;
+    height: 110px;
+    border-radius: 0.5rem;
+    object-fit: cover;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+}
+
+.title-card-info {
+    flex-grow: 1;
+    min-width: 0;
+}
+
+.manga-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+    line-height: 1.3;
+}
+
+/* Status selector dropdown */
+.status-select {
+    width: 100%;
+    height: 2.5rem;
+    padding: 0 0.75rem;
+    border-radius: 0.625rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+}
+
+/* Quick download section */
+.quick-download {
+    padding: 0.875rem;
+    border-radius: 0.875rem;
+    margin-top: 1rem;
+}
+
+.quick-download-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.quick-download-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+}
+
+/* FIXED: Download input row - prevents overflow on mobile */
+.download-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 100%; /* Prevent overflow */
+}
+
+/* Input group for start/end fields */
+.input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0; /* Allow shrinking */
+}
+
+/* Chapter number inputs */
+.chapter-input {
+    flex: 1;
+    min-width: 0; /* Allow shrinking below content size */
+    max-width: 100%;
+    height: 2.5rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    padding: 0.5rem;
+    
+    /* Remove number input spinners */
+    -moz-appearance: textfield;
+}
+
+.chapter-input::-webkit-outer-spin-button,
+.chapter-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Arrow between inputs */
+.input-arrow {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+}
+
+/* Download button */
+.dl-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border-radius: 0.625rem;
+    flex-shrink: 0;
+}
+
+
+/* =============================================================================
+   12. CHAPTER GRID
+   =============================================================================
+   Responsive grid layout for chapter selection
+*/
+
+/* Chapter controls bar */
+.chapter-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0 0.25rem;
+}
+
+.chapter-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+}
+
+.chapter-count {
+    font-weight: 400;
+    margin-left: 0.25rem;
+}
+
+/* Control buttons group */
+.chapter-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.chapter-action-btn {
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    border-radius: 0.5rem;
+}
+
+.chapter-action-btn.accent {
+    color: var(--accent-color);
+}
+
+/* Chapter grid container */
+.chapter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.5rem;
+    padding-bottom: 6rem; /* Space for floating bar */
+}
+
+/* Individual chapter item */
+.chapter-item {
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.chapter-item:hover {
+    border-color: var(--accent-color);
+}
+
+/* Selected chapter */
+.chapter-item.selected {
+    background: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    border-color: var(--accent-color);
+}
+
+/* Downloaded chapter indicator */
+.chapter-item.downloaded {
+    border-color: #30d158;
+}
+
+.chapter-item.downloaded::after {
+    content: '✓';
+    font-size: 0.625rem;
+    color: #30d158;
+    margin-left: auto;
+}
+
+/* Chapter checkbox */
+.chapter-checkbox {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.chapter-checkbox i {
+    font-size: 0.625rem;
+    opacity: 0;
+    color: white;
+}
+
+.chapter-item.selected .chapter-checkbox {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.chapter-item.selected .chapter-checkbox i {
+    opacity: 1;
+}
+
+/* Chapter number */
+.chapter-num {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Chapter title (truncated) */
+.chapter-title {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: auto;
+    max-width: 60px;
+}
+
+/* Load more button */
+.load-more-container {
+    margin-top: 1rem;
+}
+
+.load-more-btn {
+    width: 100%;
+    padding: 0.875rem;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-highlight);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.load-more-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+
+/* =============================================================================
+   13. MANGA READER
+   =============================================================================
+   Full-screen image viewer for reading manga
+*/
+
+/* Reader container */
+.reader-container {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    
+    /* Hidden by default */
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.reader-container.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Reader header */
+.reader-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    z-index: 10;
+}
+
+.reader-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: white;
+    
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+}
+
+.reader-close-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+/* Reader content area */
+.reader-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    gap: 0.5rem;
+}
+
+/* Reader page images */
+.reader-page {
+    width: 100%;
+    max-width: 800px;
+    height: auto;
+    object-fit: contain;
+}
+
+/* Reader footer with navigation */
+.reader-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.reader-nav-btn {
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 0.5rem;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.reader-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.reader-page-indicator {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Data saver toggle in reader */
+.reader-quality-toggle {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+}
+
+.reader-quality-toggle.active {
+    background: var(--accent-color);
+    color: white;
+}
+
+
+/* =============================================================================
+   14. CONSOLE/LOGS PANEL
+   =============================================================================
+   Collapsible panel showing download progress and system logs
+   FIXED: Smooth slide animation
+*/
+
+/* Console toggle button */
+.console-toggle {
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 80;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+}
+
+.console-toggle.active {
+    background: var(--accent-color);
+    color: white;
+}
+
+/* Console panel container */
+.console-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 70;
+    border-radius: 1.25rem 1.25rem 0 0;
+    overflow: hidden;
+    
+    /* FIXED: Smooth slide animation */
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.console-panel.active {
+    transform: translateY(0);
+}
+
+/* Resize handle */
+.console-resize-handle {
+    height: 20px;
+    cursor: row-resize;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border-bottom: 0.5px solid var(--border-color);
+}
+
+.resize-bar {
+    width: 36px;
+    height: 4px;
+    background: var(--text-tertiary);
+    border-radius: 2px;
+}
+
+/* Console content */
+.console-content {
+    height: 140px;
+    overflow-y: auto;
+    padding: 0.75rem;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', monospace;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+}
+
+/* Individual log entry */
+.log-entry {
+    padding: 0.25rem 0;
+    padding-left: 0.5rem;
+    border-left: 2px solid var(--accent-color);
+    margin-bottom: 0.25rem;
+}
+
+
+/* =============================================================================
+   15. FOOTER
+   =============================================================================
+   App footer with social links
+*/
+
+.app-footer {
+    padding: 1rem;
+    margin: 0.5rem;
+    margin-top: 0;
+    border-radius: 1rem;
+    text-align: center;
+}
+
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.footer-brand {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.footer-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.footer-link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+    color: var(--accent-color);
+}
+
+.footer-link i {
+    font-size: 1rem;
+}
+
+
+/* =============================================================================
+   16. FLOATING ACTION BAR
+   =============================================================================
+   Bottom bar showing selection count and download button
+*/
+
+.floating-bar {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    z-index: 60;
+    
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem 0.5rem 0.5rem;
+    border-radius: 2rem;
+    
+    /* FIXED: Smooth animation */
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.floating-bar.active {
+    transform: translateX(-50%) translateY(0);
+}
+
+.selection-count {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.floating-bar-text {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+
+/* =============================================================================
+   17. UTILITY CLASSES
+   =============================================================================
+   Helper classes for common patterns
+*/
+
+/* Loading spinner */
+.spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+/* Hidden utility */
+.hidden {
+    display: none !important;
+}
+
+/* Flex utilities */
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.gap-1 {
+    gap: 0.25rem;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.gap-3 {
+    gap: 0.75rem;
+}
+
+
+/* =============================================================================
+   18. ANIMATIONS
+   =============================================================================
+   Keyframe animations for various effects
+*/
+
+/* Ambient background shift */
+@keyframes ambientShift {
+    0%, 100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+    }
+    33% {
+        transform: scale(1.1) rotate(2deg);
+        opacity: 0.8;
+    }
+    66% {
+        transform: scale(0.95) rotate(-1deg);
+        opacity: 0.9;
+    }
+}
+
+/* Logo pulse glow */
+@keyframes logoPulse {
+    0%, 100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.1);
+    }
+}
+
+/* Spinner rotation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Fade in */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
+/* =============================================================================
+   19. MEDIA QUERIES
+   =============================================================================
+   Responsive adjustments for different screen sizes
+*/
+
+/* Small phones */
+@media (max-width: 374px) {
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .chapter-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    /* Extra small screens: stack download inputs */
+    .download-input-row {
+        flex-wrap: wrap;
+    }
+    
+    .input-group {
+        width: 100%;
+    }
+    
+    .dl-btn {
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+}
+
+/* Standard phones */
+@media (min-width: 375px) and (max-width: 639px) {
+    .chapter-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Tablets */
+@media (min-width: 640px) {
+    .chapter-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    
+    .results-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .library-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Large tablets / small laptops */
+@media (min-width: 768px) {
+    .hamburger-menu {
+        width: 320px;
+    }
+    
+    .results-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+    .results-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .chapter-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    }
+}
+
+/* Prevent iOS zoom on input focus */
+@supports (-webkit-touch-callout: none) {
+    input, select, textarea {
+        font-size: 16px;
+    }
+}
