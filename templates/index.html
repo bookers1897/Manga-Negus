@@ -1,1372 +1,770 @@
-<!--
-================================================================================
-MangaNegus v2.1 - Main Template
-================================================================================
-A modern manga downloader with in-app reader support.
-
-Author: bookers1897
-GitHub: https://github.com/bookers1897/Manga-Negus
-================================================================================
--->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MangaNegus v2.2</title>
     
-    <!-- Responsive viewport settings for mobile -->
-    <!-- maximum-scale=1 and user-scalable=no prevent unwanted zoom -->
-    <!-- viewport-fit=cover ensures full screen on notched devices -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/fill/style.css">
     
-    <title>漫画キング - MangaNegus</title>
-    
-    <!-- Tailwind CSS for utility classes -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Phosphor Icons for UI icons -->
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    
-    <!-- Custom stylesheet (separated from HTML) -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
-    
-    <!-- PWA & Mobile App settings -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#000000">
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
-
-<body class="h-screen flex flex-col" data-theme="dark">
-    
-    <!-- ===================================================================
-         BACKGROUND LAYERS
-         =================================================================== -->
-    
-    <!-- Animated gradient ambient background -->
+<body>
+    <!-- Background -->
     <div class="ambient-bg"></div>
     
-    <!-- Optional anime character background (set via JavaScript) -->
-    <div class="anime-bg" id="anime-bg"></div>
-    
-    
-    <!-- ===================================================================
-         HAMBURGER MENU (Slide-out Navigation)
-         =================================================================== -->
-    
-    <!-- Dark overlay behind menu -->
-    <div class="menu-overlay" id="menu-overlay" onclick="closeMenu()"></div>
-    
-    <!-- Slide-out menu panel -->
-    <nav class="hamburger-menu glass-panel" id="hamburger-menu">
-        <!-- Menu Header -->
-        <div class="menu-header">
-            <span class="menu-title">Menu</span>
-            <button class="glass-btn nav-btn" onclick="closeMenu()">
-                <i class="ph-bold ph-x"></i>
-            </button>
-        </div>
+    <!-- App Container -->
+    <div class="app-container">
         
-        <!-- Menu Navigation Items -->
-        <div class="menu-nav">
-            <button class="menu-item" onclick="showView('search'); closeMenu()">
-                <i class="ph-fill ph-magnifying-glass"></i>
-                <span>Search</span>
+        <!-- Header -->
+        <header class="header glass-panel">
+            <button class="nav-btn glass-btn" id="menu-btn">
+                <i class="ph ph-list"></i>
             </button>
             
-            <button class="menu-item" onclick="showView('library'); closeMenu()">
-                <i class="ph-fill ph-books"></i>
-                <span>Library</span>
-            </button>
-            
-            <button class="menu-item" onclick="toggleConsole(); closeMenu()">
-                <i class="ph-fill ph-terminal-window"></i>
-                <span>Console</span>
-            </button>
-            
-            <button class="menu-item" onclick="showSettings(); closeMenu()">
-                <i class="ph-fill ph-gear"></i>
-                <span>Settings</span>
-            </button>
-        </div>
-        
-        <!-- Menu Footer with Social Links -->
-        <div class="menu-footer">
-            <a href="https://github.com/bookers1897/Manga-Negus" target="_blank" class="menu-item">
-                <i class="ph-fill ph-github-logo"></i>
-                <span>GitHub</span>
-            </a>
-        </div>
-    </nav>
-    
-    
-    <!-- ===================================================================
-         HEADER
-         =================================================================== -->
-    
-    <header class="header glass-panel">
-        <!-- Left: Hamburger menu button + Logo + Title -->
-        <div class="flex items-center gap-2">
-            <!-- Hamburger Menu Button -->
-            <button class="glass-btn nav-btn" onclick="toggleMenu()" aria-label="Open menu">
-                <i class="ph-bold ph-list"></i>
-            </button>
-            
-            <!-- Logo with glow effect -->
-            <div class="logo-container">
-                <div class="logo-glow"></div>
-                <img src="{{ url_for('static', filename='images/sharingan.png') }}" 
-                     alt="Logo" 
-                     class="logo-image"
-                     id="logo-img"
-                     onerror="this.style.display='none'; document.getElementById('fallback-icon').style.display='flex'">
-                <div id="fallback-icon" style="display:none;" class="logo-image flex items-center justify-center">
-                    <i class="ph-fill ph-eye text-lg" style="color: var(--accent-color);"></i>
+            <div class="header-center">
+                <div class="logo-container">
+                    <div class="logo-glow"></div>
+                    <img src="/static/images/sharingan.png" alt="Logo" class="logo-image" 
+                         onerror="this.style.display='none'">
                 </div>
+                <h1 class="app-title">漫画キング</h1>
             </div>
             
-            <!-- App Title -->
-            <h1 class="app-title">漫画キング</h1>
-        </div>
-        
-        <!-- Right: Theme toggle + Search button -->
-        <div class="nav-buttons">
-            <!-- Theme Toggle Button -->
-            <button class="glass-btn nav-btn" onclick="toggleTheme()" aria-label="Toggle theme">
-                <i class="ph-fill ph-moon" id="theme-icon"></i>
+            <button class="nav-btn glass-btn" id="library-btn">
+                <i class="ph ph-books"></i>
             </button>
+        </header>
+
+        <!-- Source Selector -->
+        <div class="source-bar glass-panel">
+            <div class="source-selector">
+                <span class="source-label">Source:</span>
+                <select class="source-select glass-input" id="source-select">
+                    <option value="">Loading...</option>
+                </select>
+                <button class="source-status-btn glass-btn" id="source-status-btn" title="Source Status">
+                    <i class="ph ph-pulse"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content glass-panel">
             
-            <!-- Quick Search Button -->
-            <button class="glass-btn nav-btn" onclick="showView('search')" aria-label="Search">
-                <i class="ph-bold ph-magnifying-glass"></i>
-            </button>
-        </div>
-    </header>
-    
-    
-    <!-- ===================================================================
-         MAIN CONTENT AREA
-         =================================================================== -->
-    
-    <main class="main-content glass-panel flex-grow">
-        
-        <!-- ===============================================================
-             SEARCH VIEW
-             =============================================================== -->
-        <div id="view-search" class="view-panel active">
-            <div class="max-w-4xl mx-auto">
-                
-                <!-- Search Input -->
+            <!-- Search View -->
+            <section class="view-panel active" id="search-view">
                 <div class="search-container">
-                    <i class="ph-bold ph-magnifying-glass search-icon"></i>
-                    <input type="text" 
-                           id="search-input" 
-                           class="glass-input search-input" 
-                           placeholder="Search manga..."
-                           onkeydown="if(event.key === 'Enter') doSearch()">
-                    <button class="glass-btn-accent search-btn" onclick="doSearch()">
-                        Search
-                    </button>
+                    <i class="ph ph-magnifying-glass search-icon"></i>
+                    <input type="text" class="glass-input search-input" id="search-input"
+                           placeholder="Search manga..." autocomplete="off">
+                    <button class="glass-btn glass-btn-accent search-btn" id="search-btn">Search</button>
                 </div>
                 
-                <!-- Section Header -->
-                <div class="section-header" id="search-header">
+                <div class="section-header">
                     <i class="ph-fill ph-fire"></i>
                     <span>Trending Now</span>
                 </div>
                 
-                <!-- Results Grid -->
-                <div id="search-results" class="results-grid">
-                    <!-- Populated by JavaScript -->
-                </div>
-                
-            </div>
-        </div>
-        
-        
-        <!-- ===============================================================
-             LIBRARY VIEW
-             =============================================================== -->
-        <div id="view-library" class="view-panel">
-            <div class="max-w-4xl mx-auto pb-20">
-                
-                <!-- Currently Reading Section -->
-                <div class="library-section">
-                    <div class="library-section-header reading">
-                        <i class="ph-fill ph-book-open"></i>
-                        <span>Currently Reading</span>
+                <div class="results-grid" id="results-grid">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <span>Loading...</span>
                     </div>
-                    <div id="lib-reading" class="library-grid">
-                        <!-- Populated by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Library View -->
+            <section class="view-panel" id="library-view">
+                <div class="library-header">
+                    <h2>My Library</h2>
+                    <div class="library-filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="reading">Reading</button>
+                        <button class="filter-btn" data-filter="plan_to_read">Plan to Read</button>
+                        <button class="filter-btn" data-filter="completed">Completed</button>
                     </div>
                 </div>
                 
-                <!-- Want to Read Section -->
-                <div class="library-section">
-                    <div class="library-section-header">
-                        <i class="ph-fill ph-bookmark" style="color: var(--text-secondary);"></i>
-                        <span>Want to Read</span>
-                    </div>
-                    <div id="lib-plan_to_read" class="library-grid">
-                        <!-- Populated by JavaScript -->
+                <div class="library-grid" id="library-grid">
+                    <div class="empty-state">
+                        <i class="ph ph-books"></i>
+                        <p>Your library is empty</p>
                     </div>
                 </div>
-                
-                <!-- Completed Section -->
-                <div class="library-section">
-                    <div class="library-section-header">
-                        <i class="ph-fill ph-check-circle" style="color: var(--text-secondary);"></i>
-                        <span>Completed</span>
-                    </div>
-                    <div id="lib-completed" class="library-grid">
-                        <!-- Populated by JavaScript -->
-                    </div>
-                </div>
-                
-            </div>
-        </div>
-        
-        
-        <!-- ===============================================================
-             DETAILS VIEW (Manga Details + Chapter List)
-             =============================================================== -->
-        <div id="view-details" class="view-panel">
-            <div class="max-w-3xl mx-auto">
-                
-                <!-- Back Button -->
-                <button class="glass-btn back-btn" onclick="goBack()">
-                    <i class="ph-bold ph-arrow-left"></i>
-                    Back
+            </section>
+
+            <!-- Details View -->
+            <section class="view-panel" id="details-view">
+                <button class="back-btn glass-btn" id="back-btn">
+                    <i class="ph ph-arrow-left"></i> Back
                 </button>
                 
-                <!-- Title Card with Cover and Info -->
-                <div class="title-card glass-panel-elevated">
-                    <div class="title-card-header">
-                        <!-- Cover Image -->
-                        <img id="detail-cover" 
-                             class="title-card-cover" 
-                             src="" 
-                             alt="Cover"
-                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>'">
-                        
-                        <!-- Info -->
-                        <div class="title-card-info">
-                            <h2 id="detail-title" class="manga-title">Manga Title</h2>
-                            
-                            <!-- Status Selector -->
-                            <select id="status-select" class="glass-input status-select" onchange="changeStatus()">
-                                <option value="none">Not in Library</option>
-                                <option value="reading">Currently Reading</option>
-                                <option value="plan_to_read">Want to Read</option>
-                                <option value="completed">Completed</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <!-- Quick Download Section -->
-                    <div class="quick-download glass-panel">
-                        <div class="quick-download-header">
-                            <span class="quick-download-label">Quick Download</span>
-                            <button class="glass-btn" style="font-size: 0.625rem; padding: 0.25rem 0.5rem;" onclick="fillMaxRange()">
-                                Max Range
-                            </button>
-                        </div>
-                        
-                        <!-- FIXED: Download Input Row -->
-                        <div class="download-input-row">
-                            <div class="input-group">
-                                <input type="number" 
-                                       id="dl-start" 
-                                       class="glass-input chapter-input" 
-                                       placeholder="Start">
-                                <span class="input-arrow">→</span>
-                                <input type="number" 
-                                       id="dl-end" 
-                                       class="glass-input chapter-input" 
-                                       placeholder="End">
-                            </div>
-                            <button class="download-btn dl-btn" onclick="downloadRange()">
-                                <i class="ph-bold ph-download-simple"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <div class="title-card glass-panel-elevated" id="title-card"></div>
                 
-                <!-- Chapter Controls -->
                 <div class="chapter-controls">
-                    <span class="chapter-label">
-                        Chapters <span id="chapter-count" class="chapter-count">(0)</span>
-                    </span>
+                    <div class="chapter-label">
+                        Chapters <span class="chapter-count" id="chapter-count">(0)</span>
+                    </div>
                     <div class="chapter-actions">
-                        <button class="glass-btn chapter-action-btn" onclick="toggleSort()">
-                            <i id="sort-icon" class="ph-bold ph-arrow-down"></i>
+                        <button class="chapter-action-btn glass-btn" id="select-all-btn">
+                            <i class="ph ph-check-square"></i> All
                         </button>
-                        <button class="glass-btn chapter-action-btn accent" onclick="selectAll()">All</button>
-                        <button class="glass-btn chapter-action-btn" onclick="deselectAll()">Clear</button>
+                        <button class="chapter-action-btn glass-btn" id="clear-selection-btn">
+                            <i class="ph ph-square"></i> Clear
+                        </button>
                     </div>
                 </div>
                 
-                <!-- Chapter Grid -->
-                <div id="chapter-list" class="chapter-grid">
-                    <!-- Populated by JavaScript -->
+                <div class="chapter-grid" id="chapter-grid">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                    </div>
                 </div>
                 
-                <!-- Load More Button -->
-                <div id="load-more-container" class="load-more-container hidden">
-                    <button id="load-more-btn" class="load-more-btn" onclick="loadMoreChapters()">
-                        <i class="ph-bold ph-plus-circle"></i>
-                        <span>Load More Chapters</span>
+                <div class="load-more-container" id="load-more-container" style="display:none;">
+                    <button class="load-more-btn" id="load-more-btn">
+                        <i class="ph ph-plus-circle"></i> Load More
                     </button>
                 </div>
-                
-            </div>
-        </div>
-        
-    </main>
-    
-    
-    <!-- ===================================================================
-         MANGA READER (Full-screen overlay)
-         =================================================================== -->
-    
-    <div id="reader-container" class="reader-container">
-        <!-- Reader Header -->
-        <div class="reader-header">
-            <span id="reader-title" class="reader-title">Chapter Title</span>
-            <div class="flex items-center gap-2">
-                <button id="quality-toggle" class="reader-quality-toggle" onclick="toggleDataSaver()">
-                    HD
-                </button>
-                <button class="reader-close-btn" onclick="closeReader()">
-                    <i class="ph-bold ph-x"></i>
-                </button>
-            </div>
-        </div>
-        
-        <!-- Reader Content (scrollable page list) -->
-        <div id="reader-content" class="reader-content">
-            <!-- Pages populated by JavaScript -->
-        </div>
-        
-        <!-- Reader Footer with Navigation -->
-        <div class="reader-footer">
-            <button id="prev-chapter-btn" class="reader-nav-btn" onclick="prevChapter()">
-                <i class="ph-bold ph-caret-left"></i>
-                Prev
-            </button>
-            <span id="reader-page-indicator" class="reader-page-indicator">Ch. 1</span>
-            <button id="next-chapter-btn" class="reader-nav-btn" onclick="nextChapter()">
-                Next
-                <i class="ph-bold ph-caret-right"></i>
-            </button>
-        </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer glass-panel">
+            <span class="footer-brand">MangaNegus v2.2</span>
+            <a href="https://github.com/bookers1897/Manga-Negus" target="_blank" class="footer-link">
+                <i class="ph ph-github-logo"></i> GitHub
+            </a>
+        </footer>
     </div>
-    
-    
-    <!-- ===================================================================
-         FLOATING SELECTION BAR
-         =================================================================== -->
-    
-    <div id="floating-bar" class="floating-bar glass-panel-elevated">
-        <div id="selection-count" class="selection-count download-btn">0</div>
-        <button class="floating-bar-text" onclick="downloadSelection()" style="background: none; border: none; cursor: pointer;">
-            Download Selected
+
+    <!-- Hamburger Menu -->
+    <div class="menu-overlay" id="menu-overlay"></div>
+    <nav class="hamburger-menu glass-panel-elevated" id="hamburger-menu">
+        <div class="menu-header">
+            <h2 class="menu-title">Menu</h2>
+            <button class="glass-btn nav-btn" id="close-menu-btn">
+                <i class="ph ph-x"></i>
+            </button>
+        </div>
+        <div class="menu-nav">
+            <button class="menu-item" data-view="search">
+                <i class="ph ph-magnifying-glass"></i> Search
+            </button>
+            <button class="menu-item" data-view="library">
+                <i class="ph ph-books"></i> Library
+            </button>
+        </div>
+    </nav>
+
+    <!-- Floating Action Bar -->
+    <div class="floating-bar glass-panel-elevated" id="floating-bar">
+        <div class="selection-count glass-btn-accent" id="selection-count">0</div>
+        <span class="floating-bar-text">selected</span>
+        <button class="glass-btn download-btn" id="download-selected-btn">
+            <i class="ph ph-download"></i> Download
         </button>
     </div>
-    
-    
-    <!-- ===================================================================
-         CONSOLE TOGGLE BUTTON
-         =================================================================== -->
-    
-    <button id="console-toggle-btn" class="glass-btn console-toggle" onclick="toggleConsole()">
-        <i class="ph-bold ph-terminal"></i>
+
+    <!-- Console -->
+    <button class="console-toggle glass-btn" id="console-toggle">
+        <i class="ph ph-terminal"></i>
     </button>
-    
-    
-    <!-- ===================================================================
-         CONSOLE PANEL
-         =================================================================== -->
-    
-    <div id="console-panel" class="console-panel glass-panel">
-        <!-- Resize Handle -->
-        <div id="console-resize-handle" class="console-resize-handle">
-            <div class="resize-bar"></div>
-        </div>
-        
-        <!-- Console Content -->
-        <div id="console-content" class="console-content">
-            <div style="text-align: center; opacity: 0.5; font-weight: 600; font-size: 0.5625rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem;">
-                System Logs
-            </div>
+    <div class="console-panel glass-panel-elevated" id="console-panel">
+        <div class="console-resize-handle"><div class="resize-bar"></div></div>
+        <div class="console-content" id="console-content">
+            <div class="log-entry">MangaNegus v2.2 initialized</div>
         </div>
     </div>
-    
-    
-    <!-- ===================================================================
-         FOOTER
-         =================================================================== -->
-    
-    <footer class="app-footer glass-panel">
-        <div class="footer-content">
-            <span class="footer-brand">MangaNegus v2.1 • Made with ❤️</span>
-            <div class="footer-links">
-                <a href="https://github.com/bookers1897/Manga-Negus" target="_blank" class="footer-link">
-                    <i class="ph-fill ph-github-logo"></i>
-                    GitHub
-                </a>
-                <a href="https://github.com/bookers1897" target="_blank" class="footer-link">
-                    <i class="ph-fill ph-user"></i>
-                    @bookers1897
-                </a>
+
+    <!-- Reader -->
+    <div class="reader-container" id="reader-container">
+        <header class="reader-header">
+            <button class="reader-close-btn" id="reader-close-btn">
+                <i class="ph ph-x"></i>
+            </button>
+            <h3 class="reader-title" id="reader-title">Chapter</h3>
+            <button class="reader-quality-toggle" id="quality-toggle">HD</button>
+        </header>
+        <div class="reader-content" id="reader-content"></div>
+        <footer class="reader-footer">
+            <button class="reader-nav-btn" id="prev-chapter-btn">
+                <i class="ph ph-caret-left"></i> Prev
+            </button>
+            <span class="reader-page-indicator" id="page-indicator">1 / ?</span>
+            <button class="reader-nav-btn" id="next-chapter-btn">
+                Next <i class="ph ph-caret-right"></i>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Source Status Modal -->
+    <div class="modal-overlay" id="source-modal-overlay">
+        <div class="modal glass-panel-elevated" id="source-modal">
+            <div class="modal-header">
+                <h3>Source Status</h3>
+                <button class="glass-btn nav-btn" id="close-source-modal">
+                    <i class="ph ph-x"></i>
+                </button>
             </div>
+            <div class="modal-content" id="source-status-content"></div>
         </div>
-    </footer>
-    
-    
-    <!-- ===================================================================
-         JAVASCRIPT
-         =================================================================== -->
-    
+    </div>
+
     <script>
-        // =====================================================================
-        // STATE VARIABLES
-        // =====================================================================
+    // =========================================================================
+    // MangaNegus v2.2 - Frontend JavaScript
+    // =========================================================================
+    
+    const App = {
+        currentView: 'search',
+        previousView: 'search',
+        currentManga: null,
+        chapters: [],
+        selectedChapters: new Set(),
+        sources: [],
+        activeSource: null,
+        chapterOffset: 0,
+        hasMoreChapters: false,
+        elements: {},
         
-        // Current manga being viewed
-        let currentManga = null;
+        init() {
+            this.cacheElements();
+            this.bindEvents();
+            this.loadSources();
+            this.startLogPolling();
+        },
         
-        // Array of loaded chapters for current manga
-        let currentChapters = [];
+        cacheElements() {
+            this.elements = {
+                searchView: document.getElementById('search-view'),
+                libraryView: document.getElementById('library-view'),
+                detailsView: document.getElementById('details-view'),
+                menuBtn: document.getElementById('menu-btn'),
+                libraryBtn: document.getElementById('library-btn'),
+                sourceSelect: document.getElementById('source-select'),
+                sourceStatusBtn: document.getElementById('source-status-btn'),
+                searchInput: document.getElementById('search-input'),
+                searchBtn: document.getElementById('search-btn'),
+                resultsGrid: document.getElementById('results-grid'),
+                libraryGrid: document.getElementById('library-grid'),
+                backBtn: document.getElementById('back-btn'),
+                titleCard: document.getElementById('title-card'),
+                chapterGrid: document.getElementById('chapter-grid'),
+                chapterCount: document.getElementById('chapter-count'),
+                selectAllBtn: document.getElementById('select-all-btn'),
+                clearSelectionBtn: document.getElementById('clear-selection-btn'),
+                loadMoreBtn: document.getElementById('load-more-btn'),
+                loadMoreContainer: document.getElementById('load-more-container'),
+                floatingBar: document.getElementById('floating-bar'),
+                selectionCount: document.getElementById('selection-count'),
+                downloadSelectedBtn: document.getElementById('download-selected-btn'),
+                consoleToggle: document.getElementById('console-toggle'),
+                consolePanel: document.getElementById('console-panel'),
+                consoleContent: document.getElementById('console-content'),
+                menuOverlay: document.getElementById('menu-overlay'),
+                hamburgerMenu: document.getElementById('hamburger-menu'),
+                closeMenuBtn: document.getElementById('close-menu-btn'),
+                readerContainer: document.getElementById('reader-container'),
+                readerContent: document.getElementById('reader-content'),
+                readerTitle: document.getElementById('reader-title'),
+                readerCloseBtn: document.getElementById('reader-close-btn'),
+                sourceModalOverlay: document.getElementById('source-modal-overlay'),
+                sourceStatusContent: document.getElementById('source-status-content'),
+                closeSourceModal: document.getElementById('close-source-modal')
+            };
+        },
         
-        // Track if all chapters have been loaded
-        let allChaptersLoaded = false;
-        
-        // Set of selected chapter indices for batch download
-        let selectedIndices = new Set();
-        
-        // Chapter sort order (true = ascending, false = descending)
-        let isAscending = true;
-        
-        // Pagination offset for loading more chapters
-        let nextOffset = 0;
-        
-        // Total number of chapters available
-        let totalChapters = 0;
-        
-        // Downloaded chapters for current manga
-        let downloadedChapters = [];
-        
-        // Reader state
-        let readerChapters = [];      // All chapters for navigation
-        let currentChapterIndex = 0;  // Index in readerChapters
-        let useDataSaver = false;     // Use compressed images
-        
-        // Previous view for back navigation
-        let previousView = 'search';
-        
-        
-        // =====================================================================
-        // THEME MANAGEMENT
-        // =====================================================================
-        
-        /**
-         * Toggle between dark and light themes.
-         * Saves preference to localStorage for persistence.
-         */
-        function toggleTheme() {
-            const body = document.body;
-            const icon = document.getElementById('theme-icon');
-            const currentTheme = body.getAttribute('data-theme');
+        bindEvents() {
+            // Navigation
+            this.elements.menuBtn.addEventListener('click', () => this.toggleMenu(true));
+            this.elements.closeMenuBtn.addEventListener('click', () => this.toggleMenu(false));
+            this.elements.menuOverlay.addEventListener('click', () => this.toggleMenu(false));
+            this.elements.libraryBtn.addEventListener('click', () => this.showView('library'));
+            this.elements.backBtn.addEventListener('click', () => this.showView(this.previousView || 'search'));
             
-            if (currentTheme === 'dark') {
-                // Switch to light theme
-                body.setAttribute('data-theme', 'light');
-                icon.className = 'ph-fill ph-sun';
-                localStorage.setItem('theme', 'light');
-            } else {
-                // Switch to dark theme
-                body.setAttribute('data-theme', 'dark');
-                icon.className = 'ph-fill ph-moon';
-                localStorage.setItem('theme', 'dark');
-            }
-        }
-        
-        
-        // =====================================================================
-        // HAMBURGER MENU
-        // =====================================================================
-        
-        /**
-         * Toggle the hamburger menu open/closed.
-         */
-        function toggleMenu() {
-            const menu = document.getElementById('hamburger-menu');
-            const overlay = document.getElementById('menu-overlay');
-            
-            menu.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
-        
-        /**
-         * Close the hamburger menu.
-         */
-        function closeMenu() {
-            const menu = document.getElementById('hamburger-menu');
-            const overlay = document.getElementById('menu-overlay');
-            
-            menu.classList.remove('active');
-            overlay.classList.remove('active');
-        }
-        
-        
-        // =====================================================================
-        // VIEW MANAGEMENT
-        // =====================================================================
-        
-        /**
-         * Switch to a different view panel.
-         * 
-         * @param {string} viewName - Name of view ('search', 'library', 'details')
-         */
-        function showView(viewName) {
-            // Save current view for back navigation
-            const currentActive = document.querySelector('.view-panel.active');
-            if (currentActive) {
-                previousView = currentActive.id.replace('view-', '');
-            }
-            
-            // Hide all views
-            document.querySelectorAll('.view-panel').forEach(panel => {
-                panel.classList.remove('active');
+            document.querySelectorAll('.menu-item[data-view]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    this.showView(btn.dataset.view);
+                    this.toggleMenu(false);
+                });
             });
             
-            // Show requested view
-            const targetView = document.getElementById(`view-${viewName}`);
-            if (targetView) {
-                targetView.classList.add('active');
-            }
+            // Source
+            this.elements.sourceSelect.addEventListener('change', e => this.setActiveSource(e.target.value));
+            this.elements.sourceStatusBtn.addEventListener('click', () => this.showSourceStatus());
+            this.elements.closeSourceModal.addEventListener('click', () => this.hideSourceStatus());
+            this.elements.sourceModalOverlay.addEventListener('click', e => {
+                if (e.target === this.elements.sourceModalOverlay) this.hideSourceStatus();
+            });
             
-            // Load data for specific views
-            if (viewName === 'search') {
-                // Load popular manga if search is empty
-                if (!document.getElementById('search-input').value) {
-                    loadPopular();
-                }
-            } else if (viewName === 'library') {
-                loadLibrary();
-            }
+            // Search
+            this.elements.searchBtn.addEventListener('click', () => this.search());
+            this.elements.searchInput.addEventListener('keypress', e => {
+                if (e.key === 'Enter') this.search();
+            });
             
-            // Update floating bar visibility
-            updateFloatingBar();
-        }
-        
-        /**
-         * Navigate back to the previous view.
-         */
-        function goBack() {
-            showView(previousView);
-        }
-        
-        
-        // =====================================================================
-        // CONSOLE PANEL
-        // =====================================================================
-        
-        /**
-         * Toggle the console panel visibility.
-         */
-        function toggleConsole() {
-            const panel = document.getElementById('console-panel');
-            const btn = document.getElementById('console-toggle-btn');
-            
-            panel.classList.toggle('active');
-            btn.classList.toggle('active');
-            
-            // Refresh logs when opening
-            if (panel.classList.contains('active')) {
-                refreshLogs();
-            }
-        }
-        
-        /**
-         * Fetch and display new log messages from the server.
-         */
-        async function refreshLogs() {
-            try {
-                const response = await fetch('/api/logs');
-                const data = await response.json();
-                const container = document.getElementById('console-content');
-                
-                if (data.logs && data.logs.length) {
-                    data.logs.forEach(msg => {
-                        const entry = document.createElement('div');
-                        entry.className = 'log-entry';
-                        entry.textContent = msg;
-                        container.appendChild(entry);
-                    });
-                    
-                    // Auto-scroll to bottom
-                    container.scrollTop = container.scrollHeight;
-                }
-            } catch (error) {
-                console.error('Failed to fetch logs:', error);
-            }
-        }
-        
-        
-        // =====================================================================
-        // API HELPERS
-        // =====================================================================
-        
-        /**
-         * Make a POST request to the API.
-         * 
-         * @param {string} url - API endpoint
-         * @param {object} data - Data to send
-         * @returns {Promise<object|null>} Response data or null on error
-         */
-        async function post(url, data) {
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+            // Library filters
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    this.loadLibrary(btn.dataset.filter);
                 });
-                return await response.json();
-            } catch (error) {
-                console.error('API Error:', error);
-                return null;
+            });
+            
+            // Chapters
+            this.elements.selectAllBtn.addEventListener('click', () => this.selectAllChapters());
+            this.elements.clearSelectionBtn.addEventListener('click', () => this.clearSelection());
+            this.elements.loadMoreBtn.addEventListener('click', () => this.loadMoreChapters());
+            this.elements.downloadSelectedBtn.addEventListener('click', () => this.downloadSelected());
+            
+            // Console
+            this.elements.consoleToggle.addEventListener('click', () => this.toggleConsole());
+            
+            // Reader
+            this.elements.readerCloseBtn.addEventListener('click', () => this.closeReader());
+        },
+        
+        // === Sources ===
+        async loadSources() {
+            try {
+                const resp = await fetch('/api/sources');
+                this.sources = await resp.json();
+                
+                this.elements.sourceSelect.innerHTML = this.sources.map(s =>
+                    `<option value="${s.id}" ${s.is_active ? 'selected' : ''}>${s.icon} ${s.name}</option>`
+                ).join('');
+                
+                const active = this.sources.find(s => s.is_active);
+                if (active) this.activeSource = active.id;
+                
+                this.loadPopular();
+            } catch (e) {
+                console.error('Failed to load sources:', e);
+                this.log('❌ Failed to load sources');
             }
-        }
+        },
         
-        /**
-         * Extract the English title from a manga object.
-         * Falls back to other languages if English is not available.
-         * 
-         * @param {object} manga - Manga object from MangaDex API
-         * @returns {string} English or fallback title
-         */
-        function getEnglishTitle(manga) {
-            const attrs = manga.attributes;
-            
-            // Try English title first
-            if (attrs.title.en) return attrs.title.en;
-            
-            // Try alt titles
-            if (attrs.altTitles) {
-                const englishAlt = attrs.altTitles.find(t => t.en);
-                if (englishAlt) return englishAlt.en;
+        async setActiveSource(sourceId) {
+            try {
+                await fetch('/api/sources/active', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({source_id: sourceId})
+                });
+                this.activeSource = sourceId;
+                this.loadPopular();
+            } catch (e) {
+                console.error('Failed to set source:', e);
             }
-            
-            // Fallback to any available title
-            return Object.values(attrs.title)[0] || 'Unknown';
-        }
+        },
         
-        /**
-         * Extract cover art URL from a manga object.
-         * 
-         * @param {object} manga - Manga object from MangaDex API
-         * @returns {string|null} Cover URL or null if not found
-         */
-        function getCoverUrl(manga) {
-            const relationships = manga.relationships || [];
-            
-            for (const rel of relationships) {
-                if (rel.type === 'cover_art') {
-                    const filename = rel.attributes?.fileName;
-                    if (filename) {
-                        return `https://uploads.mangadex.org/covers/${manga.id}/${filename}.256.jpg`;
-                    }
-                }
+        async showSourceStatus() {
+            try {
+                const resp = await fetch('/api/sources/health');
+                const data = await resp.json();
+                
+                this.elements.sourceStatusContent.innerHTML = data.sources.map(s => `
+                    <div class="source-status-item ${s.is_available ? 'available' : 'unavailable'}">
+                        <div class="source-info">
+                            <span class="source-name">${s.icon} ${s.name}</span>
+                            <span class="source-status-badge ${s.status}">${s.status}</span>
+                        </div>
+                        ${!s.is_available ? `
+                            <button class="glass-btn reset-btn" onclick="App.resetSource('${s.id}')">
+                                <i class="ph ph-arrow-counter-clockwise"></i> Reset
+                            </button>
+                        ` : ''}
+                    </div>
+                `).join('');
+                
+                this.elements.sourceModalOverlay.classList.add('active');
+            } catch (e) {
+                console.error('Failed to load source status:', e);
             }
-            
-            return null;
-        }
+        },
         
+        hideSourceStatus() {
+            this.elements.sourceModalOverlay.classList.remove('active');
+        },
         
-        // =====================================================================
-        // SEARCH & DISCOVERY
-        // =====================================================================
+        async resetSource(sourceId) {
+            await fetch(`/api/sources/${sourceId}/reset`, {method: 'POST'});
+            this.showSourceStatus();
+        },
         
-        /**
-         * Load popular manga for the home page.
-         */
-        async function loadPopular() {
-            const results = document.getElementById('search-results');
-            const header = document.getElementById('search-header');
+        // === Views ===
+        showView(view) {
+            this.previousView = this.currentView;
+            this.currentView = view;
             
-            // Don't reload if already populated
-            if (results.children.length > 0 && results.querySelector('.manga-card')) {
-                return;
-            }
+            document.querySelectorAll('.view-panel').forEach(v => v.classList.remove('active'));
+            document.getElementById(`${view}-view`)?.classList.add('active');
             
-            header.style.display = 'flex';
-            header.querySelector('span').textContent = 'Trending Now';
-            
-            // Show loading spinner
-            results.innerHTML = `
-                <div class="empty-state" style="grid-column: 1 / -1;">
-                    <div class="spinner" style="margin: 0 auto;"></div>
-                </div>
-            `;
+            if (view === 'library') this.loadLibrary();
+        },
+        
+        toggleMenu(show) {
+            this.elements.hamburgerMenu.classList.toggle('active', show);
+            this.elements.menuOverlay.classList.toggle('active', show);
+        },
+        
+        toggleConsole() {
+            this.elements.consolePanel.classList.toggle('active');
+            this.elements.consoleToggle.classList.toggle('active');
+        },
+        
+        // === Search ===
+        async loadPopular() {
+            this.elements.resultsGrid.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
             
             try {
-                const response = await fetch('/api/popular');
-                const data = await response.json();
-                renderSearchResults(data);
-            } catch (error) {
-                console.error('Failed to load popular:', error);
-                results.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">Failed to load. Try again.</div>';
+                const resp = await fetch('/api/popular');
+                const results = await resp.json();
+                this.renderResults(results);
+            } catch (e) {
+                this.elements.resultsGrid.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Failed to load</p></div>';
             }
-        }
+        },
         
-        /**
-         * Search for manga by query.
-         */
-        async function doSearch() {
-            const query = document.getElementById('search-input').value.trim();
+        async search() {
+            const query = this.elements.searchInput.value.trim();
+            if (!query) return;
             
-            if (!query) {
-                loadPopular();
+            this.elements.resultsGrid.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+            
+            try {
+                const resp = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({query})
+                });
+                const results = await resp.json();
+                this.renderResults(results);
+            } catch (e) {
+                this.elements.resultsGrid.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Search failed</p></div>';
+            }
+        },
+        
+        renderResults(results) {
+            if (!results.length) {
+                this.elements.resultsGrid.innerHTML = '<div class="empty-state"><i class="ph ph-magnifying-glass"></i><p>No results</p></div>';
                 return;
             }
             
-            const results = document.getElementById('search-results');
-            const header = document.getElementById('search-header');
-            
-            header.style.display = 'none';
-            
-            // Show loading
-            results.innerHTML = `
-                <div class="empty-state" style="grid-column: 1 / -1;">
-                    <div class="spinner" style="margin: 0 auto;"></div>
-                </div>
-            `;
-            
-            const data = await post('/api/search', { query });
-            renderSearchResults(data);
-        }
-        
-        /**
-         * Render search results into the grid.
-         * 
-         * @param {array} mangaList - Array of manga objects
-         */
-        function renderSearchResults(mangaList) {
-            const container = document.getElementById('search-results');
-            container.innerHTML = '';
-            
-            if (!mangaList || mangaList.length === 0) {
-                container.innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No results found</div>';
-                return;
-            }
-            
-            mangaList.forEach(manga => {
-                const title = getEnglishTitle(manga);
-                const cover = getCoverUrl(manga);
-                const desc = manga.attributes.description?.en || 'No description available';
-                const safeTitle = title.replace(/'/g, "\\'");
-                const safeCover = cover || '';
-                
-                const card = document.createElement('div');
-                card.className = 'manga-card glass-panel';
-                card.innerHTML = `
-                    <img class="manga-card-cover" 
-                         src="${cover || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>'}" 
-                         alt="${title}"
-                         loading="lazy"
-                         onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>'">
-                    <div class="manga-card-content" onclick="openManga('${manga.id}', '${safeTitle}', '${safeCover}')">
-                        <div class="manga-card-title">${title}</div>
-                        <div class="manga-card-desc">${desc}</div>
+            this.elements.resultsGrid.innerHTML = results.map(m => `
+                <div class="manga-card glass-panel" data-id="${m.id}" data-source="${m.source}">
+                    <img class="manga-card-cover" src="${m.cover || '/static/images/placeholder.png'}" 
+                         alt="${m.title}" loading="lazy" onerror="this.src='/static/images/placeholder.png'">
+                    <div class="manga-card-content">
+                        <h3 class="manga-card-title">${m.title}</h3>
+                        <p class="manga-card-desc">${m.author || m.source}</p>
                         <div class="manga-card-footer">
-                            <span class="manga-card-label">Manga</span>
-                            <button class="glass-btn add-btn" onclick="event.stopPropagation(); addToLibrary('${manga.id}', '${safeTitle}', '${safeCover}')">
-                                + Add
-                            </button>
+                            <span class="manga-card-label">${m.source}</span>
+                            <button class="glass-btn add-btn"><i class="ph ph-plus"></i></button>
                         </div>
                     </div>
-                `;
-                
-                container.appendChild(card);
-            });
-        }
-        
-        
-        // =====================================================================
-        // LIBRARY MANAGEMENT
-        // =====================================================================
-        
-        /**
-         * Load and display the user's library.
-         */
-        async function loadLibrary() {
-            try {
-                const response = await fetch('/api/library');
-                const library = await response.json();
-                
-                // Clear existing items
-                ['reading', 'plan_to_read', 'completed'].forEach(status => {
-                    document.getElementById(`lib-${status}`).innerHTML = '';
+                </div>
+            `).join('');
+            
+            document.querySelectorAll('.manga-card').forEach(card => {
+                card.addEventListener('click', e => {
+                    if (!e.target.closest('.add-btn')) {
+                        this.showMangaDetails(card.dataset.id, card.dataset.source);
+                    }
                 });
+                card.querySelector('.add-btn').addEventListener('click', e => {
+                    e.stopPropagation();
+                    const manga = results.find(m => m.id === card.dataset.id);
+                    this.addToLibrary(manga);
+                });
+            });
+        },
+        
+        // === Library ===
+        async loadLibrary(filter = 'all') {
+            try {
+                const resp = await fetch('/api/library');
+                const lib = await resp.json();
                 
-                // Check if library is empty
-                if (Object.keys(library).length === 0) {
-                    document.getElementById('lib-reading').innerHTML = `
-                        <div class="empty-state" style="grid-column: 1 / -1;">
-                            Your library is empty. Search for manga to add!
-                        </div>
-                    `;
+                let items = Object.entries(lib);
+                if (filter !== 'all') items = items.filter(([k, m]) => m.status === filter);
+                
+                if (!items.length) {
+                    this.elements.libraryGrid.innerHTML = '<div class="empty-state"><i class="ph ph-books"></i><p>Empty</p></div>';
                     return;
                 }
                 
-                // Render each manga in appropriate section
-                for (const [id, data] of Object.entries(library)) {
-                    const status = data.status || 'reading';
-                    const container = document.getElementById(`lib-${status}`);
-                    const safeTitle = data.title.replace(/'/g, "\\'");
-                    const safeCover = (data.cover || '').replace(/'/g, "\\'");
-                    
-                    const item = document.createElement('div');
-                    item.className = 'library-item glass-panel';
-                    item.onclick = () => openManga(id, data.title, data.cover);
-                    
-                    item.innerHTML = `
-                        <img class="library-item-cover" 
-                             src="${data.cover || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>'}"
-                             alt="${data.title}"
-                             onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>'">
+                this.elements.libraryGrid.innerHTML = items.map(([key, m]) => `
+                    <div class="library-item glass-panel" data-key="${key}" data-source="${m.source}" data-id="${m.manga_id}">
+                        <img class="library-item-cover" src="${m.cover || '/static/images/placeholder.png'}" 
+                             alt="${m.title}" loading="lazy" onerror="this.src='/static/images/placeholder.png'">
                         <div class="library-item-info">
-                            <div class="library-item-title">${data.title}</div>
-                            ${data.last_chapter ? `<div class="library-item-progress">Ch. ${data.last_chapter}</div>` : ''}
+                            <h3 class="library-item-title">${m.title}</h3>
+                            <p class="library-item-progress">${m.last_chapter ? `Ch. ${m.last_chapter}` : 'Not started'}</p>
                         </div>
-                        <i class="ph-bold ph-caret-right" style="color: var(--text-tertiary);"></i>
-                    `;
-                    
-                    container.appendChild(item);
-                }
-            } catch (error) {
-                console.error('Failed to load library:', error);
-            }
-        }
-        
-        /**
-         * Add a manga to the library.
-         */
-        async function addToLibrary(id, title, cover) {
-            const result = await post('/api/save', {
-                id,
-                title,
-                status: 'reading',
-                cover
-            });
-            
-            if (result) {
-                alert('✅ Added to library!');
-            }
-        }
-        
-        
-        // =====================================================================
-        // MANGA DETAILS
-        // =====================================================================
-        
-        /**
-         * Open manga details view.
-         * 
-         * @param {string} id - Manga UUID
-         * @param {string} title - Manga title
-         * @param {string} cover - Cover URL
-         */
-        async function openManga(id, title, cover) {
-            // Reset state
-            currentManga = { id, title, cover };
-            currentChapters = [];
-            allChaptersLoaded = false;
-            nextOffset = 0;
-            downloadedChapters = [];
-            deselectAll();
-            isAscending = true;
-            document.getElementById('sort-icon').className = 'ph-bold ph-arrow-down';
-            
-            // Update UI
-            document.getElementById('detail-title').textContent = title;
-            document.getElementById('detail-cover').src = cover || 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 140%22><rect fill=%22%232c2c2e%22 width=%22100%22 height=%22140%22/></svg>';
-            document.getElementById('chapter-list').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;"><div class="spinner" style="margin: 0 auto;"></div></div>';
-            document.getElementById('chapter-count').textContent = '(0)';
-            document.getElementById('dl-start').value = '';
-            document.getElementById('dl-end').value = '';
-            document.getElementById('load-more-container').classList.add('hidden');
-            
-            // Switch to details view
-            showView('details');
-            
-            // Load library status
-            const library = await fetch('/api/library').then(r => r.json());
-            document.getElementById('status-select').value = library[id]?.status || 'none';
-            
-            // Fetch downloaded chapters
-            const downloaded = await post('/api/downloaded_chapters', { title });
-            if (downloaded) {
-                downloadedChapters = downloaded.chapters || [];
-            }
-            
-            // Load chapters
-            await loadChapters();
-        }
-        
-        /**
-         * Load chapters for current manga (with pagination).
-         */
-        async function loadChapters() {
-            const result = await post('/api/chapters', {
-                id: currentManga.id,
-                offset: nextOffset,
-                limit: 100
-            });
-            
-            if (result && result.chapters) {
-                currentChapters = currentChapters.concat(result.chapters);
-                nextOffset = result.nextOffset || currentChapters.length;
-                
-                document.getElementById('chapter-count').textContent = `(${currentChapters.length})`;
-                
-                if (result.hasMore) {
-                    document.getElementById('load-more-container').classList.remove('hidden');
-                } else {
-                    document.getElementById('load-more-container').classList.add('hidden');
-                    allChaptersLoaded = true;
-                }
-                
-                renderChapters();
-            } else {
-                document.getElementById('chapter-list').innerHTML = '<div class="empty-state" style="grid-column: 1 / -1;">No chapters found</div>';
-            }
-        }
-        
-        /**
-         * Load more chapters (pagination).
-         */
-        async function loadMoreChapters() {
-            const btn = document.getElementById('load-more-btn');
-            btn.innerHTML = '<div class="spinner" style="width: 1rem; height: 1rem;"></div> Loading...';
-            btn.disabled = true;
-            
-            await loadChapters();
-            
-            btn.innerHTML = '<i class="ph-bold ph-plus-circle"></i> <span>Load More Chapters</span>';
-            btn.disabled = false;
-        }
-        
-        /**
-         * Render the chapter grid.
-         */
-        function renderChapters() {
-            const container = document.getElementById('chapter-list');
-            container.innerHTML = '';
-            
-            // Sort chapters
-            const chaptersToRender = isAscending 
-                ? [...currentChapters] 
-                : [...currentChapters].reverse();
-            
-            chaptersToRender.forEach((chapter, displayIndex) => {
-                const actualIndex = isAscending 
-                    ? displayIndex 
-                    : currentChapters.length - 1 - displayIndex;
-                    
-                const isSelected = selectedIndices.has(actualIndex);
-                const chNum = chapter.attributes.chapter;
-                const chTitle = chapter.attributes.title || '';
-                const isDownloaded = downloadedChapters.includes(chNum);
-                
-                const item = document.createElement('div');
-                item.className = `chapter-item glass-panel ${isSelected ? 'selected' : ''} ${isDownloaded ? 'downloaded' : ''}`;
-                item.onclick = (e) => {
-                    if (e.shiftKey || e.ctrlKey) {
-                        // Shift/Ctrl click for selection
-                        toggleChapter(actualIndex);
-                    } else {
-                        // Normal click opens reader
-                        openReader(actualIndex);
-                    }
-                };
-                
-                item.innerHTML = `
-                    <div class="chapter-checkbox" onclick="event.stopPropagation(); toggleChapter(${actualIndex})">
-                        <i class="ph-bold ph-check"></i>
                     </div>
-                    <span class="chapter-num">Ch. ${chNum}</span>
-                    <span class="chapter-title">${chTitle}</span>
-                `;
+                `).join('');
                 
-                container.appendChild(item);
+                document.querySelectorAll('.library-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        this.showMangaDetails(item.dataset.id, item.dataset.source);
+                    });
+                });
+            } catch (e) {
+                console.error('Failed to load library:', e);
+            }
+        },
+        
+        async addToLibrary(manga) {
+            try {
+                await fetch('/api/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        id: manga.id,
+                        title: manga.title,
+                        source: manga.source,
+                        cover: manga.cover,
+                        status: 'reading'
+                    })
+                });
+                this.log(`📚 Added: ${manga.title}`);
+            } catch (e) {
+                console.error('Failed to add:', e);
+            }
+        },
+        
+        // === Details ===
+        async showMangaDetails(mangaId, sourceId) {
+            this.currentManga = {id: mangaId, source: sourceId, title: ''};
+            this.chapters = [];
+            this.selectedChapters.clear();
+            this.chapterOffset = 0;
+            this.updateFloatingBar();
+            
+            this.showView('details');
+            
+            this.elements.titleCard.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+            this.elements.chapterGrid.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
+            
+            await this.loadChapters();
+        },
+        
+        async loadChapters() {
+            try {
+                const resp = await fetch('/api/chapters', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        id: this.currentManga.id,
+                        source: this.currentManga.source,
+                        offset: this.chapterOffset,
+                        limit: 100
+                    })
+                });
+                const data = await resp.json();
+                
+                if (this.chapterOffset === 0) {
+                    this.chapters = data.chapters;
+                } else {
+                    this.chapters = [...this.chapters, ...data.chapters];
+                }
+                
+                this.hasMoreChapters = data.hasMore;
+                this.chapterOffset = data.nextOffset;
+                
+                this.renderTitleCard();
+                this.renderChapters();
+                
+                this.elements.loadMoreContainer.style.display = this.hasMoreChapters ? 'block' : 'none';
+            } catch (e) {
+                this.elements.chapterGrid.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Failed to load</p></div>';
+            }
+        },
+        
+        async loadMoreChapters() {
+            this.elements.loadMoreBtn.disabled = true;
+            this.elements.loadMoreBtn.innerHTML = '<div class="spinner"></div> Loading...';
+            await this.loadChapters();
+            this.elements.loadMoreBtn.disabled = false;
+            this.elements.loadMoreBtn.innerHTML = '<i class="ph ph-plus-circle"></i> Load More';
+        },
+        
+        renderTitleCard() {
+            this.elements.titleCard.innerHTML = `
+                <div class="title-card-header">
+                    <h2 class="manga-title">${this.currentManga.source} / ${this.currentManga.id.substring(0,8)}...</h2>
+                </div>
+                <div class="quick-download glass-panel">
+                    <div class="quick-download-header"><span class="quick-download-label">Quick Download</span></div>
+                    <div class="download-input-row">
+                        <div class="input-group">
+                            <input type="number" class="glass-input chapter-input" id="start-chapter" placeholder="Start" min="1">
+                            <span class="input-arrow">→</span>
+                            <input type="number" class="glass-input chapter-input" id="end-chapter" placeholder="End" min="1">
+                        </div>
+                        <button class="glass-btn download-btn dl-btn" id="quick-download-btn">
+                            <i class="ph ph-download"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('quick-download-btn').addEventListener('click', () => {
+                const start = parseFloat(document.getElementById('start-chapter').value);
+                const end = parseFloat(document.getElementById('end-chapter').value);
+                this.downloadRange(start, end);
             });
-        }
-        
-        
-        // =====================================================================
-        // CHAPTER SELECTION
-        // =====================================================================
-        
-        /**
-         * Toggle a chapter's selection state.
-         */
-        function toggleChapter(index) {
-            if (selectedIndices.has(index)) {
-                selectedIndices.delete(index);
-            } else {
-                selectedIndices.add(index);
-            }
-            renderChapters();
-            updateFloatingBar();
-        }
-        
-        /**
-         * Select all visible chapters.
-         */
-        function selectAll() {
-            currentChapters.forEach((_, i) => selectedIndices.add(i));
-            renderChapters();
-            updateFloatingBar();
-        }
-        
-        /**
-         * Deselect all chapters.
-         */
-        function deselectAll() {
-            selectedIndices.clear();
-            renderChapters();
-            updateFloatingBar();
-        }
-        
-        /**
-         * Toggle chapter sort order.
-         */
-        function toggleSort() {
-            isAscending = !isAscending;
-            document.getElementById('sort-icon').className = isAscending 
-                ? 'ph-bold ph-arrow-down' 
-                : 'ph-bold ph-arrow-up';
-            renderChapters();
-        }
-        
-        /**
-         * Update floating action bar visibility.
-         */
-        function updateFloatingBar() {
-            const bar = document.getElementById('floating-bar');
-            const count = document.getElementById('selection-count');
             
-            if (selectedIndices.size > 0) {
-                bar.classList.add('active');
-                count.textContent = selectedIndices.size;
-            } else {
-                bar.classList.remove('active');
-            }
-        }
+            this.elements.chapterCount.textContent = `(${this.chapters.length})`;
+        },
         
-        
-        // =====================================================================
-        // DOWNLOADING
-        // =====================================================================
-        
-        /**
-         * Fill the download range with min/max chapter numbers.
-         */
-        function fillMaxRange() {
-            if (!currentChapters.length) return;
-            
-            const numbers = currentChapters.map(c => parseFloat(c.attributes.chapter));
-            document.getElementById('dl-start').value = Math.min(...numbers);
-            document.getElementById('dl-end').value = Math.max(...numbers);
-        }
-        
-        /**
-         * Download chapters in the specified range.
-         */
-        async function downloadRange() {
-            const start = parseFloat(document.getElementById('dl-start').value);
-            const end = parseFloat(document.getElementById('dl-end').value);
-            
-            if (isNaN(start) || isNaN(end)) {
-                alert('Please enter a valid chapter range');
+        renderChapters() {
+            if (!this.chapters.length) {
+                this.elements.chapterGrid.innerHTML = '<div class="empty-state"><i class="ph ph-book-open"></i><p>No chapters</p></div>';
                 return;
             }
             
-            // Fetch all chapters if not loaded
-            let chaptersToFilter = currentChapters;
-            if (!allChaptersLoaded) {
-                const allResult = await post('/api/all_chapters', { id: currentManga.id });
-                if (allResult) {
-                    chaptersToFilter = allResult;
-                }
-            }
+            this.elements.chapterGrid.innerHTML = this.chapters.map(ch => `
+                <div class="chapter-item glass-panel ${this.selectedChapters.has(ch.id) ? 'selected' : ''}" 
+                     data-id="${ch.id}" data-chapter="${ch.chapter}">
+                    <div class="chapter-checkbox"><i class="ph ph-check"></i></div>
+                    <span class="chapter-num">Ch. ${ch.chapter}</span>
+                    ${ch.title ? `<span class="chapter-title">${ch.title}</span>` : ''}
+                </div>
+            `).join('');
             
-            // Filter chapters in range
-            const chaptersToDownload = chaptersToFilter.filter(c => {
-                const num = parseFloat(c.attributes.chapter);
+            document.querySelectorAll('.chapter-item').forEach(item => {
+                item.addEventListener('click', () => this.toggleChapter(item.dataset.id));
+                item.addEventListener('dblclick', () => this.openReader(item.dataset.id, item.dataset.chapter));
+            });
+        },
+        
+        toggleChapter(id) {
+            if (this.selectedChapters.has(id)) {
+                this.selectedChapters.delete(id);
+            } else {
+                this.selectedChapters.add(id);
+            }
+            document.querySelector(`[data-id="${id}"]`)?.classList.toggle('selected');
+            this.updateFloatingBar();
+        },
+        
+        selectAllChapters() {
+            this.chapters.forEach(ch => this.selectedChapters.add(ch.id));
+            document.querySelectorAll('.chapter-item').forEach(el => el.classList.add('selected'));
+            this.updateFloatingBar();
+        },
+        
+        clearSelection() {
+            this.selectedChapters.clear();
+            document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('selected'));
+            this.updateFloatingBar();
+        },
+        
+        updateFloatingBar() {
+            const count = this.selectedChapters.size;
+            this.elements.selectionCount.textContent = count;
+            this.elements.floatingBar.classList.toggle('active', count > 0);
+        },
+        
+        // === Downloads ===
+        async downloadSelected() {
+            if (!this.selectedChapters.size) return;
+            const toDownload = this.chapters.filter(ch => this.selectedChapters.has(ch.id));
+            await this.startDownload(toDownload);
+            this.clearSelection();
+        },
+        
+        async downloadRange(start, end) {
+            if (!start || !end) {
+                this.log('⚠️ Enter start and end chapters');
+                return;
+            }
+            const toDownload = this.chapters.filter(ch => {
+                const num = parseFloat(ch.chapter);
                 return num >= start && num <= end;
             });
-            
-            startDownload(chaptersToDownload);
-        }
-        
-        /**
-         * Download selected chapters.
-         */
-        function downloadSelection() {
-            const chaptersToDownload = [];
-            selectedIndices.forEach(i => chaptersToDownload.push(currentChapters[i]));
-            startDownload(chaptersToDownload);
-        }
-        
-        /**
-         * Start the download process.
-         */
-        async function startDownload(chapters) {
-            if (!chapters.length) {
-                alert('No chapters selected');
+            if (!toDownload.length) {
+                this.log('⚠️ No chapters in range');
                 return;
             }
-            
-            deselectAll();
-            
-            if (confirm(`Download ${chapters.length} chapter${chapters.length > 1 ? 's' : ''}?`)) {
-                const result = await post('/api/download', {
-                    chapters,
-                    title: currentManga.title
+            await this.startDownload(toDownload);
+        },
+        
+        async startDownload(chapters) {
+            try {
+                await fetch('/api/download', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        chapters: chapters,
+                        title: `manga_${this.currentManga.id.substring(0,8)}`,
+                        source: this.currentManga.source
+                    })
                 });
-                
-                if (result) {
-                    alert('📥 Download started! Check the console for progress.');
-                    
-                    // Show console
-                    document.getElementById('console-panel').classList.add('active');
-                    document.getElementById('console-toggle-btn').classList.add('active');
-                    refreshLogs();
-                }
+            } catch (e) {
+                this.log('❌ Download failed');
             }
-        }
+        },
         
-        /**
-         * Update the reading status for current manga.
-         */
-        async function changeStatus() {
-            const status = document.getElementById('status-select').value;
+        // === Reader ===
+        async openReader(chapterId, chapterNum) {
+            this.elements.readerContainer.classList.add('active');
+            this.elements.readerTitle.textContent = `Chapter ${chapterNum}`;
+            this.elements.readerContent.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
             
-            if (!currentManga) return;
-            
-            if (status === 'none') {
-                if (confirm('Remove from library?')) {
-                    await post('/api/delete', { id: currentManga.id });
-                }
-            } else {
-                await post('/api/save', {
-                    id: currentManga.id,
-                    title: currentManga.title,
-                    status,
-                    cover: currentManga.cover
+            try {
+                const resp = await fetch('/api/chapter_pages', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({chapter_id: chapterId, source: this.currentManga.source})
                 });
-            }
-        }
-        
-        
-        // =====================================================================
-        // MANGA READER
-        // =====================================================================
-        
-        /**
-         * Open the manga reader for a specific chapter.
-         * 
-         * @param {number} chapterIndex - Index in currentChapters array
-         */
-        async function openReader(chapterIndex) {
-            // Store chapters for navigation
-            readerChapters = currentChapters;
-            currentChapterIndex = chapterIndex;
-            
-            // Show reader
-            document.getElementById('reader-container').classList.add('active');
-            
-            // Load the chapter
-            await loadReaderChapter();
-        }
-        
-        /**
-         * Load the current chapter into the reader.
-         */
-        async function loadReaderChapter() {
-            const chapter = readerChapters[currentChapterIndex];
-            const chNum = chapter.attributes.chapter;
-            const chTitle = chapter.attributes.title;
-            
-            // Update header
-            document.getElementById('reader-title').textContent = 
-                chTitle ? `Ch. ${chNum}: ${chTitle}` : `Chapter ${chNum}`;
-            document.getElementById('reader-page-indicator').textContent = `Ch. ${chNum}`;
-            
-            // Update navigation buttons
-            document.getElementById('prev-chapter-btn').disabled = currentChapterIndex <= 0;
-            document.getElementById('next-chapter-btn').disabled = currentChapterIndex >= readerChapters.length - 1;
-            
-            // Show loading
-            const content = document.getElementById('reader-content');
-            content.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
-            
-            // Fetch pages
-            const result = await post('/api/chapter_pages', { chapter_id: chapter.id });
-            
-            if (result && result.pages) {
-                const pages = useDataSaver ? result.pages_datasaver : result.pages;
+                const data = await resp.json();
                 
-                content.innerHTML = '';
-                pages.forEach((url, i) => {
-                    const img = document.createElement('img');
-                    img.className = 'reader-page';
-                    img.src = url;
-                    img.alt = `Page ${i + 1}`;
-                    img.loading = 'lazy';
-                    content.appendChild(img);
-                });
-                
-                // Scroll to top
-                content.scrollTop = 0;
-                
-                // Save reading progress
-                await post('/api/update_progress', {
-                    id: currentManga.id,
-                    chapter: chNum
-                });
-            } else {
-                content.innerHTML = '<div class="empty-state">Failed to load pages. Try again.</div>';
-            }
-        }
-        
-        /**
-         * Navigate to the previous chapter.
-         */
-        async function prevChapter() {
-            if (currentChapterIndex > 0) {
-                currentChapterIndex--;
-                await loadReaderChapter();
-            }
-        }
-        
-        /**
-         * Navigate to the next chapter.
-         */
-        async function nextChapter() {
-            if (currentChapterIndex < readerChapters.length - 1) {
-                currentChapterIndex++;
-                await loadReaderChapter();
-            }
-        }
-        
-        /**
-         * Toggle data saver (compressed images) mode.
-         */
-        function toggleDataSaver() {
-            useDataSaver = !useDataSaver;
-            const btn = document.getElementById('quality-toggle');
-            btn.textContent = useDataSaver ? 'SD' : 'HD';
-            btn.classList.toggle('active', useDataSaver);
-            
-            // Reload current chapter with new quality
-            loadReaderChapter();
-        }
-        
-        /**
-         * Close the manga reader.
-         */
-        function closeReader() {
-            document.getElementById('reader-container').classList.remove('active');
-        }
-        
-        
-        // =====================================================================
-        // CONSOLE RESIZE
-        // =====================================================================
-        
-        /**
-         * Set up console panel resize functionality.
-         */
-        function setupConsoleResize() {
-            const handle = document.getElementById('console-resize-handle');
-            const panel = document.getElementById('console-panel');
-            const content = document.getElementById('console-content');
-            let isResizing = false;
-            
-            handle.addEventListener('mousedown', () => {
-                isResizing = true;
-                document.body.style.cursor = 'row-resize';
-            });
-            
-            handle.addEventListener('touchstart', () => {
-                isResizing = true;
-            });
-            
-            document.addEventListener('mousemove', (e) => {
-                if (!isResizing) return;
-                const height = window.innerHeight - e.clientY;
-                if (height > 60 && height < 400) {
-                    content.style.height = `${height - 20}px`;
+                if (!data.pages?.length) {
+                    this.elements.readerContent.innerHTML = '<div class="empty-state"><p>No pages</p></div>';
+                    return;
                 }
-            });
-            
-            document.addEventListener('touchmove', (e) => {
-                if (!isResizing) return;
-                const height = window.innerHeight - e.touches[0].clientY;
-                if (height > 60 && height < 400) {
-                    content.style.height = `${height - 20}px`;
-                }
-            });
-            
-            document.addEventListener('mouseup', () => {
-                isResizing = false;
-                document.body.style.cursor = 'default';
-            });
-            
-            document.addEventListener('touchend', () => {
-                isResizing = false;
-            });
+                
+                this.elements.readerContent.innerHTML = data.pages.map((url, i) =>
+                    `<img class="reader-page" src="${url}" alt="Page ${i+1}" loading="lazy">`
+                ).join('');
+            } catch (e) {
+                this.elements.readerContent.innerHTML = '<div class="empty-state"><p>Failed to load</p></div>';
+            }
+        },
+        
+        closeReader() {
+            this.elements.readerContainer.classList.remove('active');
+        },
+        
+        // === Logging ===
+        log(msg) {
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = msg;
+            this.elements.consoleContent.appendChild(entry);
+            this.elements.consoleContent.scrollTop = this.elements.consoleContent.scrollHeight;
+        },
+        
+        startLogPolling() {
+            setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/logs');
+                    const data = await resp.json();
+                    data.logs.forEach(msg => this.log(msg));
+                } catch (e) {}
+            }, 1000);
         }
-        
-        
-        // =====================================================================
-        // SETTINGS
-        // =====================================================================
-        
-        /**
-         * Show settings (placeholder for future implementation).
-         */
-        function showSettings() {
-            alert('Settings coming in a future update!');
-        }
-        
-        
-        // =====================================================================
-        // INITIALIZATION
-        // =====================================================================
-        
-        /**
-         * Initialize the application on page load.
-         */
-        window.addEventListener('DOMContentLoaded', () => {
-            // Load saved theme
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            document.body.setAttribute('data-theme', savedTheme);
-            document.getElementById('theme-icon').className = 
-                savedTheme === 'light' ? 'ph-fill ph-sun' : 'ph-fill ph-moon';
-            
-            // Set up console resize
-            setupConsoleResize();
-            
-            // Load initial content
-            loadPopular();
-            
-            // Start log polling
-            setInterval(refreshLogs, 2000);
-        });
+    };
+    
+    document.addEventListener('DOMContentLoaded', () => App.init());
     </script>
 </body>
 </html>

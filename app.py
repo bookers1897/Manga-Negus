@@ -1,9 +1,21 @@
 """
 ================================================================================
-MangaNegus v2.1 - Backend Server
+MangaNegus v2.2 - Main Application
 ================================================================================
-A Flask-based manga downloader and library manager for iOS Code App.
-Connects to MangaDex API for searching, fetching chapters, and downloading.
+Multi-source manga downloader and library manager.
+
+FEATURES:
+  - Multiple source support (MangaDex, ComicK, MangaSee, Manganato)
+  - Automatic fallback when sources fail or are rate-limited
+  - Proper rate limiting per source (prevents bans!)
+  - Background chapter downloading
+  - CBZ file packaging
+  - Real-time progress logging
+
+USAGE:
+  1. pip install flask requests beautifulsoup4
+  2. python app.py
+  3. Open http://127.0.0.1:5000
 
 Author: bookers1897
 GitHub: https://github.com/bookers1897/Manga-Negus
@@ -11,706 +23,287 @@ GitHub: https://github.com/bookers1897/Manga-Negus
 """
 
 import os
+import sys
 import json
 import time
 import shutil
 import zipfile
 import threading
 import queue
+from typing import Dict, List, Optional, Any
+
 import requests
 from flask import Flask, render_template, jsonify, request, send_from_directory
+
+# Fix Windows console encoding for emoji support
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        # Python < 3.7
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
-# Get the directory where this script is located
-# This ensures all file paths are relative to the project root
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Initialize Flask application
-# Flask will look for templates in /templates and static files in /static
 app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
 
-# Thread-safe queue for logging messages
-# Messages are added here and polled by the frontend for real-time updates
-msg_queue = queue.Queue()
+# Thread-safe message queue for real-time logging
+msg_queue: queue.Queue = queue.Queue()
 
-# Directory where downloaded manga chapters (.cbz files) are stored
+# File paths
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "static", "downloads")
-
-# JSON file that stores the user's manga library (saved manga and reading status)
 LIBRARY_FILE = os.path.join(BASE_DIR, "library.json")
 
-# MangaDex API base URL - all API calls go through this endpoint
-BASE_URL = "https://api.mangadex.org"
-
-# Create downloads directory if it doesn't exist
-# This prevents errors when trying to save downloaded chapters
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR)
+# Create directories
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "static", "images"), exist_ok=True)
 
 
 # =============================================================================
-# LOGGING UTILITY
+# LOGGING
 # =============================================================================
 
-def log(msg):
-    """
-    Log a message to both the console and the message queue.
-    
-    The message queue is polled by the frontend to display real-time
-    progress updates in the console panel.
-    
-    Args:
-        msg (str): The message to log
-    """
-    print(msg)  # Print to server console for debugging
-    timestamp = time.strftime("[%H:%M:%S]")  # Add timestamp for context
-    msg_queue.put(f"{timestamp} {msg}")  # Add to queue for frontend
+def log(msg: str) -> None:
+    """Log a message to console and message queue."""
+    print(msg)
+    timestamp = time.strftime("[%H:%M:%S]")
+    msg_queue.put(f"{timestamp} {msg}")
 
 
 # =============================================================================
-# MANGA LOGIC CLASS
+# LIBRARY MANAGER
 # =============================================================================
 
-class MangaLogic:
-    """
-    Core class handling all manga-related operations.
+class Library:
+    """Manages the user's manga library stored in JSON."""
     
-    This class manages:
-    - API communication with MangaDex
-    - Local library storage (JSON file)
-    - Chapter fetching with pagination
-    - Background downloading of chapters
-    - Cover art retrieval
-    """
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+        self._lock = threading.Lock()
     
-    def __init__(self):
-        """
-        Initialize the MangaLogic instance.
-        
-        Creates a persistent requests session with appropriate headers
-        to avoid being blocked by MangaDex's anti-bot measures.
-        """
-        self.session = requests.Session()
-        
-        # Set a realistic User-Agent header
-        # MangaDex may block requests without proper headers
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
-        })
-        
-        # Cache for cover art URLs to reduce API calls
-        # Key: manga_id, Value: cover_url
-        self.cover_cache = {}
-
-    # =========================================================================
-    # LIBRARY MANAGEMENT
-    # =========================================================================
-    
-    def load_library(self):
-        """
-        Load the user's manga library from the JSON file.
-        
-        Returns:
-            dict: Dictionary of saved manga with their metadata.
-                  Keys are manga IDs, values contain title, status, and cover.
-                  Returns empty dict if file doesn't exist or is corrupted.
-        """
-        if not os.path.exists(LIBRARY_FILE):
+    def load(self) -> Dict[str, Any]:
+        """Load library from disk."""
+        if not os.path.exists(self.filepath):
             return {}
         
         try:
-            with open(LIBRARY_FILE, 'r') as f:
+            with open(self.filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                
-                # Ensure all entries have required fields (backwards compatibility)
-                for manga_id, manga_data in data.items():
-                    if 'status' not in manga_data:
-                        manga_data['status'] = 'reading'
-                    if 'cover' not in manga_data:
-                        manga_data['cover'] = None
-                    if 'last_chapter' not in manga_data:
-                        manga_data['last_chapter'] = None
-                        
+                for key, manga in data.items():
+                    manga.setdefault('status', 'reading')
+                    manga.setdefault('cover', None)
+                    manga.setdefault('last_chapter', None)
+                    manga.setdefault('source', 'mangadex')
                 return data
         except (json.JSONDecodeError, IOError):
-            # Return empty library if file is corrupted
             return {}
-
-    def save_to_library(self, manga_id, title, status='reading', cover=None):
-        """
-        Save or update a manga in the user's library.
+    
+    def _save(self, data: Dict[str, Any]) -> None:
+        """Save library to disk."""
+        with self._lock:
+            with open(self.filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+    
+    def add(
+        self,
+        manga_id: str,
+        title: str,
+        source: str,
+        status: str = 'reading',
+        cover: Optional[str] = None
+    ) -> str:
+        """Add or update manga in library."""
+        db = self.load()
+        key = f"{source}:{manga_id}"
+        existing = db.get(key, {})
         
-        Args:
-            manga_id (str): MangaDex manga UUID
-            title (str): Display title of the manga
-            status (str): Reading status ('reading', 'plan_to_read', 'completed')
-            cover (str): URL to the manga's cover art (optional)
-        """
-        db = self.load_library()
-        
-        # Preserve existing status if not explicitly provided
-        current_status = db.get(manga_id, {}).get('status', status)
-        current_cover = db.get(manga_id, {}).get('cover', cover)
-        current_last_chapter = db.get(manga_id, {}).get('last_chapter', None)
-        
-        db[manga_id] = {
+        db[key] = {
             "title": title,
-            "status": status if status else current_status,
-            "cover": cover if cover else current_cover,
-            "last_chapter": current_last_chapter
+            "source": source,
+            "manga_id": manga_id,
+            "status": status or existing.get('status', 'reading'),
+            "cover": cover or existing.get('cover'),
+            "last_chapter": existing.get('last_chapter'),
+            "added_at": existing.get('added_at', time.strftime("%Y-%m-%d %H:%M:%S"))
         }
         
-        # Write updated library to disk
-        with open(LIBRARY_FILE, 'w') as f:
-            json.dump(db, f, indent=4)
-            
-        log(f"📚 Updated Library: {title}")
-
-    def update_status(self, manga_id, status):
-        """
-        Update only the reading status of a manga in the library.
-        
-        Args:
-            manga_id (str): MangaDex manga UUID
-            status (str): New reading status
-        """
-        db = self.load_library()
-        
-        if manga_id in db:
-            db[manga_id]['status'] = status
-            with open(LIBRARY_FILE, 'w') as f:
-                json.dump(db, f, indent=4)
-
-    def update_last_chapter(self, manga_id, chapter_num):
-        """
-        Update the last read chapter for reading progress tracking.
-        
-        Args:
-            manga_id (str): MangaDex manga UUID
-            chapter_num (str): Chapter number that was last read
-        """
-        db = self.load_library()
-        
-        if manga_id in db:
-            db[manga_id]['last_chapter'] = chapter_num
-            with open(LIBRARY_FILE, 'w') as f:
-                json.dump(db, f, indent=4)
-            log(f"📖 Progress saved: Chapter {chapter_num}")
-
-    def remove_from_library(self, manga_id):
-        """
-        Remove a manga from the user's library.
-        
-        Args:
-            manga_id (str): MangaDex manga UUID to remove
-        """
-        db = self.load_library()
-        
-        if manga_id in db:
-            del db[manga_id]
-            with open(LIBRARY_FILE, 'w') as f:
-                json.dump(db, f, indent=4)
-            log(f"🗑 Removed from Library")
-
-    # =========================================================================
-    # COVER ART
-    # =========================================================================
+        self._save(db)
+        log(f"📚 Added to library: {title}")
+        return key
     
-    def get_cover_url(self, manga_id, cover_filename):
-        """
-        Construct the full URL for a manga's cover art.
-        
-        MangaDex stores cover art separately and requires constructing
-        the URL from the manga ID and cover filename.
-        
-        Args:
-            manga_id (str): MangaDex manga UUID
-            cover_filename (str): Filename of the cover image
-            
-        Returns:
-            str: Full URL to the cover image (256px thumbnail)
-        """
-        if not cover_filename:
-            return None
-            
-        # Use 256px thumbnail for faster loading
-        return f"https://uploads.mangadex.org/covers/{manga_id}/{cover_filename}.256.jpg"
-
-    def extract_cover_from_manga(self, manga_data):
-        """
-        Extract cover art URL from manga API response data.
-        
-        MangaDex includes cover art in the 'relationships' array
-        when requested with includes[]=cover_art parameter.
-        
-        Args:
-            manga_data (dict): Manga object from MangaDex API
-            
-        Returns:
-            str: Cover art URL or None if not found
-        """
-        manga_id = manga_data.get('id')
-        relationships = manga_data.get('relationships', [])
-        
-        # Find the cover_art relationship
-        for rel in relationships:
-            if rel.get('type') == 'cover_art':
-                cover_filename = rel.get('attributes', {}).get('fileName')
-                if cover_filename:
-                    return self.get_cover_url(manga_id, cover_filename)
-                    
-        return None
-
-    # =========================================================================
-    # SEARCH & DISCOVERY
-    # =========================================================================
+    def update_status(self, key: str, status: str) -> None:
+        """Update reading status."""
+        db = self.load()
+        if key in db:
+            db[key]['status'] = status
+            self._save(db)
     
-    def get_popular(self):
-        """
-        Fetch the most popular manga from MangaDex.
+    def update_progress(self, key: str, chapter: str) -> None:
+        """Update last read chapter."""
+        db = self.load()
+        if key in db:
+            db[key]['last_chapter'] = chapter
+            self._save(db)
+            log(f"📖 Progress saved: Chapter {chapter}")
+    
+    def remove(self, key: str) -> None:
+        """Remove manga from library."""
+        db = self.load()
+        if key in db:
+            title = db[key].get('title', 'Unknown')
+            del db[key]
+            self._save(db)
+            log(f"🗑️ Removed: {title}")
+
+
+library = Library(LIBRARY_FILE)
+
+
+# =============================================================================
+# DOWNLOAD MANAGER
+# =============================================================================
+
+class Downloader:
+    """Background chapter downloader with CBZ packaging."""
+    
+    def __init__(self, download_dir: str):
+        self.download_dir = download_dir
+        self._active: Dict[str, threading.Thread] = {}
+        self._cancel: Dict[str, bool] = {}
+    
+    def _sanitize(self, name: str) -> str:
+        """Remove invalid filesystem characters."""
+        invalid = '<>:"/\\|?*'
+        for char in invalid:
+            name = name.replace(char, '')
+        return name.strip()
+    
+    def start(self, chapters: List[Dict], title: str, source_id: str) -> str:
+        """Start downloading chapters in background."""
+        from sources import get_source_manager
         
-        Popularity is determined by follower count. Results are filtered
-        to only include manga with English translations available.
+        job_id = f"{source_id}:{title}:{int(time.time())}"
+        self._cancel[job_id] = False
         
-        Returns:
-            list: List of manga objects with cover art included
-        """
-        try:
-            params = {
-                "limit": 15,  # Number of results to fetch
-                "includes[]": ["cover_art"],  # Include cover art in response
-                "order[followedCount]": "desc",  # Sort by popularity
-                "contentRating[]": ["safe", "suggestive", "erotica"],
-                "availableTranslatedLanguage[]": ["en"]  # English only
-            }
+        def worker():
+            manager = get_source_manager()
+            source = manager.get_source(source_id)
             
-            response = self.session.get(
-                f"{BASE_URL}/manga",
-                params=params,
-                timeout=15  # Increased timeout for reliability
-            )
+            if not source:
+                log(f"❌ Source '{source_id}' not found")
+                return
             
-            if response.status_code == 200:
-                return response.json()["data"]
-            else:
-                log(f"⚠️ Popular fetch failed: HTTP {response.status_code}")
-                return []
+            safe_title = self._sanitize(title)
+            series_dir = os.path.join(self.download_dir, safe_title)
+            os.makedirs(series_dir, exist_ok=True)
+            
+            log(f"🚀 Downloading {len(chapters)} chapters from {source.name}")
+            
+            for ch in chapters:
+                if self._cancel.get(job_id, False):
+                    log("⏹️ Download cancelled")
+                    break
                 
-        except requests.exceptions.Timeout:
-            log("❌ Timeout fetching popular manga")
-            return []
-        except Exception as e:
-            log(f"❌ Error fetching popular: {e}")
-            return []
-
-    def search(self, query):
-        """
-        Search for manga by title.
-        
-        Args:
-            query (str): Search term to look for
-            
-        Returns:
-            list: List of matching manga objects with cover art
-        """
-        log(f"🔍 Searching: {query}")
-        
-        try:
-            params = {
-                "title": query,
-                "limit": 15,
-                "includes[]": ["cover_art"],  # Include cover art
-                "contentRating[]": ["safe", "suggestive", "erotica"],
-                "order[relevance]": "desc"  # Most relevant first
-            }
-            
-            response = self.session.get(
-                f"{BASE_URL}/manga",
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code == 200:
-                results = response.json()["data"]
-                log(f"✅ Found {len(results)} results")
-                return results
-            else:
-                log(f"⚠️ Search failed: HTTP {response.status_code}")
-                return []
+                ch_num = ch.get("chapter", "0")
+                ch_id = ch.get("id", "")
                 
-        except requests.exceptions.Timeout:
-            log("❌ Search timeout - try again")
-            return []
-        except Exception as e:
-            log(f"❌ Search Error: {e}")
-            return []
-
-    # =========================================================================
-    # CHAPTER FETCHING
-    # =========================================================================
-    
-    def get_chapters(self, manga_id, offset=0, limit=100):
-        """
-        Fetch chapters for a manga with pagination support.
-        
-        This method handles MangaDex's pagination and deduplicates
-        chapters (since multiple scanlation groups may translate the same chapter).
-        
-        Args:
-            manga_id (str): MangaDex manga UUID
-            offset (int): Starting position for pagination
-            limit (int): Maximum number of unique chapters to return
-            
-        Returns:
-            dict: {
-                'chapters': List of chapter objects,
-                'total': Total unique chapters fetched,
-                'hasMore': Boolean indicating if more chapters exist,
-                'nextOffset': Offset to use for next page
-            }
-        """
-        log(f"📖 Fetching chapters (offset: {offset})...")
-        
-        chapters = []
-        current_offset = offset
-        fetched_total = 0
-        total_available = 0
-        max_retries = 3
-        
-        # Fetch chapters in batches until we have enough unique ones
-        while fetched_total < limit:
-            retry_count = 0
-            success = False
-            
-            while retry_count < max_retries and not success:
                 try:
-                    params = {
-                        "manga": manga_id,
-                        "translatedLanguage[]": ["en"],  # English only
-                        "limit": 100,  # MangaDex API max per request
-                        "offset": current_offset,
-                        "order[chapter]": "asc",  # Oldest first
-                        "includes[]": ["scanlation_group"]  # Include group info
-                    }
+                    pages = source.get_pages(ch_id)
                     
-                    response = self.session.get(
-                        f"{BASE_URL}/chapter",
-                        params=params,
-                        timeout=20
-                    )
+                    if not pages:
+                        log(f"⚠️ No pages for Chapter {ch_num}")
+                        continue
                     
-                    if response.status_code == 200:
-                        data = response.json()
-                        total_available = data.get("total", 0)
-                        fetched = data.get("data", [])
-                        
-                        if not fetched:
-                            # No more chapters available
-                            success = True
+                    folder_name = f"{safe_title} - Ch{ch_num}"
+                    temp_folder = os.path.join(series_dir, folder_name)
+                    os.makedirs(temp_folder, exist_ok=True)
+                    
+                    log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
+                    
+                    session = requests.Session()
+                    
+                    for page in pages:
+                        if self._cancel.get(job_id, False):
                             break
                         
-                        chapters.extend(fetched)
-                        current_offset += len(fetched)
-                        fetched_total = len(chapters)
-                        success = True
+                        success = False
+                        for attempt in range(3):
+                            try:
+                                headers = dict(page.headers) if page.headers else {}
+                                if page.referer:
+                                    headers['Referer'] = page.referer
+                                
+                                resp = session.get(page.url, headers=headers, timeout=30)
+                                
+                                if resp.status_code == 200:
+                                    ext = '.jpg'
+                                    ct = resp.headers.get('Content-Type', '')
+                                    if 'png' in ct:
+                                        ext = '.png'
+                                    elif 'webp' in ct:
+                                        ext = '.webp'
+                                    
+                                    filepath = os.path.join(temp_folder, f"{page.index:03d}{ext}")
+                                    with open(filepath, 'wb') as f:
+                                        f.write(resp.content)
+                                    success = True
+                                    break
+                            except Exception:
+                                time.sleep(1)
                         
-                        # If we got fewer than requested, we've reached the end
-                        if len(fetched) < 100:
-                            break
-                            
-                    elif response.status_code == 429:
-                        # Rate limited - wait and retry
-                        log("⏳ Rate limited, waiting...")
-                        time.sleep(2)
-                        retry_count += 1
-                    else:
-                        log(f"⚠️ Chapter fetch failed: HTTP {response.status_code}")
-                        retry_count += 1
+                        if not success:
+                            log(f"   ⚠️ Failed page {page.index}")
                         
-                except requests.exceptions.Timeout:
-                    log("⏳ Timeout, retrying...")
-                    retry_count += 1
+                        time.sleep(0.1)
+                    
+                    # Package into CBZ
+                    cbz_path = os.path.join(series_dir, f"{folder_name}.cbz")
+                    with zipfile.ZipFile(cbz_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                        for root, _, files in os.walk(temp_folder):
+                            for file in sorted(files):
+                                filepath = os.path.join(root, file)
+                                zf.write(filepath, arcname=file)
+                    
+                    shutil.rmtree(temp_folder)
+                    log(f"✅ Finished: Ch {ch_num}")
+                    time.sleep(0.5)
+                    
                 except Exception as e:
-                    log(f"❌ Chapter fetch error: {e}")
-                    retry_count += 1
+                    log(f"❌ Error Ch {ch_num}: {e}")
             
-            if not success:
-                break
-                
-            # Small delay to avoid rate limiting
-            time.sleep(0.2)
-        
-        # Deduplicate chapters by chapter number
-        # Multiple groups may translate the same chapter - we only want one
-        unique = {}
-        for ch in chapters:
-            num = ch["attributes"].get("chapter")
-            if num and num not in unique:
-                unique[num] = ch
-        
-        # Sort by chapter number (numerically)
-        sorted_chapters = sorted(
-            unique.values(),
-            key=lambda x: float(x["attributes"]["chapter"] or 0)
-        )
-        
-        # Determine if more chapters are available
-        has_more = current_offset < total_available
-        
-        log(f"✅ Loaded {len(sorted_chapters)} unique chapters")
-        
-        return {
-            "chapters": sorted_chapters[:limit],
-            "total": len(unique),
-            "hasMore": has_more,
-            "nextOffset": current_offset
-        }
-
-    def get_all_chapters(self, manga_id):
-        """
-        Fetch ALL chapters for a manga (used for downloads).
-        
-        Unlike get_chapters(), this fetches everything without pagination
-        limits. Used when downloading a range of chapters.
-        
-        Args:
-            manga_id (str): MangaDex manga UUID
+            log("✨ All downloads completed!")
             
-        Returns:
-            list: Complete list of unique chapter objects, sorted by number
-        """
-        log("📖 Fetching all chapters for download...")
+            if job_id in self._active:
+                del self._active[job_id]
+            if job_id in self._cancel:
+                del self._cancel[job_id]
         
-        chapters = []
-        offset = 0
-        limit = 100
+        thread = threading.Thread(target=worker, daemon=True)
+        self._active[job_id] = thread
+        thread.start()
         
-        while True:
-            try:
-                params = {
-                    "manga": manga_id,
-                    "translatedLanguage[]": ["en"],
-                    "limit": limit,
-                    "offset": offset,
-                    "order[chapter]": "asc"
-                }
-                
-                response = self.session.get(
-                    f"{BASE_URL}/chapter",
-                    params=params,
-                    timeout=20
-                )
-                
-                if response.status_code != 200:
-                    break
-                
-                data = response.json()
-                fetched = data.get("data", [])
-                chapters.extend(fetched)
-                
-                # Check if we've fetched all available chapters
-                if len(fetched) < limit:
-                    break
-                    
-                offset += limit
-                time.sleep(0.2)  # Rate limiting
-                
-            except Exception as e:
-                log(f"❌ Error fetching all chapters: {e}")
-                break
-        
-        # Deduplicate by chapter number
-        unique = {}
-        for ch in chapters:
-            num = ch["attributes"].get("chapter")
-            if num and num not in unique:
-                unique[num] = ch
-        
-        return sorted(
-            unique.values(),
-            key=lambda x: float(x["attributes"]["chapter"] or 0)
-        )
-
-    # =========================================================================
-    # READER - PAGE FETCHING
-    # =========================================================================
+        return job_id
     
-    def get_chapter_pages(self, chapter_id):
-        """
-        Fetch the image URLs for a specific chapter (for streaming reader).
-        
-        MangaDex requires fetching page URLs from their at-home API,
-        which provides CDN links for the actual images.
-        
-        Args:
-            chapter_id (str): MangaDex chapter UUID
-            
-        Returns:
-            dict: {
-                'pages': List of full image URLs,
-                'pages_datasaver': List of compressed image URLs,
-                'chapter_info': Chapter metadata
-            }
-        """
-        log(f"📄 Fetching pages for chapter {chapter_id}...")
-        
-        try:
-            # First, get the CDN server and image filenames
-            response = self.session.get(
-                f"{BASE_URL}/at-home/server/{chapter_id}",
-                timeout=15
-            )
-            
-            if response.status_code != 200:
-                log(f"⚠️ Failed to get chapter pages: HTTP {response.status_code}")
-                return None
-            
-            data = response.json()
-            base_url = data["baseUrl"]
-            chapter_hash = data["chapter"]["hash"]
-            
-            # Full quality images
-            pages = [
-                f"{base_url}/data/{chapter_hash}/{filename}"
-                for filename in data["chapter"]["data"]
-            ]
-            
-            # Data saver (compressed) images
-            pages_datasaver = [
-                f"{base_url}/data-saver/{chapter_hash}/{filename}"
-                for filename in data["chapter"]["dataSaver"]
-            ]
-            
-            log(f"✅ Found {len(pages)} pages")
-            
-            return {
-                "pages": pages,
-                "pages_datasaver": pages_datasaver
-            }
-            
-        except Exception as e:
-            log(f"❌ Error fetching chapter pages: {e}")
-            return None
-
-    # =========================================================================
-    # DOWNLOADING
-    # =========================================================================
+    def cancel(self, job_id: str) -> bool:
+        """Cancel an active download."""
+        if job_id in self._cancel:
+            self._cancel[job_id] = True
+            return True
+        return False
     
-    def download_worker(self, chapters, title):
-        """
-        Background worker that downloads chapters as CBZ files.
-        
-        This runs in a separate thread to avoid blocking the UI.
-        Each chapter is downloaded as individual images, then packaged
-        into a CBZ (Comic Book ZIP) file for use with reader apps.
-        
-        Args:
-            chapters (list): List of chapter objects to download
-            title (str): Manga title (used for folder/file naming)
-        """
-        # Sanitize title for filesystem use
-        safe_title = "".join(
-            c for c in title if c.isalnum() or c in (' ', '-', '_')
-        ).strip()
-        
-        # Create series directory
-        series_dir = os.path.join(DOWNLOAD_DIR, safe_title)
-        if not os.path.exists(series_dir):
-            os.makedirs(series_dir)
-
-        log(f"🚀 Starting download: {len(chapters)} chapters")
-        
-        for ch in chapters:
-            ch_num = ch["attributes"]["chapter"]
-            ch_id = ch["id"]
-            
-            try:
-                # Get CDN info for this chapter
-                response = self.session.get(
-                    f"{BASE_URL}/at-home/server/{ch_id}",
-                    timeout=15
-                )
-                
-                if response.status_code != 200:
-                    log(f"⚠️ Metadata fail Ch {ch_num}")
-                    continue
-
-                data = response.json()
-                base_host = data["baseUrl"]
-                hash_code = data["chapter"]["hash"]
-                filenames = data["chapter"]["data"]
-
-                # Create temporary folder for chapter images
-                chapter_folder = f"{safe_title} - Ch{ch_num}"
-                save_folder = os.path.join(series_dir, chapter_folder)
-                if not os.path.exists(save_folder):
-                    os.makedirs(save_folder)
-
-                log(f"⬇️ Ch {ch_num} ({len(filenames)} pages)...")
-                
-                # Download each page
-                for i, filename in enumerate(filenames):
-                    img_url = f"{base_host}/data/{hash_code}/{filename}"
-                    success = False
-                    
-                    # Retry logic for failed downloads
-                    for attempt in range(3):
-                        try:
-                            res = self.session.get(img_url, timeout=15)
-                            if res.status_code == 200:
-                                # Save with zero-padded index for proper ordering
-                                with open(os.path.join(save_folder, f"{i:03d}.jpg"), 'wb') as f:
-                                    f.write(res.content)
-                                success = True
-                                break
-                        except:
-                            time.sleep(1)
-                            
-                    if not success:
-                        log(f"   ⚠️ Failed page {i}")
-
-                # Package into CBZ file
-                cbz_path = os.path.join(series_dir, f"{chapter_folder}.cbz")
-                with zipfile.ZipFile(cbz_path, 'w') as zf:
-                    for root, _, files in os.walk(save_folder):
-                        for file in sorted(files):  # Sort for proper order
-                            zf.write(
-                                os.path.join(root, file),
-                                arcname=file
-                            )
-                
-                # Clean up temporary folder
-                shutil.rmtree(save_folder)
-                log(f"✅ Finished: Ch {ch_num}")
-                
-                # Small delay between chapters to avoid rate limiting
-                time.sleep(0.5)
-
-            except Exception as e:
-                log(f"❌ Error Ch {ch_num}: {e}")
-        
-        log("✨ All downloads completed!")
-
-    def get_downloaded_chapters(self, title):
-        """
-        Get list of already downloaded chapters for a manga.
-        
-        Scans the downloads directory for CBZ files matching the manga title.
-        
-        Args:
-            title (str): Manga title to search for
-            
-        Returns:
-            list: List of chapter numbers that have been downloaded
-        """
-        safe_title = "".join(
-            c for c in title if c.isalnum() or c in (' ', '-', '_')
-        ).strip()
-        
-        series_dir = os.path.join(DOWNLOAD_DIR, safe_title)
+    def get_downloaded(self, title: str) -> List[str]:
+        """Get list of downloaded chapter numbers."""
+        safe_title = self._sanitize(title)
+        series_dir = os.path.join(self.download_dir, safe_title)
         
         if not os.path.exists(series_dir):
             return []
@@ -718,8 +311,6 @@ class MangaLogic:
         downloaded = []
         for filename in os.listdir(series_dir):
             if filename.endswith('.cbz'):
-                # Extract chapter number from filename
-                # Format: "Title - Ch123.cbz"
                 try:
                     ch_part = filename.rsplit(' - Ch', 1)[-1]
                     ch_num = ch_part.replace('.cbz', '')
@@ -730,299 +321,310 @@ class MangaLogic:
         return downloaded
 
 
-# =============================================================================
-# FLASK ROUTES
-# =============================================================================
+downloader = Downloader(DOWNLOAD_DIR)
 
-# Initialize the manga logic handler
-logic = MangaLogic()
 
+# =============================================================================
+# FLASK ROUTES - Pages
+# =============================================================================
 
 @app.route('/')
 def index():
-    """
-    Serve the main application page.
-    
-    Returns:
-        str: Rendered HTML template
-    """
+    """Serve main page."""
     return render_template('index.html')
 
 
-# -----------------------------------------------------------------------------
-# Library Endpoints
-# -----------------------------------------------------------------------------
+# =============================================================================
+# FLASK ROUTES - Sources
+# =============================================================================
+
+@app.route('/api/sources')
+def get_sources():
+    """Get list of available sources."""
+    from sources import get_source_manager
+    manager = get_source_manager()
+    return jsonify(manager.get_available_sources())
+
+
+@app.route('/api/sources/active', methods=['GET', 'POST'])
+def active_source():
+    """Get or set active source."""
+    from sources import get_source_manager
+    manager = get_source_manager()
+    
+    if request.method == 'POST':
+        data = request.json
+        source_id = data.get('source_id')
+        if manager.set_active_source(source_id):
+            log(f"🔄 Switched to {manager.active_source.name}")
+            return jsonify({'status': 'ok', 'source': source_id})
+        return jsonify({'status': 'error', 'message': 'Source not found'}), 404
+    
+    return jsonify({
+        'source_id': manager.active_source_id,
+        'source_name': manager.active_source.name if manager.active_source else None
+    })
+
+
+@app.route('/api/sources/health')
+def sources_health():
+    """Get health status of all sources."""
+    from sources import get_source_manager
+    manager = get_source_manager()
+    return jsonify(manager.get_health_report())
+
+
+@app.route('/api/sources/<source_id>/reset', methods=['POST'])
+def reset_source(source_id: str):
+    """Reset a source's error state."""
+    from sources import get_source_manager
+    manager = get_source_manager()
+    if manager.reset_source(source_id):
+        log(f"🔄 Reset {source_id}")
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error'}), 404
+
+
+# =============================================================================
+# FLASK ROUTES - Search & Browse
+# =============================================================================
+
+@app.route('/api/search', methods=['POST'])
+def search():
+    """Search for manga."""
+    from sources import get_source_manager
+    
+    data = request.json
+    query = data.get('query', '')
+    source_id = data.get('source_id')
+    
+    if not query:
+        return jsonify([])
+    
+    manager = get_source_manager()
+    results = manager.search(query, source_id)
+    
+    return jsonify([r.to_dict() for r in results])
+
+
+@app.route('/api/popular')
+def get_popular():
+    """Get popular manga."""
+    from sources import get_source_manager
+    
+    source_id = request.args.get('source_id')
+    page = int(request.args.get('page', 1))
+    
+    manager = get_source_manager()
+    results = manager.get_popular(source_id, page)
+    
+    return jsonify([r.to_dict() for r in results])
+
+
+@app.route('/api/latest')
+def get_latest():
+    """Get latest updated manga."""
+    from sources import get_source_manager
+    
+    source_id = request.args.get('source_id')
+    page = int(request.args.get('page', 1))
+    
+    manager = get_source_manager()
+    results = manager.get_latest(source_id, page)
+    
+    return jsonify([r.to_dict() for r in results])
+
+
+# =============================================================================
+# FLASK ROUTES - Chapters
+# =============================================================================
+
+@app.route('/api/chapters', methods=['POST'])
+def get_chapters():
+    """Get chapters for a manga."""
+    from sources import get_source_manager
+    
+    data = request.json
+    manga_id = data.get('id')
+    source_id = data.get('source')
+    language = data.get('language', 'en')
+    offset = data.get('offset', 0)
+    limit = data.get('limit', 100)
+    
+    if not manga_id or not source_id:
+        return jsonify({'error': 'Missing id or source'}), 400
+    
+    manager = get_source_manager()
+    chapters = manager.get_chapters(manga_id, source_id, language)
+    
+    paginated = chapters[offset:offset + limit]
+    
+    return jsonify({
+        'chapters': [c.to_dict() for c in paginated],
+        'total': len(chapters),
+        'hasMore': offset + limit < len(chapters),
+        'nextOffset': offset + limit
+    })
+
+
+@app.route('/api/chapter_pages', methods=['POST'])
+def get_chapter_pages():
+    """Get page images for a chapter."""
+    from sources import get_source_manager
+    
+    data = request.json
+    chapter_id = data.get('chapter_id')
+    source_id = data.get('source')
+    
+    if not chapter_id or not source_id:
+        return jsonify({'error': 'Missing chapter_id or source'}), 400
+    
+    manager = get_source_manager()
+    pages = manager.get_pages(chapter_id, source_id)
+    
+    if not pages:
+        return jsonify({'error': 'Failed to fetch pages'}), 500
+    
+    return jsonify({
+        'pages': [p.url for p in pages],
+        'pages_data': [p.to_dict() for p in pages]
+    })
+
+
+# =============================================================================
+# FLASK ROUTES - Library
+# =============================================================================
 
 @app.route('/api/library')
 def get_library():
-    """
-    Get the user's complete manga library.
-    
-    Returns:
-        JSON: Dictionary of saved manga
-    """
-    return jsonify(logic.load_library())
+    """Get user's manga library."""
+    return jsonify(library.load())
 
 
 @app.route('/api/save', methods=['POST'])
-def save():
-    """
-    Save a manga to the library.
-    
-    Expected JSON body:
-        - id: Manga UUID
-        - title: Manga title
-        - status: Reading status (optional)
-        - cover: Cover URL (optional)
-    
-    Returns:
-        JSON: Success status
-    """
+def save_to_library():
+    """Add manga to library."""
     data = request.json
-    logic.save_to_library(
-        data['id'],
-        data['title'],
-        data.get('status', 'reading'),
-        data.get('cover')
+    
+    key = library.add(
+        manga_id=data.get('id'),
+        title=data.get('title'),
+        source=data.get('source', 'mangadex'),
+        status=data.get('status', 'reading'),
+        cover=data.get('cover')
     )
-    return jsonify({'status': 'ok'})
+    
+    return jsonify({'status': 'ok', 'key': key})
 
 
 @app.route('/api/update_status', methods=['POST'])
-def update_status_route():
-    """
-    Update the reading status of a manga.
-    
-    Expected JSON body:
-        - id: Manga UUID
-        - status: New reading status
-    
-    Returns:
-        JSON: Success status
-    """
+def update_status():
+    """Update manga reading status."""
     data = request.json
-    logic.update_status(data['id'], data['status'])
+    library.update_status(data.get('key'), data.get('status'))
     return jsonify({'status': 'ok'})
 
 
 @app.route('/api/update_progress', methods=['POST'])
 def update_progress():
-    """
-    Update the last read chapter for a manga.
-    
-    Expected JSON body:
-        - id: Manga UUID
-        - chapter: Last read chapter number
-    
-    Returns:
-        JSON: Success status
-    """
+    """Update reading progress."""
     data = request.json
-    logic.update_last_chapter(data['id'], data['chapter'])
+    library.update_progress(data.get('key'), data.get('chapter'))
     return jsonify({'status': 'ok'})
 
 
 @app.route('/api/delete', methods=['POST'])
-def delete():
-    """
-    Remove a manga from the library.
-    
-    Expected JSON body:
-        - id: Manga UUID
-    
-    Returns:
-        JSON: Success status
-    """
-    logic.remove_from_library(request.json['id'])
+def delete_from_library():
+    """Remove manga from library."""
+    data = request.json
+    library.remove(data.get('key'))
     return jsonify({'status': 'ok'})
 
 
-# -----------------------------------------------------------------------------
-# Search & Discovery Endpoints
-# -----------------------------------------------------------------------------
+# =============================================================================
+# FLASK ROUTES - Downloads
+# =============================================================================
 
-@app.route('/api/popular')
-def get_popular():
-    """
-    Get popular manga for the home page.
-    
-    Returns:
-        JSON: List of popular manga with cover art
-    """
-    return jsonify(logic.get_popular())
-
-
-@app.route('/api/search', methods=['POST'])
-def search():
-    """
-    Search for manga by title.
-    
-    Expected JSON body:
-        - query: Search term
-    
-    Returns:
-        JSON: List of matching manga
-    """
-    return jsonify(logic.search(request.json['query']))
-
-
-# -----------------------------------------------------------------------------
-# Chapter Endpoints
-# -----------------------------------------------------------------------------
-
-@app.route('/api/chapters', methods=['POST'])
-def chapters():
-    """
-    Get chapters for a manga with pagination.
-    
-    Expected JSON body:
-        - id: Manga UUID
-        - offset: Starting position (optional, default 0)
-        - limit: Max chapters to return (optional, default 100)
-    
-    Returns:
-        JSON: Chapter list with pagination info
-    """
+@app.route('/api/download', methods=['POST'])
+def start_download():
+    """Start downloading chapters."""
     data = request.json
-    offset = data.get('offset', 0)
-    limit = data.get('limit', 100)
-    return jsonify(logic.get_chapters(data['id'], offset, limit))
-
-
-@app.route('/api/all_chapters', methods=['POST'])
-def all_chapters():
-    """
-    Get all chapters for a manga (used for downloads).
     
-    Expected JSON body:
-        - id: Manga UUID
+    chapters = data.get('chapters', [])
+    title = data.get('title')
+    source_id = data.get('source')
     
-    Returns:
-        JSON: Complete list of chapters
-    """
-    return jsonify(logic.get_all_chapters(request.json['id']))
+    if not chapters or not title or not source_id:
+        return jsonify({'error': 'Missing required fields'}), 400
+    
+    job_id = downloader.start(chapters, title, source_id)
+    
+    return jsonify({'status': 'started', 'job_id': job_id})
 
 
-# -----------------------------------------------------------------------------
-# Reader Endpoints
-# -----------------------------------------------------------------------------
-
-@app.route('/api/chapter_pages', methods=['POST'])
-def chapter_pages():
-    """
-    Get page image URLs for a chapter (streaming reader).
-    
-    Expected JSON body:
-        - chapter_id: Chapter UUID
-    
-    Returns:
-        JSON: List of page URLs
-    """
+@app.route('/api/download/cancel', methods=['POST'])
+def cancel_download():
+    """Cancel an active download."""
     data = request.json
-    pages = logic.get_chapter_pages(data['chapter_id'])
+    job_id = data.get('job_id')
     
-    if pages:
-        return jsonify(pages)
-    else:
-        return jsonify({'error': 'Failed to fetch pages'}), 500
+    if downloader.cancel(job_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error'}), 404
 
 
 @app.route('/api/downloaded_chapters', methods=['POST'])
-def downloaded_chapters():
-    """
-    Get list of downloaded chapters for a manga.
-    
-    Expected JSON body:
-        - title: Manga title
-    
-    Returns:
-        JSON: List of downloaded chapter numbers
-    """
+def get_downloaded_chapters():
+    """Get list of downloaded chapters."""
     data = request.json
-    chapters = logic.get_downloaded_chapters(data['title'])
+    chapters = downloader.get_downloaded(data.get('title', ''))
     return jsonify({'chapters': chapters})
 
 
-# -----------------------------------------------------------------------------
-# Download Endpoints
-# -----------------------------------------------------------------------------
-
-@app.route('/api/download', methods=['POST'])
-def download():
-    """
-    Start downloading chapters in the background.
-    
-    Expected JSON body:
-        - chapters: List of chapter objects to download
-        - title: Manga title
-    
-    Returns:
-        JSON: Success status (download runs in background thread)
-    """
-    data = request.json
-    
-    # Run download in separate thread to avoid blocking
-    thread = threading.Thread(
-        target=logic.download_worker,
-        args=(data['chapters'], data['title'])
-    )
-    thread.start()
-    
-    return jsonify({'status': 'started'})
-
-
 @app.route('/downloads/<path:filename>')
-def serve_download(filename):
-    """
-    Serve downloaded CBZ files.
-    
-    Args:
-        filename: Path to the file within downloads directory
-    
-    Returns:
-        File: The requested CBZ file
-    """
+def serve_download(filename: str):
+    """Serve downloaded CBZ files."""
     return send_from_directory(DOWNLOAD_DIR, filename)
 
 
-# -----------------------------------------------------------------------------
-# Logging Endpoint
-# -----------------------------------------------------------------------------
+# =============================================================================
+# FLASK ROUTES - Logs
+# =============================================================================
 
 @app.route('/api/logs')
-def logs():
-    """
-    Get pending log messages for the console.
-    
-    This is polled by the frontend to display real-time progress.
-    Messages are removed from the queue once retrieved.
-    
-    Returns:
-        JSON: List of log messages
-    """
+def get_logs():
+    """Get pending log messages."""
     messages = []
     while not msg_queue.empty():
-        messages.append(msg_queue.get())
+        try:
+            messages.append(msg_queue.get_nowait())
+        except queue.Empty:
+            break
     return jsonify({'logs': messages})
 
 
 # =============================================================================
-# MAIN ENTRY POINT
+# MAIN
 # =============================================================================
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("  MangaNegus v2.1")
-    print("  Server running on http://127.0.0.1:5000")
+    print("  MangaNegus v2.2 - Multi-Source Edition")
     print("=" * 60)
     
-    # Run Flask development server
-    # - host='0.0.0.0' allows access from other devices on network
-    # - debug=True enables auto-reload and detailed errors
-    # - use_reloader=False prevents double-initialization issues
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        debug=True,
-        use_reloader=False
-    )
+    # Initialize sources
+    from sources import get_source_manager
+    manager = get_source_manager()
+    
+    print(f"\n📚 Loaded {len(manager.sources)} sources:")
+    for source in manager.sources.values():
+        status = "✅" if source.is_available else "❌"
+        print(f"   {status} {source.icon} {source.name} ({source.id})")
+    
+    if manager.active_source:
+        print(f"\n🎯 Active source: {manager.active_source.name}")
+    
+    print(f"\n🌐 Server: http://127.0.0.1:5000")
+    print("=" * 60)
+    
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
