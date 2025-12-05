@@ -1,6 +1,6 @@
 """
 ================================================================================
-MangaNegus v2.2 - MangaHere Connector
+MangaNegus v2.3 - MangaHere Connector
 ================================================================================
 MangaHere (mangahere.cc) connector for scraping manga content.
 
@@ -105,11 +105,8 @@ class MangaHereConnector(BaseConnector):
 
     def _log(self, msg: str) -> None:
         """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        from sources.base import source_log
+        source_log(msg)
 
     # =========================================================================
     # PARSING HELPERS

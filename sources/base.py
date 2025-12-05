@@ -1,6 +1,6 @@
 """
 ================================================================================
-MangaNegus v2.2 - Base Connector
+MangaNegus v2.3 - Base Connector
 ================================================================================
 Abstract base class for all manga source connectors.
 
@@ -20,11 +20,33 @@ RATE LIMITING:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from enum import Enum
 import time
 import threading
 import random
+
+
+# =============================================================================
+# LOGGING CALLBACK (avoids circular imports)
+# =============================================================================
+
+# Global logger callback - set by app.py on startup
+_log_callback: Optional[Callable[[str], None]] = None
+
+
+def set_log_callback(callback: Callable[[str], None]) -> None:
+    """Set the logging callback function. Called by app.py on startup."""
+    global _log_callback
+    _log_callback = callback
+
+
+def source_log(msg: str) -> None:
+    """Log a message using the registered callback or fallback to print."""
+    if _log_callback:
+        _log_callback(msg)
+    else:
+        print(msg)
 
 
 # =============================================================================
@@ -191,17 +213,39 @@ class BaseConnector(ABC):
         self._last_error: Optional[str] = None
         self._failure_count = 0
         self._cooldown_until = 0.0
-        
+
         # Thread safety
         self._lock = threading.Lock()
-        
+
         # Token bucket for rate limiting
         self._tokens = float(self.rate_limit_burst)
         self._last_request = time.time()
-        
-        # Session (set by SourceManager)
-        self.session = None
-    
+
+        # Session - create our own as fallback (SourceManager will override)
+        self._create_default_session()
+
+    def _create_default_session(self) -> None:
+        """Create a default requests session with connection pooling."""
+        try:
+            import requests
+            self.session = requests.Session()
+            self.session.headers.update({
+                "Accept": "application/json, text/html, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            # Connection pooling for performance
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=5,
+                pool_maxsize=10,
+                max_retries=2
+            )
+            self.session.mount("http://", adapter)
+            self.session.mount("https://", adapter)
+        except Exception:
+            self.session = None
+
     # =========================================================================
     # RATE LIMITING (Token Bucket Algorithm)
     # =========================================================================

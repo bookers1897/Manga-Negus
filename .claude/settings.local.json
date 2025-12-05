@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c \"import cloudscraper; import enma; print(''cloudscraper:'', cloudscraper.__version__ if hasattr(cloudscraper, ''__version__'') else ''installed''); print(''enma: installed'')\")",
+      "Bash(python:*)",
+      "Bash(timeout 10 python:*)",
+      "Bash(timeout 60 python:*)",
+      "Bash(timeout 120 python:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(timeout 20 python:*)",
+      "Bash(timeout 45 python:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,6 +1,6 @@
 """
 ================================================================================
-MangaNegus v2.2 - MangaKakalot/Manganato Connector
+MangaNegus v2.3 - MangaKakalot/Manganato Connector
 ================================================================================
 MangaKakalot family connector (manganato.com, chapmanganato.to, etc.)
 
@@ -110,11 +110,8 @@ class MangaKakalotConnector(BaseConnector):
     
     def _log(self, msg: str) -> None:
         """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        from sources.base import source_log
+        source_log(msg)
     
     # =========================================================================
     # PARSING HELPERS

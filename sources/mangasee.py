@@ -1,6 +1,6 @@
 """
 ================================================================================
-MangaNegus v2.2 - MangaSee Connector
+MangaNegus v2.3 - MangaSee Connector
 ================================================================================
 MangaSee123 / Manga4Life connector.
 
@@ -109,11 +109,8 @@ class MangaSeeConnector(BaseConnector):
     
     def _log(self, msg: str) -> None:
         """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        from sources.base import source_log
+        source_log(msg)
     
     # =========================================================================
     # PARSING HELPERS

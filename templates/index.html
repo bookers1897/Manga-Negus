@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>MangaNegus v2.2</title>
+    <title>MangaNegus v2.3</title>
     
     <!-- Phosphor Icons -->
     <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
@@ -134,7 +134,7 @@
 
         <!-- Footer -->
         <footer class="app-footer glass-panel">
-            <span class="footer-brand">MangaNegus v2.2</span>
+            <span class="footer-brand">MangaNegus v2.3</span>
             <a href="https://github.com/bookers1897/Manga-Negus" target="_blank" class="footer-link">
                 <i class="ph ph-github-logo"></i> GitHub
             </a>
@@ -176,7 +176,7 @@
     <div class="console-panel glass-panel-elevated" id="console-panel">
         <div class="console-resize-handle"><div class="resize-bar"></div></div>
         <div class="console-content" id="console-content">
-            <div class="log-entry">MangaNegus v2.2 initialized</div>
+            <div class="log-entry">MangaNegus v2.3 initialized</div>
         </div>
     </div>
 
@@ -216,9 +216,42 @@
 
     <script>
     // =========================================================================
-    // MangaNegus v2.2 - Frontend JavaScript
+    // MangaNegus v2.3 - Frontend JavaScript
     // =========================================================================
-    
+
+    // HTML escaping utility to prevent XSS
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
+
+    const PLACEHOLDER_IMAGE = '/static/images/placeholder.svg';
+
+    // Sanitize URL to prevent javascript: protocol attacks
+    function sanitizeUrl(url) {
+        if (!url) return PLACEHOLDER_IMAGE;
+        try {
+            const parsed = new URL(url, window.location.origin);
+            if (parsed.protocol === 'javascript:' || parsed.protocol === 'data:') {
+                return PLACEHOLDER_IMAGE;
+            }
+            return url;
+        } catch {
+            return PLACEHOLDER_IMAGE;
+        }
+    }
+
+    // Proxy external image URLs through our backend to avoid CORS issues
+    function proxyImageUrl(url) {
+        if (!url) return PLACEHOLDER_IMAGE;
+        // If already a local URL, return as-is
+        if (url.startsWith('/')) return url;
+        // Proxy external URLs
+        return `/api/proxy/image?url=${encodeURIComponent(url)}`;
+    }
+
     const App = {
         currentView: 'search',
         previousView: 'search',
@@ -230,12 +263,57 @@
         chapterOffset: 0,
         hasMoreChapters: false,
         elements: {},
-        
-        init() {
+        csrfToken: null,
+
+        async init() {
+            await this.fetchCsrfToken();
             this.cacheElements();
             this.bindEvents();
             this.loadSources();
             this.startLogPolling();
+        },
+
+        async fetchCsrfToken() {
+            try {
+                const resp = await fetch('/api/csrf-token');
+                const data = await resp.json();
+                this.csrfToken = data.csrf_token;
+            } catch (e) {
+                console.error('Failed to fetch CSRF token:', e);
+            }
+        },
+
+        // Helper method for POST requests with CSRF token
+        async postJson(url, data = {}) {
+            return fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': this.csrfToken
+                },
+                body: JSON.stringify(data)
+            });
+        },
+
+        // Loading state management
+        isLoading: false,
+
+        setLoading(loading) {
+            this.isLoading = loading;
+            // Disable/enable interactive elements during loading
+            const buttons = [
+                this.elements.searchBtn,
+                this.elements.selectAllBtn,
+                this.elements.clearSelectionBtn,
+                this.elements.downloadSelectedBtn,
+                this.elements.loadMoreBtn
+            ];
+            buttons.forEach(btn => {
+                if (btn) btn.disabled = loading;
+            });
+            if (this.elements.searchInput) {
+                this.elements.searchInput.disabled = loading;
+            }
         },
         
         cacheElements() {
@@ -336,7 +414,7 @@
                 this.sources = await resp.json();
                 
                 this.elements.sourceSelect.innerHTML = this.sources.map(s =>
-                    `<option value="${s.id}" ${s.is_active ? 'selected' : ''}>${s.icon} ${s.name}</option>`
+                    `<option value="${escapeHtml(s.id)}" ${s.is_active ? 'selected' : ''}>${escapeHtml(s.icon)} ${escapeHtml(s.name)}</option>`
                 ).join('');
                 
                 const active = this.sources.find(s => s.is_active);
@@ -351,11 +429,7 @@
         
         async setActiveSource(sourceId) {
             try {
-                await fetch('/api/sources/active', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({source_id: sourceId})
-                });
+                await this.postJson('/api/sources/active', {source_id: sourceId});
                 this.activeSource = sourceId;
                 this.loadPopular();
             } catch (e) {
@@ -371,16 +445,21 @@
                 this.elements.sourceStatusContent.innerHTML = data.sources.map(s => `
                     <div class="source-status-item ${s.is_available ? 'available' : 'unavailable'}">
                         <div class="source-info">
-                            <span class="source-name">${s.icon} ${s.name}</span>
-                            <span class="source-status-badge ${s.status}">${s.status}</span>
+                            <span class="source-name">${escapeHtml(s.icon)} ${escapeHtml(s.name)}</span>
+                            <span class="source-status-badge ${escapeHtml(s.status)}">${escapeHtml(s.status)}</span>
                         </div>
                         ${!s.is_available ? `
-                            <button class="glass-btn reset-btn" onclick="App.resetSource('${s.id}')">
+                            <button class="glass-btn reset-btn" data-source-id="${escapeHtml(s.id)}">
                                 <i class="ph ph-arrow-counter-clockwise"></i> Reset
                             </button>
                         ` : ''}
                     </div>
                 `).join('');
+
+                // Bind reset buttons with event listeners instead of inline onclick
+                this.elements.sourceStatusContent.querySelectorAll('.reset-btn').forEach(btn => {
+                    btn.addEventListener('click', () => this.resetSource(btn.dataset.sourceId));
+                });
                 
                 this.elements.sourceModalOverlay.classList.add('active');
             } catch (e) {
@@ -393,7 +472,7 @@
         },
         
         async resetSource(sourceId) {
-            await fetch(`/api/sources/${sourceId}/reset`, {method: 'POST'});
+            await this.postJson(`/api/sources/${sourceId}/reset`, {});
             this.showSourceStatus();
         },
         
@@ -433,20 +512,23 @@
         
         async search() {
             const query = this.elements.searchInput.value.trim();
-            if (!query) return;
-            
+            if (!query || this.isLoading) return;
+
+            this.setLoading(true);
             this.elements.resultsGrid.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
-            
+
             try {
-                const resp = await fetch('/api/search', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({query})
-                });
+                const resp = await this.postJson('/api/search', {query});
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Search failed');
+                }
                 const results = await resp.json();
                 this.renderResults(results);
             } catch (e) {
-                this.elements.resultsGrid.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Search failed</p></div>';
+                this.elements.resultsGrid.innerHTML = `<div class="empty-state"><i class="ph ph-warning"></i><p>${escapeHtml(e.message || 'Search failed')}</p></div>`;
+            } finally {
+                this.setLoading(false);
             }
         },
         
@@ -457,14 +539,14 @@
             }
             
             this.elements.resultsGrid.innerHTML = results.map(m => `
-                <div class="manga-card glass-panel" data-id="${m.id}" data-source="${m.source}">
-                    <img class="manga-card-cover" src="${m.cover || '/static/images/placeholder.png'}" 
-                         alt="${m.title}" loading="lazy" onerror="this.src='/static/images/placeholder.png'">
+                <div class="manga-card glass-panel" data-id="${escapeHtml(m.id)}" data-source="${escapeHtml(m.source)}">
+                    <img class="manga-card-cover" src="${proxyImageUrl(m.cover)}"
+                         alt="${escapeHtml(m.title)}" loading="lazy" onerror="this.src='/static/images/placeholder.svg'">
                     <div class="manga-card-content">
-                        <h3 class="manga-card-title">${m.title}</h3>
-                        <p class="manga-card-desc">${m.author || m.source}</p>
+                        <h3 class="manga-card-title">${escapeHtml(m.title)}</h3>
+                        <p class="manga-card-desc">${escapeHtml(m.author || m.source)}</p>
                         <div class="manga-card-footer">
-                            <span class="manga-card-label">${m.source}</span>
+                            <span class="manga-card-label">${escapeHtml(m.source)}</span>
                             <button class="glass-btn add-btn"><i class="ph ph-plus"></i></button>
                         </div>
                     </div>
@@ -500,12 +582,12 @@
                 }
                 
                 this.elements.libraryGrid.innerHTML = items.map(([key, m]) => `
-                    <div class="library-item glass-panel" data-key="${key}" data-source="${m.source}" data-id="${m.manga_id}">
-                        <img class="library-item-cover" src="${m.cover || '/static/images/placeholder.png'}" 
-                             alt="${m.title}" loading="lazy" onerror="this.src='/static/images/placeholder.png'">
+                    <div class="library-item glass-panel" data-key="${escapeHtml(key)}" data-source="${escapeHtml(m.source)}" data-id="${escapeHtml(m.manga_id)}">
+                        <img class="library-item-cover" src="${proxyImageUrl(m.cover)}"
+                             alt="${escapeHtml(m.title)}" loading="lazy" onerror="this.src='/static/images/placeholder.svg'">
                         <div class="library-item-info">
-                            <h3 class="library-item-title">${m.title}</h3>
-                            <p class="library-item-progress">${m.last_chapter ? `Ch. ${m.last_chapter}` : 'Not started'}</p>
+                            <h3 class="library-item-title">${escapeHtml(m.title)}</h3>
+                            <p class="library-item-progress">${m.last_chapter ? `Ch. ${escapeHtml(m.last_chapter)}` : 'Not started'}</p>
                         </div>
                     </div>
                 `).join('');
@@ -522,16 +604,12 @@
         
         async addToLibrary(manga) {
             try {
-                await fetch('/api/save', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        id: manga.id,
-                        title: manga.title,
-                        source: manga.source,
-                        cover: manga.cover,
-                        status: 'reading'
-                    })
+                await this.postJson('/api/save', {
+                    id: manga.id,
+                    title: manga.title,
+                    source: manga.source,
+                    cover: manga.cover,
+                    status: 'reading'
                 });
                 this.log(`📚 Added: ${manga.title}`);
             } catch (e) {
@@ -557,33 +635,36 @@
         
         async loadChapters() {
             try {
-                const resp = await fetch('/api/chapters', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        id: this.currentManga.id,
-                        source: this.currentManga.source,
-                        offset: this.chapterOffset,
-                        limit: 100
-                    })
+                const resp = await this.postJson('/api/chapters', {
+                    id: this.currentManga.id,
+                    source: this.currentManga.source,
+                    offset: this.chapterOffset,
+                    limit: 100
                 });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Failed to load chapters');
+                }
+
                 const data = await resp.json();
-                
+
                 if (this.chapterOffset === 0) {
                     this.chapters = data.chapters;
                 } else {
                     this.chapters = [...this.chapters, ...data.chapters];
                 }
-                
+
                 this.hasMoreChapters = data.hasMore;
                 this.chapterOffset = data.nextOffset;
-                
+
                 this.renderTitleCard();
                 this.renderChapters();
-                
+
                 this.elements.loadMoreContainer.style.display = this.hasMoreChapters ? 'block' : 'none';
             } catch (e) {
-                this.elements.chapterGrid.innerHTML = '<div class="empty-state"><i class="ph ph-warning"></i><p>Failed to load</p></div>';
+                console.error('Failed to load chapters:', e);
+                this.elements.chapterGrid.innerHTML = `<div class="empty-state"><i class="ph ph-warning"></i><p>${escapeHtml(e.message || 'Failed to load chapters')}</p></div>`;
             }
         },
         
@@ -631,11 +712,11 @@
             }
             
             this.elements.chapterGrid.innerHTML = this.chapters.map(ch => `
-                <div class="chapter-item glass-panel ${this.selectedChapters.has(ch.id) ? 'selected' : ''}" 
-                     data-id="${ch.id}" data-chapter="${ch.chapter}">
+                <div class="chapter-item glass-panel ${this.selectedChapters.has(ch.id) ? 'selected' : ''}"
+                     data-id="${escapeHtml(ch.id)}" data-chapter="${escapeHtml(ch.chapter)}">
                     <div class="chapter-checkbox"><i class="ph ph-check"></i></div>
-                    <span class="chapter-num">Ch. ${ch.chapter}</span>
-                    ${ch.title ? `<span class="chapter-title">${ch.title}</span>` : ''}
+                    <span class="chapter-num">Ch. ${escapeHtml(ch.chapter)}</span>
+                    ${ch.title ? `<span class="chapter-title">${escapeHtml(ch.title)}</span>` : ''}
                 </div>
             `).join('');
             
@@ -699,14 +780,10 @@
         
         async startDownload(chapters) {
             try {
-                await fetch('/api/download', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        chapters: chapters,
-                        title: `manga_${this.currentManga.id.substring(0,8)}`,
-                        source: this.currentManga.source
-                    })
+                await this.postJson('/api/download', {
+                    chapters: chapters,
+                    title: `manga_${this.currentManga.id.substring(0,8)}`,
+                    source: this.currentManga.source
                 });
             } catch (e) {
                 this.log('❌ Download failed');
@@ -718,25 +795,31 @@
             this.elements.readerContainer.classList.add('active');
             this.elements.readerTitle.textContent = `Chapter ${chapterNum}`;
             this.elements.readerContent.innerHTML = '<div class="loading-state"><div class="spinner"></div></div>';
-            
+
             try {
-                const resp = await fetch('/api/chapter_pages', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({chapter_id: chapterId, source: this.currentManga.source})
+                const resp = await this.postJson('/api/chapter_pages', {
+                    chapter_id: chapterId,
+                    source: this.currentManga.source
                 });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Failed to load pages');
+                }
+
                 const data = await resp.json();
-                
+
                 if (!data.pages?.length) {
-                    this.elements.readerContent.innerHTML = '<div class="empty-state"><p>No pages</p></div>';
+                    this.elements.readerContent.innerHTML = '<div class="empty-state"><p>No pages found for this chapter</p></div>';
                     return;
                 }
-                
+
                 this.elements.readerContent.innerHTML = data.pages.map((url, i) =>
-                    `<img class="reader-page" src="${url}" alt="Page ${i+1}" loading="lazy">`
+                    `<img class="reader-page" src="${sanitizeUrl(url)}" alt="Page ${i+1}" loading="lazy">`
                 ).join('');
             } catch (e) {
-                this.elements.readerContent.innerHTML = '<div class="empty-state"><p>Failed to load</p></div>';
+                console.error('Failed to load reader:', e);
+                this.elements.readerContent.innerHTML = `<div class="empty-state"><p>${escapeHtml(e.message || 'Failed to load chapter')}</p></div>`;
             }
         },
         
