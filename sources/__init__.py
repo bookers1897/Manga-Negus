@@ -1,6 +1,6 @@
 """
 ================================================================================
-MangaNegus v2.2 - Source Manager
+MangaNegus v2.3 - Source Manager
 ================================================================================
 Central manager for all manga source connectors.
 
@@ -71,7 +71,8 @@ class SourceManager:
         self._active_source_id: Optional[str] = None
         
         # Priority order for fallback (updated for 2025)
-        self._priority_order = ["mangadex", "mangafire", "mangahere", "mangakakalot", "mangasee"]
+        # ComicK and MangaNato are more reliable and have less strict rate limits
+        self._priority_order = ["comick", "mangadex", "manganato", "mangafire", "mangahere", "mangakakalot", "mangasee"]
         
         # Initialize
         self._create_session()
@@ -283,11 +284,8 @@ class SourceManager:
     
     def _log(self, msg: str) -> None:
         """Log a message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        from sources.base import source_log
+        source_log(msg)
     
     # =========================================================================
     # PUBLIC API (with fallback)
