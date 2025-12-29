@@ -1,61 +1,74 @@
-# 👑 MangaNegus v2.1
+# 👑 MangaNegus v2.2 - Multi-Source Edition (2025 Update)
 
-A native manga downloader, library manager, and **in-app reader** for iOS Code App. Run a local Python server to search MangaDex, track reading progress, read chapters online, and bulk-download as .cbz files.
+A native manga downloader, library manager, and **in-app reader** for iOS Code App. Now with **5 working sources** and **proper rate limiting** to prevent bans!
 
-![MangaNegus](https://img.shields.io/badge/version-2.1-red)
+![MangaNegus](https://img.shields.io/badge/version-2.2-red)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![Flask](https://img.shields.io/badge/flask-3.0-green)
+![Status](https://img.shields.io/badge/status-active-success)
 
-**Author:** [@bookers1897](https://github.com/bookers1897)  
+**Author:** [@bookers1897](https://github.com/bookers1897)
 **Repository:** [github.com/bookers1897/Manga-Negus](https://github.com/bookers1897/Manga-Negus)
 
 ---
 
-## ✨ What's New in v2.1
+## ✨ What's New in v2.2 (December 2025)
+
+### 🔄 Updated Source List
+- **5 working manga sources**:
+  - 🥭 **MangaDex** - Official API with proper rate limiting
+  - 🔥 **MangaFire** - Fast and reliable aggregator
+  - 📕 **MangaHere** - Well-established manga site
+  - 📙 **Manganato** - Updated to new .gg domain
+  - 📗 **MangaSee** - Large library with quality scans
+- **Automatic fallback** - If one source fails, tries the next
+- **Source selector** - Switch between sources in the UI
+- **Health monitoring** - See which sources are online/rate-limited
 
 ### 🐛 Bug Fixes
-- **Fixed:** Start/End chapter inputs no longer overflow on mobile devices (iPhone)
-- **Fixed:** Console panel now slides smoothly with proper cubic-bezier animation
-- **Fixed:** Improved API error handling - chapters should load more reliably now
-- **Fixed:** Added retry logic for failed requests (rate limiting, timeouts)
+- ✅ **Fixed Windows emoji encoding** - No more UnicodeEncodeError!
+- ✅ **Updated Manganato** - Now uses working .gg domain
+- ✅ **Removed ComicK** - Service shut down September 2025
+- ✅ **Added new working sources** - MangaFire and MangaHere
 
-### 🎨 UI/UX Improvements
-- **Hamburger Navigation:** Slide-out menu for cleaner mobile experience
-- **Manga Cover Art:** Covers now display in search results and library
-- **Animated Background:** Subtle ambient gradient animation
-- **Footer with Socials:** GitHub link and author credit
-- **iOS Liquid Glass Design:** Refined glassmorphism throughout
+### 🛡️ Rate Limiting (Prevents Bans!)
+- **Token bucket algorithm** per source
+- **Conservative defaults** (2 req/sec for MangaDex)
+- **Proper User-Agent** identification (no more browser spoofing)
+- **429/403 handling** with automatic cooldown
+- **No more getting banned!**
 
-### 📖 New Features
-- **In-App Manga Reader:** Read chapters directly in the browser!
-  - Stream from MangaDex (no download required)
-  - Read downloaded CBZ files (coming soon)
-  - HD/SD quality toggle (data saver mode)
-  - Chapter navigation (prev/next)
-- **Reading Progress Tracking:** Saves your last read chapter
-- **Downloaded Chapter Indicators:** See which chapters you already have
-
-### 🛠️ Code Quality
-- **Separated CSS:** Styles moved to `static/css/styles.css`
-- **Comprehensive Comments:** Every function documented with purpose and parameters
-- **Improved Efficiency:** Better API error handling, reduced redundant calls
+### 🏗️ HakuNeko-Inspired Architecture
+- **Abstract base connector** class
+- **Standardized interface**: search → chapters → pages
+- **Easy to add new sources** (just extend BaseConnector)
+- **Per-source configuration** (rate limits, headers, etc.)
 
 ---
 
 ## 📁 Project Structure
 
 ```
-manga-negus/
-├── app.py                      # Flask backend server (fully commented)
-├── library.json                # User's saved manga library
+manga-negus-v2.2/
+├── app.py                    # Flask backend server
+├── requirements.txt          # Python dependencies
+├── library.json              # User's saved manga
+├── sources/                  # Multi-source connectors
+│   ├── __init__.py           # SourceManager (auto-discovery)
+│   ├── base.py               # BaseConnector abstract class
+│   ├── mangadex.py           # MangaDex connector
+│   ├── mangafire.py          # MangaFire connector (NEW!)
+│   ├── mangahere.py          # MangaHere connector (NEW!)
+│   ├── mangasee.py           # MangaSee connector
+│   └── mangakakalot.py       # Manganato connector (UPDATED)
 ├── templates/
-│   └── index.html              # Main UI template
+│   └── index.html            # Main UI template
 └── static/
     ├── css/
-    │   └── styles.css          # All styles (fully commented)
+    │   └── styles.css        # iOS Liquid Glass styling
     ├── images/
-    │   └── sharingan.png       # App logo (add your own!)
-    └── downloads/              # Downloaded .cbz files
+    │   └── sharingan.png     # App logo (add your own!)
+    └── downloads/            # Downloaded .cbz files
 ```
 
 ---
@@ -68,24 +81,24 @@ manga-negus/
 
 ### Setup Steps
 
-1. **Clone or download** the project into Code App:
+1. **Clone or download** the project:
    ```bash
    git clone https://github.com/bookers1897/Manga-Negus.git
    cd Manga-Negus
    ```
 
-2. **Install dependencies** (iOS-compatible versions):
+2. **Install dependencies**:
    ```bash
-   pip install markupsafe==2.1.3
-   pip install werkzeug==3.0.1
-   pip install flask==3.0.0
-   pip install requests
-   pip install charset-normalizer
+   pip install -r requirements.txt
+   ```
+   
+   Or manually:
+   ```bash
+   pip install flask requests beautifulsoup4
    ```
 
 3. **Add your logo** (optional):
    - Place `sharingan.png` in `static/images/`
-   - Or use any PNG image and rename it
 
 4. **Run the server:**
    ```bash
@@ -102,92 +115,132 @@ manga-negus/
 ## 📱 Features
 
 ### 🔍 Search & Discovery
-- Search MangaDex's entire library
+- Search across multiple sources
 - Browse trending/popular manga
+- Switch sources with dropdown selector
 - Cover art displayed for all results
 
 ### 📚 Library Management
-- **Currently Reading** - Manga you're actively reading
-- **Want to Read** - Your planned reading list
-- **Completed** - Finished manga
-- Reading progress tracking (last chapter read)
+- **Currently Reading** - Active manga
+- **Plan to Read** - Your backlog
+- **Completed** - Finished series
+- Reading progress tracking
 
 ### 📖 In-App Reader
-- **Stream chapters** directly from MangaDex
-- **HD/SD toggle** for slower connections
-- **Chapter navigation** (previous/next)
-- Progress automatically saved
+- **Stream chapters** directly (no download required)
+- **Double-click** any chapter to read
+- Chapter navigation (prev/next)
 
 ### ⬇️ Downloads
 - Download individual chapters
-- Batch download by range (Ch. 1-50)
-- Select multiple chapters manually
+- Batch download by range
+- Select multiple chapters
 - Auto-packaged as .cbz files
 
-### 🎛️ Console
-- Real-time download progress
-- System logs and errors
-- Resizable panel
+### 🎛️ Source Management
+- View source health status
+- Reset rate-limited sources
+- Automatic fallback between sources
 
 ---
 
-## 🎨 Customization
+## 🔧 Adding New Sources
 
-### Changing the Logo
-Replace `static/images/sharingan.png` with any PNG image.
+Create a new file in `sources/` (e.g., `sources/newsource.py`):
 
-### Changing the App Name
-Edit line in `templates/index.html`:
-```html
-<h1 class="app-title">漫画キング</h1>
+```python
+from sources.base import BaseConnector, MangaResult, ChapterResult, PageResult
+
+class NewSourceConnector(BaseConnector):
+    def __init__(self, session):
+        super().__init__(session)
+        self.id = "newsource"
+        self.name = "New Source"
+        self.base_url = "https://newsource.com"
+        self.icon = "📖"
+        self.rate_limit = 2.0  # requests per second
+    
+    def search(self, query: str, page: int = 1) -> list[MangaResult]:
+        # Implement search
+        pass
+    
+    def get_chapters(self, manga_id: str, language: str = "en") -> list[ChapterResult]:
+        # Implement chapter fetching
+        pass
+    
+    def get_pages(self, chapter_id: str) -> list[PageResult]:
+        # Implement page fetching
+        pass
 ```
 
-### Changing the Accent Color
-Edit `static/css/styles.css`:
-```css
-:root {
-    --accent-color: #ff453a;        /* Primary accent */
-    --accent-glow: rgba(255, 69, 58, 0.4);  /* Glow effect */
-}
-```
-
-### Adding Anime Background
-In `templates/index.html`, find the `anime-bg` div and add:
-```javascript
-document.getElementById('anime-bg').style.backgroundImage = 'url(/static/images/your-anime.png)';
-```
+The source will be **automatically discovered** on startup!
 
 ---
 
-## 🔧 API Endpoints
+## 🔒 Rate Limiting Details
+
+| Source | Rate Limit | Burst | Notes |
+|--------|------------|-------|-------|
+| MangaDex | 2 req/sec | 3 | Conservative (API allows 5) |
+| MangaFire | 2.5 req/sec | 5 | Fast and reliable |
+| MangaHere | 2 req/sec | 4 | Browser-like headers |
+| MangaSee | 1.5 req/sec | 3 | Scraping target |
+| Manganato | 2 req/sec | 4 | Updated to .gg domain |
+
+The **token bucket algorithm** ensures:
+- Requests are spaced properly
+- Burst capacity for quick operations
+- Automatic recovery after rate limiting
+- Random jitter to prevent thundering herd
+
+---
+
+## 📡 API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/sources` | GET | List available sources |
+| `/api/sources/active` | GET/POST | Get/set active source |
+| `/api/sources/health` | GET | Get source health status |
+| `/api/search` | POST | Search for manga |
+| `/api/popular` | GET | Get popular manga |
+| `/api/chapters` | POST | Get chapters for manga |
+| `/api/chapter_pages` | POST | Get page URLs |
 | `/api/library` | GET | Get user's library |
-| `/api/save` | POST | Add manga to library |
-| `/api/delete` | POST | Remove from library |
-| `/api/update_status` | POST | Update reading status |
-| `/api/update_progress` | POST | Save last read chapter |
-| `/api/popular` | GET | Get trending manga |
-| `/api/search` | POST | Search by title |
-| `/api/chapters` | POST | Get chapters (paginated) |
-| `/api/all_chapters` | POST | Get all chapters |
-| `/api/chapter_pages` | POST | Get page URLs for reader |
-| `/api/download` | POST | Start chapter download |
+| `/api/save` | POST | Add to library |
+| `/api/download` | POST | Start download |
 | `/api/logs` | GET | Get console messages |
 
 ---
 
-## 🗺️ Roadmap (Future Features)
+## 🗺️ Roadmap
 
-- [ ] **Offline CBZ Reader** - Read downloaded files in-app
-- [ ] **Search Filters** - Genre, status, year
-- [ ] **Pull-to-Refresh** - Native mobile feel
-- [ ] **Chapter Read Markers** - Visual indicators
-- [ ] **Night Shift Mode** - Warm tones for nighttime reading
-- [ ] **Swipe Gestures** - Swipe between pages/chapters
-- [ ] **Image Preloading** - Smoother reading experience
-- [ ] **Settings Page** - Customize reader behavior
+- [ ] **More sources** - MangaPlus, Webtoons, etc.
+- [ ] **Offline CBZ reader** - Read downloaded files
+- [ ] **Search filters** - Genre, status, year
+- [ ] **Chapter read markers** - Visual indicators
+- [ ] **Swipe gestures** - Mobile-friendly reading
+- [ ] **Image preloading** - Smoother experience
+- [ ] **CloudFlare bypass** - For protected sources
+
+---
+
+## 🐛 Troubleshooting
+
+### "Source unavailable" error
+- Check source health status (pulse icon)
+- Try resetting the source
+- Switch to a different source
+
+### Rate limited by MangaDex
+- Wait 5-15 minutes for cooldown
+- The app will automatically recover
+- Use ComicK as fallback in the meantime
+
+### Images not loading
+- Some sources require specific headers
+- Try a different source
+- Check your internet connection
 
 ---
 
@@ -196,7 +249,8 @@ document.getElementById('anime-bg').style.backgroundImage = 'url(/static/images/
 Contributions welcome! Feel free to:
 - Report bugs via GitHub Issues
 - Submit feature requests
-- Create pull requests
+- Add new source connectors
+- Improve existing code
 
 ---
 
@@ -209,8 +263,9 @@ MIT License - feel free to use and modify!
 ## 🙏 Acknowledgments
 
 - [MangaDex](https://mangadex.org/) for the API
+- [ComicK](https://comick.io/) for fast CDN
+- [HakuNeko](https://github.com/manga-download/hakuneko) for architecture inspiration
 - [Phosphor Icons](https://phosphoricons.com/) for the icon set
-- [Tailwind CSS](https://tailwindcss.com/) for utility classes
 
 ---
 
