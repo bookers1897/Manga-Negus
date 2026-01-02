@@ -39,6 +39,12 @@ class MangaNatoConnector(BaseConnector):
     name = "MangaNato"
     base_url = "https://manganato.com"
     icon = "📖"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?(?:manganato|manganelo)\.(?:com|gg)/manga-([a-z0-9]+)',  # e.g., /manga-abcdefg
+        r'https?://(?:www\.)?(?:manganato|manganelo)\.(?:com|gg)/read-([a-z0-9]+)',  # e.g., /read-abcdefg
+    ]
 
     rate_limit = 3.0          # 3 requests per second
     rate_limit_burst = 5
@@ -208,7 +214,10 @@ class MangaNatoConnector(BaseConnector):
             for manga in result.results:
                 try:
                     mangas.append(self._manga_to_result(manga))
-                except Exception:
+                except Exception as e:
+
+                    self._log(f"Failed to parse item: {e}")
+
                     continue
 
             self._handle_success()
@@ -249,7 +258,10 @@ class MangaNatoConnector(BaseConnector):
             for i, ch in enumerate(chapters):
                 try:
                     results.append(self._chapter_to_result(ch, i))
-                except Exception:
+                except Exception as e:
+
+                    self._log(f"Failed to parse item: {e}")
+
                     continue
 
             # Sort by chapter number

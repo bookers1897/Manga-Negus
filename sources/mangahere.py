@@ -43,6 +43,11 @@ class MangaHereConnector(BaseConnector):
     name = "MangaHere"
     base_url = "https://www.mangahere.cc"
     icon = "📕"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?mangahere\.(?:cc|io)/manga/([a-z0-9_-]+)',  # e.g., /manga/naruto
+    ]
 
     rate_limit = 2.0
     rate_limit_burst = 4
@@ -104,12 +109,8 @@ class MangaHereConnector(BaseConnector):
             return None
 
     def _log(self, msg: str) -> None:
-        """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        """Log message using the central source_log."""
+        source_log(f"[{self.id}] {msg}")
 
     # =========================================================================
     # PARSING HELPERS
@@ -175,7 +176,10 @@ class MangaHereConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         self._log(f"✅ Found {len(results)} results")
@@ -220,7 +224,10 @@ class MangaHereConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         return results
@@ -264,7 +271,10 @@ class MangaHereConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         return results
@@ -322,7 +332,10 @@ class MangaHereConnector(BaseConnector):
                     url=chapter_url,
                     source=self.id
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         # Sort by chapter number

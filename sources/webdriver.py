@@ -72,7 +72,7 @@ class WebDriverManager:
             return
 
         self._initialized = True
-        self._driver_pool: List[webdriver.Chrome] = []
+        self._driver_pool: List[Any] = []  # webdriver.Chrome instances when available
         self._pool_lock = threading.Lock()
         self._max_pool_size = 3
         self._options = None

@@ -329,7 +329,10 @@ class ComicKConnector(BaseConnector):
         for comic in comics:
             try:
                 results.append(self._parse_manga(comic))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         return results
@@ -364,7 +367,10 @@ class ComicKConnector(BaseConnector):
 
             try:
                 results.append(self._parse_manga(comic))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
             if len(results) >= 20:

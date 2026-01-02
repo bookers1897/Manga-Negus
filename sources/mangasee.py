@@ -27,7 +27,7 @@ except ImportError:
     HAS_BS4 = False
 
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus, source_log
 )
 
 
@@ -42,6 +42,12 @@ class MangaSeeConnector(BaseConnector):
     name = "MangaSee"
     base_url = "https://manga4life.com"
     icon = "📗"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?mangasee123\.com/manga/([A-Za-z0-9-]+)',  # e.g., /manga/Naruto
+        r'https?://(?:www\.)?manga4life\.com/manga/([A-Za-z0-9-]+)',   # Alternative domain
+    ]
     
     # Conservative - it's a scraping target
     rate_limit = 1.5
@@ -108,12 +114,8 @@ class MangaSeeConnector(BaseConnector):
             return None
     
     def _log(self, msg: str) -> None:
-        """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        """Log message using the central source_log."""
+        source_log(f"[{self.id}] {msg}")
     
     # =========================================================================
     # PARSING HELPERS
@@ -173,7 +175,8 @@ class MangaSeeConnector(BaseConnector):
             if decimal > 0:
                 return f"{chapter_num}.{decimal}"
             return str(chapter_num)
-        except:
+        except Exception as e:
+            self._log(f"Failed to decode chapter number '{encoded}': {e}")
             return encoded
     
     def _build_cover(self, slug: str) -> str:

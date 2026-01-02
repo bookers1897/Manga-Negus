@@ -33,6 +33,22 @@ from .base import (
     BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
 )
 
+# Try to import Lua source discovery
+try:
+    from .lua_adapter import discover_lua_sources, LuaSourceAdapter
+    HAS_LUA_SOURCES = True
+except ImportError as e:
+    HAS_LUA_SOURCES = False
+    print(f"⚠️ Lua sources not available: {e}")
+
+# Try to import WeebCentral Lua adapter (uses curl_cffi for Cloudflare bypass)
+try:
+    from .weebcentral_lua import WeebCentralLuaAdapter
+    HAS_WEEBCENTRAL_LUA = True
+except ImportError as e:
+    HAS_WEEBCENTRAL_LUA = False
+    print(f"⚠️ WeebCentral Lua adapter not available: {e}")
+
 # Fix Windows console encoding for emoji support
 if sys.platform == 'win32':
     try:
@@ -70,9 +86,18 @@ class SourceManager:
         # Active source preference
         self._active_source_id: Optional[str] = None
         
-        # Priority order for fallback (updated for 2025)
-        # ComicK and MangaNato are more reliable and have less strict rate limits
-        self._priority_order = ["comick", "mangadex", "manganato", "mangafire", "mangahere", "mangakakalot", "mangasee"]
+        # Priority order for fallback (updated Jan 2026)
+        # MangaDex first for fast searches (0.65s avg)
+        # lua-weebcentral moved down - requires: pip install curl_cffi
+        self._priority_order = [
+            "mangadex",         # Official API - fast and reliable (default for search)
+            "manganato",        # Updated .gg domain - good coverage
+            "mangafire",        # Cloudflare bypass - solid backup
+            "lua-weebcentral",  # HTMX breakthrough - 1170 chapters (needs curl_cffi)
+            "annas-archive",    # Shadow library aggregator - complete volumes
+            "libgen",           # Library Genesis direct - 95TB+ comics
+            "comicx"            # Recent addition
+        ]
         
         # Initialize
         self._create_session()
@@ -113,35 +138,69 @@ class SourceManager:
         """
         sources_dir = os.path.dirname(__file__)
         
+        # Classes to skip (adapters/factories that need constructor args)
+        skip_classes = {'LuaSourceAdapter'}
+
         for _, module_name, _ in pkgutil.iter_modules([sources_dir]):
-            # Skip base module and __init__
-            if module_name in ('base', '__init__'):
+            # Skip base module, __init__, and utility modules
+            if module_name in ('base', '__init__', 'lua_runtime', 'async_base', 'async_utils'):
                 continue
-            
+
             try:
                 # Import the module
                 module = importlib.import_module(f'.{module_name}', 'sources')
-                
+
                 # Find connector classes
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
-                    
+
                     # Check if it's a BaseConnector subclass
                     if (isinstance(attr, type) and
                         issubclass(attr, BaseConnector) and
-                        attr is not BaseConnector):
-                        
+                        attr is not BaseConnector and
+                        attr.__name__ not in skip_classes):
+
                         # Instantiate and register
                         connector = attr()
                         connector.session = self._session
                         self._sources[connector.id] = connector
-                        
+
             except Exception as e:
                 print(f"⚠️ Failed to load source '{module_name}': {e}")
-        
+
+        # Discover Lua sources (FMD-compatible modules)
+        if HAS_LUA_SOURCES:
+            try:
+                lua_sources = discover_lua_sources()
+                for adapter in lua_sources:
+                    adapter.session = self._session
+                    self._sources[adapter.id] = adapter
+                    print(f"✨ Loaded Lua source: {adapter.name}")
+            except Exception as e:
+                print(f"⚠️ Failed to load Lua sources: {e}")
+
+        # Also register our built-in MangaDex Lua adapter (uses direct API)
+        if HAS_LUA_SOURCES and 'lua-mangadex' not in self._sources:
+            try:
+                adapter = LuaSourceAdapter('MangaDex')
+                adapter.session = self._session
+                self._sources[adapter.id] = adapter
+                print(f"✨ Loaded MangaDex Lua adapter")
+            except Exception as e:
+                print(f"⚠️ Failed to load MangaDex Lua adapter: {e}")
+
+        # Register WeebCentral Lua adapter (uses curl_cffi for Cloudflare bypass)
+        if HAS_WEEBCENTRAL_LUA and 'lua-weebcentral' not in self._sources:
+            try:
+                adapter = WeebCentralLuaAdapter()
+                self._sources[adapter.id] = adapter
+                print(f"✨ Loaded WeebCentral Lua adapter (Cloudflare bypass)")
+            except Exception as e:
+                print(f"⚠️ Failed to load WeebCentral Lua adapter: {e}")
+
         # Set default active source
         if self._sources:
-            # Prefer ComicK (more lenient), then MangaDex
+            # Use priority order (WeebCentral Lua first, then MangaDex, etc.)
             for preferred in self._priority_order:
                 if preferred in self._sources:
                     self._active_source_id = preferred
@@ -270,15 +329,17 @@ class SourceManager:
         for source in sources:
             try:
                 result = operation(source)
-                
-                # Check if we got valid results
-                if result is not None and result != []:
+
+                # THE FIX: Only check for None, not empty list
+                # An empty list [] means "successfully searched, but no results found"
+                # None means "technical failure" (network error, etc.)
+                if result is not None:
                     return result
-                
+
             except Exception as e:
                 self._log(f"⚠️ {source.name} failed: {e}")
                 continue
-        
+
         self._log(f"❌ All sources failed for {operation_name}")
         return None
     
@@ -286,6 +347,39 @@ class SourceManager:
         """Log a message."""
         from sources.base import source_log
         source_log(msg)
+
+    
+    # =========================================================================
+    # URL DETECTION
+    # =========================================================================
+    
+    def detect_source_from_url(self, url: str) -> Optional[Dict[str, str]]:
+        """
+        Detect which source a manga URL belongs to and extract the manga ID.
+        
+        Args:
+            url: Full manga URL (e.g., "https://mangadex.org/title/abc-123")
+            
+        Returns:
+            Dict with keys: {source_id, manga_id, source_name} or None
+            
+        Example:
+            >>> manager.detect_source_from_url("https://mangadex.org/title/abc-123")
+            {'source_id': 'mangadex', 'manga_id': 'abc-123', 'source_name': 'MangaDex'}
+        """
+        for source_id, source in self._sources.items():
+            if source.matches_url(url):
+                manga_id = source.extract_id_from_url(url)
+                if manga_id:
+                    return {
+                        'source_id': source_id,
+                        'manga_id': manga_id,
+                        'source_name': source.name
+                    }
+        
+        self._log(f"❌ Could not detect source for URL: {url}")
+        return None
+    
     
     # =========================================================================
     # PUBLIC API (with fallback)

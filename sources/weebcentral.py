@@ -29,7 +29,7 @@ except ImportError:
     HAS_BS4 = False
 
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus, source_log
 )
 
 
@@ -146,12 +146,8 @@ class WeebCentralConnector(BaseConnector):
             return None
 
     def _log(self, msg: str) -> None:
-        """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        """Log message using the central source_log."""
+        source_log(f"[{self.id}] {msg}")
 
     # =========================================================================
     # PARSING HELPERS
@@ -219,7 +215,10 @@ class WeebCentralConnector(BaseConnector):
                     url=manga_url,
                     status=item.get("status", "").lower()
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         self._log(f"✅ Found {len(results)} results")
@@ -264,7 +263,10 @@ class WeebCentralConnector(BaseConnector):
                     cover_url=cover,
                     url=f"{self.base_url}/manga/{manga_id}"
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         return results
@@ -323,7 +325,10 @@ class WeebCentralConnector(BaseConnector):
                     url=chapter_url,
                     source=self.id
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         # Sort by chapter number

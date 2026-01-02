@@ -7,13 +7,18 @@ try:
     HAS_BS4 = True
 except ImportError:
     HAS_BS4 = False
-from .base import BaseConnector, MangaResult, ChapterResult, PageResult
+from .base import BaseConnector, MangaResult, ChapterResult, PageResult, source_log
 
 class AsuraScansConnector(BaseConnector):
     id = "asurascans"
     name = "AsuraScans"
     base_url = "https://asurascans.com"
     icon = "👹"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?(?:asura|asuratoon)\.(?:gg|com)/series/([a-z0-9_-]+)',  # e.g., /series/naruto
+    ]
     rate_limit = 2.0
     rate_limit_burst = 4
     request_timeout = 20
@@ -40,11 +45,9 @@ class AsuraScansConnector(BaseConnector):
         except Exception as e: self._handle_error(str(e))
         return None
 
-    def _log(self, msg: str):
-        try:
-            from app import log
-            log(msg)
-        except: print(msg)
+    def _log(self, msg: str) -> None:
+        """Log message using the central source_log."""
+        source_log(f"[{self.id}] {msg}")
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
         if not HAS_BS4: return []
@@ -63,7 +66,9 @@ class AsuraScansConnector(BaseConnector):
                 img = item.select_one('img')
                 cover = urljoin(self.base_url, img.get('src', '')) if img else None
                 results.append(MangaResult(id=manga_id, title=title, source=self.id, cover_url=cover, url=url))
-            except: continue
+            except Exception as e:
+                self._log(f"Failed to parse item: {e}")
+                continue
         self._log(f"✅ Found {len(results)} results")
         return results
 
@@ -83,7 +88,9 @@ class AsuraScansConnector(BaseConnector):
                 img = item.select_one('img')
                 cover = urljoin(self.base_url, img.get('src', '')) if img else None
                 results.append(MangaResult(id=manga_id, title=title, source=self.id, cover_url=cover, url=url))
-            except: continue
+            except Exception as e:
+                self._log(f"Failed to parse item: {e}")
+                continue
         return results
 
     def get_latest(self, page: int = 1) -> List[MangaResult]:
@@ -106,7 +113,9 @@ class AsuraScansConnector(BaseConnector):
                 match = re.search(r'[Cc]h(?:apter)?\.?\s*(\d+(?:\.\d+)?)', ch_text)
                 ch_num = match.group(1) if match else "0"
                 results.append(ChapterResult(id=ch_url, chapter=ch_num, title=ch_text, language="en", url=ch_url, source=self.id))
-            except: continue
+            except Exception as e:
+                self._log(f"Failed to parse item: {e}")
+                continue
         results.sort(key=lambda x: float(x.chapter) if x.chapter else 0)
         self._log(f"✅ Found {len(results)} chapters")
         return results

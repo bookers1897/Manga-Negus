@@ -189,6 +189,10 @@ class BaseConnector(ABC):
     base_url: str = ""               # Root URL
     icon: str = "📚"                 # Emoji for UI
     
+    # URL Detection (Override in subclass with domain patterns)
+    # Example: url_patterns = [r'https?://(?:www\.)?mangadex\.org/title/([a-f0-9-]+)']
+    url_patterns: List[str] = []     # Regex patterns for URL matching
+    
     # Rate limiting (requests per second)
     rate_limit: float = 2.0          # Sustained rate
     rate_limit_burst: int = 5        # Burst allowance
@@ -221,30 +225,8 @@ class BaseConnector(ABC):
         self._tokens = float(self.rate_limit_burst)
         self._last_request = time.time()
 
-        # Session - create our own as fallback (SourceManager will override)
-        self._create_default_session()
-
-    def _create_default_session(self) -> None:
-        """Create a default requests session with connection pooling."""
-        try:
-            import requests
-            self.session = requests.Session()
-            self.session.headers.update({
-                "Accept": "application/json, text/html, */*",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
-            # Connection pooling for performance
-            adapter = requests.adapters.HTTPAdapter(
-                pool_connections=5,
-                pool_maxsize=10,
-                max_retries=2
-            )
-            self.session.mount("http://", adapter)
-            self.session.mount("https://", adapter)
-        except Exception:
-            self.session = None
+        # Session will be set by SourceManager
+        self.session = None
 
     # =========================================================================
     # RATE LIMITING (Token Bucket Algorithm)
@@ -445,5 +427,57 @@ class BaseConnector(ABC):
             return self.base_url.rstrip("/") + url
         return self.base_url.rstrip("/") + "/" + url
     
+    
+    # =========================================================================
+    # URL DETECTION METHODS
+    # =========================================================================
+    
+    def matches_url(self, url: str) -> bool:
+        """
+        Check if this source can handle the given URL.
+        
+        Args:
+            url: Full manga URL to check
+            
+        Returns:
+            True if this source recognizes the URL pattern
+        """
+        import re
+        if not self.url_patterns:
+            return False
+        
+        for pattern in self.url_patterns:
+            if re.search(pattern, url, re.IGNORECASE):
+                return True
+        return False
+    
+    def extract_id_from_url(self, url: str) -> Optional[str]:
+        """
+        Extract manga ID from a URL.
+        
+        Tries all url_patterns and returns the first captured group (manga ID).
+        
+        Args:
+            url: Full manga URL
+            
+        Returns:
+            Manga ID if extracted, None otherwise
+            
+        Example:
+            pattern: r'https?://mangadex\\.org/title/([a-f0-9-]+)'
+            URL: 'https://mangadex.org/title/abc-123-def'
+            Returns: 'abc-123-def'
+        """
+        import re
+        if not self.url_patterns:
+            return None
+        
+        for pattern in self.url_patterns:
+            match = re.search(pattern, url, re.IGNORECASE)
+            if match and match.groups():
+                return match.group(1)  # Return first captured group
+        
+        return None
+
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} id='{self.id}' status={self.status.value}>"

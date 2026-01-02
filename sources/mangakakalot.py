@@ -38,6 +38,12 @@ class MangaKakalotConnector(BaseConnector):
     name = "Manganato"
     base_url = "https://mangakakalot.gg"  # Updated to new domain (2025)
     icon = "📙"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?(?:mangakakalot|readmanganato)\.com/(?:manga|read)-([a-z0-9_-]+)',  # e.g., /manga-abc123
+        r'https?://(?:www\.)?mangakakalot\.com/manga/([a-z0-9_-]+)',  # Alternative pattern
+    ]
 
     rate_limit = 2.0
     rate_limit_burst = 4
@@ -109,12 +115,8 @@ class MangaKakalotConnector(BaseConnector):
             return None
     
     def _log(self, msg: str) -> None:
-        """Log message."""
-        try:
-            from app import log
-            log(msg)
-        except:
-            print(msg)
+        """Log message using the central source_log."""
+        source_log(f"[{self.id}] {msg}")
     
     # =========================================================================
     # PARSING HELPERS
@@ -194,7 +196,10 @@ class MangaKakalotConnector(BaseConnector):
                     author=author,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
         
         self._log(f"✅ Found {len(results)} results")
@@ -236,7 +241,10 @@ class MangaKakalotConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
         
         return results
@@ -277,7 +285,10 @@ class MangaKakalotConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
         
         return results
@@ -336,7 +347,10 @@ class MangaKakalotConnector(BaseConnector):
                     url=chapter_url,
                     source=self.id
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
         
         # Reverse to get ascending order

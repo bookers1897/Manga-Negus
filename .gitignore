@@ -58,3 +58,6 @@ logs/
 # Temporary files
 *.tmp
 temp/
+
+# Secret key (auto-generated)
+.secret_key

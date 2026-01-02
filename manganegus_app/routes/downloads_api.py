@@ -1,0 +1,42 @@
+from flask import Blueprint, jsonify, request, send_from_directory
+from manganegus_app.log import log
+from manganegus_app.csrf import csrf_protect
+from manganegus_app.extensions import downloader, DOWNLOAD_DIR
+
+downloads_bp = Blueprint('downloads_api', __name__)
+
+@downloads_bp.route('/api/download', methods=['POST'])
+@csrf_protect
+def start_download():
+    """Start downloading chapters."""
+    data = request.json
+    chapters = data.get('chapters', [])
+    title = data.get('title')
+    source_id = data.get('source')
+    if not chapters or not title or not source_id:
+        return jsonify({'error': 'Missing required fields'}), 400
+    job_id = downloader.start(chapters, title, source_id)
+    return jsonify({'status': 'started', 'job_id': job_id})
+
+@downloads_bp.route('/api/download/cancel', methods=['POST'])
+@csrf_protect
+def cancel_download():
+    """Cancel an active download."""
+    data = request.json
+    job_id = data.get('job_id')
+    if downloader.cancel(job_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error'}), 404
+
+@downloads_bp.route('/api/downloaded_chapters', methods=['POST'])
+@csrf_protect
+def get_downloaded_chapters():
+    """Get list of downloaded chapters."""
+    data = request.json
+    chapters = downloader.get_downloaded(data.get('title', ''))
+    return jsonify({'chapters': chapters})
+
+@downloads_bp.route('/downloads/<path:filename>')
+def serve_download(filename: str):
+    """Serve downloaded CBZ files."""
+    return send_from_directory(DOWNLOAD_DIR, filename)

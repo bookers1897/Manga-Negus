@@ -32,6 +32,11 @@ class MangaDexConnector(BaseConnector):
     name = "MangaDex"
     base_url = "https://api.mangadex.org"
     icon = "🥭"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?mangadex\.org/title/([a-f0-9-]+)',  # UUID format
+    ]
 
     # CONSERVATIVE rate limiting - stay well below their 5/sec limit
     rate_limit = 2.0          # 2 requests per second

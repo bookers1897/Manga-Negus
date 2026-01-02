@@ -23,6 +23,22 @@ enma>=2.4.0
 
 # Async support for hondana
 aiohttp>=3.9.0
+httpx>=0.28.0
+
+# Lua runtime for FMD module compatibility (590+ sources)
+lupa>=2.6
+
+# Metadata API clients (v3.1 MetaForge)
+jikanpy>=4.3.0
+
+# Utilities
+rapidfuzz>=3.14.0
+cachetools>=6.2.0
+
+# PostgreSQL database
+psycopg2-binary>=2.9.11
+sqlalchemy>=2.0.45
+alembic>=1.17.0
 
 # For iOS Code App, you may need specific versions:
 # pip install markupsafe==2.1.3

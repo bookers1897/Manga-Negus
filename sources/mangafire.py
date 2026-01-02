@@ -47,6 +47,12 @@ class MangaFireConnector(BaseConnector):
     name = "MangaFire"
     base_url = "https://mangafire.to"
     icon = "🔥"
+    
+    # URL Detection patterns
+    url_patterns = [
+        r'https?://(?:www\.)?mangafire\.to/manga/([a-z0-9-]+)',  # e.g., /manga/naruto
+        r'https?://(?:www\.)?mangafire\.to/read/([a-z0-9-]+)',   # e.g., /read/naruto
+    ]
 
     rate_limit = 2.0
     rate_limit_burst = 4
@@ -333,7 +339,10 @@ class MangaFireConnector(BaseConnector):
                     cover_url=cover,
                     url=manga_url
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         return results
@@ -419,7 +428,10 @@ class MangaFireConnector(BaseConnector):
                     url=chapter_url,
                     source=self.id
                 ))
-            except Exception:
+            except Exception as e:
+
+                self._log(f"Failed to parse item: {e}")
+
                 continue
 
         # Sort by chapter number
