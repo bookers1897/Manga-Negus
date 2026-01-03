@@ -79,7 +79,7 @@ class WeebCentralConnector(BaseConnector):
             "Referer": self.base_url
         }
 
-    def _request_html(self, url: str) -> Optional[str]:
+    def _request_html(self, url: str, params: Optional[Dict] = None, htmx: bool = False) -> Optional[str]:
         """Fetch HTML with rate limiting."""
         if not self.session:
             return None
@@ -87,9 +87,15 @@ class WeebCentralConnector(BaseConnector):
         self._wait_for_rate_limit()
 
         try:
+            headers = self._headers()
+            if htmx:
+                headers["HX-Request"] = "true"
+                headers["HX-Current-URL"] = f"{self.base_url}/search"
+
             response = self.session.get(
                 url,
-                headers=self._headers(),
+                params=params,
+                headers=headers,
                 timeout=self.request_timeout
             )
 
@@ -168,57 +174,56 @@ class WeebCentralConnector(BaseConnector):
     # =========================================================================
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
-        """Search WeebCentral for manga using their JSON API."""
+        """Search WeebCentral for manga using HTMX endpoint."""
         if not HAS_BS4:
             self._log("⚠️ BeautifulSoup not installed")
             return []
 
         self._log(f"🔍 Searching WeebCentral: {query}")
 
-        # Clean the query
         clean_query = self._clean_query(query)
-
-        # Calculate offset for pagination
-        limit = 32
-        offset = (page - 1) * limit
-
-        # Use WeebCentral's search API
-        params = {
-            "text": clean_query,
-            "limit": limit,
-            "offset": offset
-        }
-
-        data = self._request_json(f"{self.base_url}/search/data", params)
-        if not data or not isinstance(data, list):
+        html = self._request_html(
+            f"{self.base_url}/search/data",
+            params={"text": clean_query, "display_mode": "Full Display"},
+            htmx=True
+        )
+        if not html:
             return []
 
         results = []
-        for item in data[:20]:  # Limit to 20 results
+        soup = BeautifulSoup(html, 'html.parser')
+        seen = set()
+
+        for link in soup.select('a[href*="/series/"]'):
             try:
-                manga_id = item.get("slug", "")
-                if not manga_id:
+                href = link.get('href', '')
+                match = re.search(r'/series/([^/]+)/([^/]+)', href)
+                if not match:
                     continue
 
-                title = item.get("title", manga_id)
-                cover = item.get("cover")
-                if cover:
-                    cover = urljoin(self.base_url, cover)
+                series_id = match.group(1)
+                if series_id in seen:
+                    continue
+                seen.add(series_id)
 
-                manga_url = f"{self.base_url}/manga/{manga_id}"
+                slug = match.group(2)
+                img = link.select_one('img')
+                title = img.get('alt', '').replace(' cover', '') if img else slug.replace('-', ' ').title()
+                picture = link.select_one('picture source')
+                cover = picture.get('srcset', '') if picture else None
+
+                if not href.startswith("http"):
+                    href = urljoin(self.base_url, href)
 
                 results.append(MangaResult(
-                    id=manga_id,
+                    id=series_id,
                     title=title,
                     source=self.id,
                     cover_url=cover,
-                    url=manga_url,
-                    status=item.get("status", "").lower()
+                    url=href
                 ))
             except Exception as e:
-
                 self._log(f"Failed to parse item: {e}")
-
                 continue
 
         self._log(f"✅ Found {len(results)} results")
@@ -226,50 +231,7 @@ class WeebCentralConnector(BaseConnector):
 
     def get_popular(self, page: int = 1) -> List[MangaResult]:
         """Get popular manga."""
-        # WeebCentral doesn't have a specific popular endpoint
-        # Use empty search with high limit to get popular
-        if not HAS_BS4:
-            return []
-
-        limit = 32
-        offset = (page - 1) * limit
-
-        params = {
-            "text": "",
-            "limit": limit,
-            "offset": offset
-        }
-
-        data = self._request_json(f"{self.base_url}/search/data", params)
-        if not data or not isinstance(data, list):
-            return []
-
-        results = []
-        for item in data[:20]:
-            try:
-                manga_id = item.get("slug", "")
-                if not manga_id:
-                    continue
-
-                title = item.get("title", manga_id)
-                cover = item.get("cover")
-                if cover:
-                    cover = urljoin(self.base_url, cover)
-
-                results.append(MangaResult(
-                    id=manga_id,
-                    title=title,
-                    source=self.id,
-                    cover_url=cover,
-                    url=f"{self.base_url}/manga/{manga_id}"
-                ))
-            except Exception as e:
-
-                self._log(f"Failed to parse item: {e}")
-
-                continue
-
-        return results
+        return self.search("", page)
 
     def get_latest(self, page: int = 1) -> List[MangaResult]:
         """Get recently updated manga."""
@@ -287,7 +249,7 @@ class WeebCentralConnector(BaseConnector):
         self._log(f"📖 Fetching chapters from WeebCentral...")
 
         # Build full chapter list URL
-        url = f"{self.base_url}/manga/{manga_id}/full-chapter-list"
+        url = f"{self.base_url}/series/{manga_id}/full-chapter-list"
 
         html = self._request_html(url)
         if not html:

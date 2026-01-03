@@ -119,6 +119,10 @@ class ComicKConnector(BaseConnector):
         session = self._curl_session or self._scraper or self.session
         if not session:
             return None
+        if self.requires_cloudflare and not self._curl_session and not self._scraper:
+            self._handle_cloudflare()
+            self._log("⚠️ ComicK requires curl_cffi or cloudscraper for access")
+            return None
 
         self._wait_for_rate_limit()
 
@@ -167,6 +171,10 @@ class ComicKConnector(BaseConnector):
         """Log message to app's logging system."""
         from sources.base import source_log
         source_log(msg)
+
+    def get_download_session(self):
+        """Prefer curl_cffi/cloudscraper sessions for downloads."""
+        return self._curl_session or self._scraper or self.session
 
     # =========================================================================
     # PARSING HELPERS

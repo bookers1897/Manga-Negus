@@ -38,15 +38,15 @@ from .base import (
 )
 
 
-class WeebCentralLuaAdapter(BaseConnector):
+class WeebCentralV2Connector(BaseConnector):
     """
     WeebCentral adapter with Cloudflare bypass using curl_cffi.
 
     Uses Chrome browser impersonation to bypass Cloudflare protection.
     """
 
-    id = "lua-weebcentral"
-    name = "WeebCentral (Lua)"
+    id = "weebcentral-v2"
+    name = "WeebCentral V2"
     base_url = "https://weebcentral.com"
     icon = "🌐"
     
@@ -95,6 +95,10 @@ class WeebCentralLuaAdapter(BaseConnector):
         """Make GET request with Chrome impersonation."""
         if not HAS_CURL_CFFI:
             return None
+
+    def get_download_session(self):
+        """Use curl_cffi session for downloads when available."""
+        return getattr(self, "_session", None) or self.session
 
         self._wait_for_rate_limit()
 

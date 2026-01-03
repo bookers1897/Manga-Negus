@@ -14,7 +14,7 @@ def get_library():
 @csrf_protect
 def save_to_library():
     """Add manga to library."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     manga_id = data.get('id')
     title = data.get('title')
     source = data.get('source')
@@ -35,7 +35,7 @@ def save_to_library():
 @csrf_protect
 def update_status():
     """Update manga reading status."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     key = data.get('key')
     status = data.get('status')
     if not key or not status:
@@ -50,9 +50,9 @@ def update_status():
 @csrf_protect
 def update_progress():
     """Update reading progress."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     key = data.get('key')
-    chapter = data.get('chapter')
+    chapter = data.get('chapter', data.get('last_chapter'))
     if not key or chapter is None:
         return jsonify({'error': 'Missing required fields: key and chapter'}), 400
     library.update_progress(key, str(chapter))
@@ -62,7 +62,7 @@ def update_progress():
 @csrf_protect
 def delete_from_library():
     """Remove manga from library."""
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     key = data.get('key')
     if not key:
         return jsonify({'error': 'Missing required field: key'}), 400

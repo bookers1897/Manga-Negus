@@ -263,6 +263,8 @@ class MangaDexConnector(BaseConnector):
     def _parse_chapter(self, data: Dict) -> ChapterResult:
         """Parse MangaDex chapter data into standardized ChapterResult."""
         attrs = data.get("attributes", {})
+        if attrs.get("externalUrl"):
+            return None
 
         # Get scanlation group
         scanlator = None
@@ -436,7 +438,11 @@ class MangaDexConnector(BaseConnector):
 
         sorted_chapters = sorted(unique.values(), key=sort_key)
 
-        results = [self._parse_chapter(c) for c in sorted_chapters]
+        results = []
+        for ch in sorted_chapters:
+            parsed = self._parse_chapter(ch)
+            if parsed is not None:
+                results.append(parsed)
         self._log(f"✅ Found {len(results)} unique chapters")
 
         return results
@@ -455,6 +461,12 @@ class MangaDexConnector(BaseConnector):
         chapter_data = data.get("chapter", {})
         hash_code = chapter_data.get("hash", "")
         filenames = chapter_data.get("data", [])
+        if not filenames:
+            filenames = chapter_data.get("dataSaver", [])
+
+        if not base_url or not hash_code:
+            self._handle_error("Missing baseUrl or hash for chapter pages")
+            return []
 
         pages = []
         for i, filename in enumerate(filenames):

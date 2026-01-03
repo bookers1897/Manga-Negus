@@ -18,7 +18,7 @@ def active_source():
     manager = get_source_manager()
     
     if request.method == 'POST':
-        data = request.json
+        data = request.get_json(silent=True) or {}
         source_id = data.get('source_id')
         if manager.set_active_source(source_id):
             log(f"🔄 Switched to {manager.active_source.name}")

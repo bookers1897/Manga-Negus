@@ -427,11 +427,22 @@ class TitleMatcher:
             # Use average of all provider scores
             mapping.confidence = sum(provider_scores.values()) / len(provider_scores)
 
+            resolved_count = sum(
+                1
+                for _ in [
+                    mapping.anilist_id,
+                    mapping.mal_id,
+                    mapping.kitsu_id,
+                    mapping.shikimori_id,
+                    mapping.mangaupdates_id
+                ]
+                if _
+            )
             logger.info(
-                f"ID resolution complete. Confidence: {mapping.confidence:.1f}%, "
-                f"Resolved: {sum(1 for _ in [mapping.anilist_id, mapping.mal_id, "
-                f"mapping.kitsu_id, mapping.shikimori_id, mapping.mangaupdates_id] "
-                f"if _)}/{len(search_results)} providers"
+                "ID resolution complete. Confidence: %.1f%%, Resolved: %d/%d providers",
+                mapping.confidence,
+                resolved_count,
+                len(search_results)
             )
         else:
             logger.warning("No IDs resolved for any provider")

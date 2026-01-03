@@ -1,48 +1,27 @@
-# 👑 MangaNegus v2.2 - Multi-Source Edition (2025 Update)
+# MangaNegus v3.0.0-alpha
 
-A native manga downloader, library manager, and **in-app reader** for iOS Code App. Now with **5 working sources** and **proper rate limiting** to prevent bans!
+MangaNegus is a modern, web-based manga downloader and reader inspired by Free Manga Downloader (FMD). It features a glassmorphic UI, multi-source support with automatic fallback, and a Lua-based extension system.
 
-![MangaNegus](https://img.shields.io/badge/version-2.2-red)
-![Python](https://img.shields.io/badge/python-3.8+-blue)
-![Flask](https://img.shields.io/badge/flask-3.0-green)
-![Status](https://img.shields.io/badge/status-active-success)
+## ✨ Key Features
 
-**Author:** [@bookers1897](https://github.com/bookers1897)
-**Repository:** [github.com/bookers1897/Manga-Negus](https://github.com/bookers1897/Manga-Negus)
+- **Multi-Source Search**: Search across multiple manga sites simultaneously.
+- **Lua Extension System**: Support for FMD Lua modules (590+ sources planned).
+- **Advanced Cloudflare Bypass**: Powered by `curl_cffi` and TLS fingerprinting.
+- **Smart Fallback**: Automatically tries alternative sources if one is down or rate-limited.
+- **Background Downloads**: Download entire series as CBZ files with progress tracking.
+- **Metadata Support**: Automatic `ComicInfo.xml` generation for library managers like Kavita/Komga.
+- **In-App Reader**: Read your favorite manga directly in the browser.
+- **Library Management**: Save manga to your library and track your reading progress.
 
----
+## 📚 Supported Sources (30+)
 
-## ✨ What's New in v2.2 (December 2025)
-
-### 🔄 Updated Source List
-- **5 working manga sources**:
-  - 🥭 **MangaDex** - Official API with proper rate limiting
-  - 🔥 **MangaFire** - Fast and reliable aggregator
-  - 📕 **MangaHere** - Well-established manga site
-  - 📙 **Manganato** - Updated to new .gg domain
-  - 📗 **MangaSee** - Large library with quality scans
-- **Automatic fallback** - If one source fails, tries the next
-- **Source selector** - Switch between sources in the UI
-- **Health monitoring** - See which sources are online/rate-limited
-
-### 🐛 Bug Fixes
-- ✅ **Fixed Windows emoji encoding** - No more UnicodeEncodeError!
-- ✅ **Updated Manganato** - Now uses working .gg domain
-- ✅ **Removed ComicK** - Service shut down September 2025
-- ✅ **Added new working sources** - MangaFire and MangaHere
-
-### 🛡️ Rate Limiting (Prevents Bans!)
-- **Token bucket algorithm** per source
-- **Conservative defaults** (2 req/sec for MangaDex)
-- **Proper User-Agent** identification (no more browser spoofing)
-- **429/403 handling** with automatic cooldown
-- **No more getting banned!**
-
-### 🏗️ HakuNeko-Inspired Architecture
-- **Abstract base connector** class
-- **Standardized interface**: search → chapters → pages
-- **Easy to add new sources** (just extend BaseConnector)
-- **Per-source configuration** (rate limits, headers, etc.)
+- **MangaDex** (API) - Fast and reliable.
+- **WeebCentral V2** - High performance with 700+ chapters for popular series.
+- **Manganato / Manganelo** - Excellent coverage.
+- **MangaFire** - Solid backup with fast CDN.
+- **MangaSee / Manga4Life** - Official scanlation quality.
+- **Annas Archive** & **LibGen** - Shadow library support for complete volumes.
+- ... and many more via the Lua extension system.
 
 ---
 

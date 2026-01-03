@@ -41,13 +41,29 @@ except ImportError as e:
     HAS_LUA_SOURCES = False
     print(f"⚠️ Lua sources not available: {e}")
 
-# Try to import WeebCentral Lua adapter (uses curl_cffi for Cloudflare bypass)
+# Try to import WeebCentral V2 adapter (uses curl_cffi for Cloudflare bypass)
 try:
-    from .weebcentral_lua import WeebCentralLuaAdapter
-    HAS_WEEBCENTRAL_LUA = True
+    from .weebcentral_v2 import WeebCentralV2Connector
+    HAS_WEEBCENTRAL_V2 = True
 except ImportError as e:
-    HAS_WEEBCENTRAL_LUA = False
-    print(f"⚠️ WeebCentral Lua adapter not available: {e}")
+    HAS_WEEBCENTRAL_V2 = False
+    print(f"⚠️ WeebCentral V2 adapter not available: {e}")
+
+# Try to import MangaSee V2 (curl_cffi)
+try:
+    from .mangasee_v2 import MangaSeeV2Connector
+    HAS_MANGASEE_V2 = True
+except ImportError as e:
+    HAS_MANGASEE_V2 = False
+    print(f"⚠️ MangaSee V2 adapter not available: {e}")
+
+# Try to import MangaNato V2 (curl_cffi)
+try:
+    from .manganato_v2 import MangaNatoV2Connector
+    HAS_MANGANATO_V2 = True
+except ImportError as e:
+    HAS_MANGANATO_V2 = False
+    print(f"⚠️ MangaNato V2 adapter not available: {e}")
 
 # Fix Windows console encoding for emoji support
 if sys.platform == 'win32':
@@ -88,12 +104,13 @@ class SourceManager:
         
         # Priority order for fallback (updated Jan 2026)
         # MangaDex first for fast searches (0.65s avg)
-        # lua-weebcentral moved down - requires: pip install curl_cffi
+        # weebcentral-v2 moved down - requires: pip install curl_cffi
         self._priority_order = [
+            "weebcentral-v2",   # HTMX breakthrough - 1170 chapters (needs curl_cffi)
+            "mangasee-v2",      # V2: Cloudflare bypass
+            "manganato-v2",     # V2: Cloudflare bypass
             "mangadex",         # Official API - fast and reliable (default for search)
-            "manganato",        # Updated .gg domain - good coverage
             "mangafire",        # Cloudflare bypass - solid backup
-            "lua-weebcentral",  # HTMX breakthrough - 1170 chapters (needs curl_cffi)
             "annas-archive",    # Shadow library aggregator - complete volumes
             "libgen",           # Library Genesis direct - 95TB+ comics
             "comicx"            # Recent addition
@@ -115,7 +132,7 @@ class SourceManager:
         self._session.headers.update({
             "Accept": "application/json, text/html, */*",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br"
+            "Accept-Encoding": "gzip, deflate"
         })
         
         # Connection pooling for performance
@@ -189,14 +206,34 @@ class SourceManager:
             except Exception as e:
                 print(f"⚠️ Failed to load MangaDex Lua adapter: {e}")
 
-        # Register WeebCentral Lua adapter (uses curl_cffi for Cloudflare bypass)
-        if HAS_WEEBCENTRAL_LUA and 'lua-weebcentral' not in self._sources:
+        # Register WeebCentral V2 adapter (uses curl_cffi for Cloudflare bypass)
+        if HAS_WEEBCENTRAL_V2 and 'weebcentral-v2' not in self._sources:
             try:
-                adapter = WeebCentralLuaAdapter()
+                adapter = WeebCentralV2Connector()
                 self._sources[adapter.id] = adapter
-                print(f"✨ Loaded WeebCentral Lua adapter (Cloudflare bypass)")
+                print(f"✨ Loaded WeebCentral V2 adapter (Cloudflare bypass)")
             except Exception as e:
-                print(f"⚠️ Failed to load WeebCentral Lua adapter: {e}")
+                print(f"⚠️ Failed to load WeebCentral V2 adapter: {e}")
+
+        # Register MangaSee V2 (curl_cffi)
+        if HAS_MANGASEE_V2 and 'mangasee-v2' not in self._sources:
+            try:
+                adapter = MangaSeeV2Connector()
+                self._sources[adapter.id] = adapter
+                print(f"✨ Loaded MangaSee V2 adapter (Cloudflare bypass)")
+            except Exception as e:
+                print(f"⚠️ Failed to load MangaSee V2 adapter: {e}")
+
+        # Register MangaNato V2 (curl_cffi)
+        if HAS_MANGANATO_V2 and 'manganato-v2' not in self._sources:
+            try:
+                adapter = MangaNatoV2Connector()
+                self._sources[adapter.id] = adapter
+                print(f"✨ Loaded MangaNato V2 adapter (Cloudflare bypass)")
+            except Exception as e:
+                print(f"⚠️ Failed to load MangaNato V2 adapter: {e}")
+
+        # Set default active source
 
         # Set default active source
         if self._sources:
@@ -337,6 +374,10 @@ class SourceManager:
                     return result
 
             except Exception as e:
+                try:
+                    source._handle_error(str(e))
+                except Exception:
+                    pass
                 self._log(f"⚠️ {source.name} failed: {e}")
                 continue
 
@@ -528,11 +569,14 @@ class SourceManager:
 # =============================================================================
 
 _manager: Optional[SourceManager] = None
+_manager_lock = threading.Lock()
 
 
 def get_source_manager() -> SourceManager:
     """Get or create the global SourceManager instance."""
     global _manager
     if _manager is None:
-        _manager = SourceManager()
+        with _manager_lock:
+            if _manager is None:
+                _manager = SourceManager()
     return _manager

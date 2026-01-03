@@ -116,5 +116,4 @@ def create_app():
 
     return app
 
-# This creates the app instance when the package is imported
-app = create_app()
+# App instance should be created by the caller (run.py or WSGI entrypoint)

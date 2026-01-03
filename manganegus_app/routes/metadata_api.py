@@ -21,6 +21,7 @@ import logging
 
 # Import metadata manager
 from ..metadata.manager import get_metadata_manager
+from ..csrf import csrf_protect
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ def get_providers():
 
 
 @metadata_api_bp.route('/api/metadata/search', methods=['POST'])
+@csrf_protect
 def search_metadata():
     """
     Search for manga across all metadata providers.
@@ -129,7 +131,7 @@ def search_metadata():
         }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         title = data.get('title')
         limit = data.get('limit', 10)
         providers = data.get('providers')  # Optional
@@ -158,6 +160,7 @@ def search_metadata():
 
 
 @metadata_api_bp.route('/api/metadata/enrich', methods=['POST'])
+@csrf_protect
 def enrich_metadata():
     """
     Get enriched metadata for a manga.
@@ -204,7 +207,7 @@ def enrich_metadata():
         }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         title = data.get('title')
         source_id = data.get('source_id')
         source_manga_id = data.get('source_manga_id')
@@ -246,6 +249,7 @@ def enrich_metadata():
 
 
 @metadata_api_bp.route('/api/metadata/by-id', methods=['POST'])
+@csrf_protect
 def get_by_id():
     """
     Get metadata from specific provider by ID.
@@ -262,7 +266,7 @@ def get_by_id():
         }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         provider_id = data.get('provider')
         manga_id = data.get('id')
 
@@ -332,6 +336,7 @@ def health_check():
 
 
 @metadata_api_bp.route('/api/metadata/batch-enrich', methods=['POST'])
+@csrf_protect
 def batch_enrich():
     """
     Enrich metadata for multiple manga in parallel.
@@ -369,7 +374,7 @@ def batch_enrich():
         }
     """
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         manga_list = data.get('manga', [])
         limit = min(data.get('limit', 10), 20)  # Cap at 20 to prevent abuse
 

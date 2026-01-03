@@ -51,6 +51,7 @@ class AnnasArchiveConnector(BaseConnector):
     name = "Anna's Archive"
     base_url = "https://annas-archive.org"
     icon = "📚"
+    is_file_source = True
 
     # URL Detection patterns
     url_patterns = [

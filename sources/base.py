@@ -202,6 +202,7 @@ class BaseConnector(ABC):
     supports_latest: bool = False
     supports_popular: bool = False
     requires_cloudflare: bool = False
+    is_file_source: bool = False
     
     # Supported languages (ISO codes)
     languages: List[str] = ["en"]
@@ -269,8 +270,12 @@ class BaseConnector(ABC):
                 self._tokens = 1
             
             # Consume token
-            self._tokens -= 1
-            self._last_request = time.time()
+        self._tokens -= 1
+        self._last_request = time.time()
+
+    def wait_for_rate_limit(self) -> None:
+        """Public wrapper for rate limiting (for downloader use)."""
+        self._wait_for_rate_limit()
     
     def _set_cooldown(self, seconds: int) -> None:
         """Set a cooldown period where no requests are made."""
@@ -410,6 +415,10 @@ class BaseConnector(ABC):
     def get_manga_details(self, manga_id: str) -> Optional[MangaResult]:
         """Get full details for a specific manga."""
         return None
+
+    def get_download_session(self):
+        """Return the preferred session for downloading page images."""
+        return self.session
     
     # =========================================================================
     # UTILITY METHODS

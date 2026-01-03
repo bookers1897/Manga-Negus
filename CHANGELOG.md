@@ -2,6 +2,28 @@
 
 All notable changes to MangaNegus will be documented in this file.
 
+## [v3.0.0-alpha] - 2026-01-02
+
+### 🎉 Added
+- **Lua Extension System** - Foundation for supporting 590+ FMD Lua modules.
+- **WeebCentral (Lua) Adapter** - New high-performance source with 700+ chapters for popular manga.
+- **curl_cffi Integration** - Advanced Cloudflare and TLS fingerprint bypass.
+- **HTMX Support** - Capability to scrape modern dynamic websites.
+- **ComicInfo.xml Generation** - Standardized metadata for CBZ files, compatible with Kavita/Komga.
+- **Direct URL Detection** - Improved support for chapmanganato.com and complex MangaFire URLs.
+
+### 🔧 Fixed
+- **NameError in /api/detect_url** - Fixed critical crash when using URL detection.
+- **Open Image Proxy** - Restricted proxying to allowed domains for improved security.
+- **Inefficient Fallback** - Search now treats empty results as valid, preventing unnecessary broad searches.
+- **Circular Imports** - Refactored logging to eliminate circular dependencies in scraper connectors.
+- **Downloader Session** - Downloader now uses the source's specialized session (curl_cffi/cloudscraper) for higher success rates.
+
+### 📝 Changed
+- **Architectural Refactor** - Moved to Flask Blueprints and factory pattern for better maintainability.
+- **Source Priority** - Promoted WeebCentral (Lua) and MangaDex to top priority.
+- **Metadata Flow** - Enhanced communication between frontend and downloader to preserve manga titles and IDs.
+
 ## [v2.2] - 2025-12-03
 
 ### 🎉 Added

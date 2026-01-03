@@ -30,6 +30,7 @@ try:
     HAS_SELENIUM = True
 except ImportError:
     HAS_SELENIUM = False
+    webdriver = None
 
 try:
     from webdriver_manager.chrome import ChromeDriverManager
@@ -119,9 +120,9 @@ class WebDriverManager:
         # Uncomment to disable images:
         # self._options.add_experimental_option('prefs', prefs)
 
-    def _create_driver(self) -> Optional[webdriver.Chrome]:
+    def _create_driver(self) -> Optional[Any]:
         """Create a new WebDriver instance."""
-        if not HAS_SELENIUM:
+        if not HAS_SELENIUM or webdriver is None:
             return None
 
         try:

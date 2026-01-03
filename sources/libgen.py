@@ -64,6 +64,7 @@ class LibGenConnector(BaseConnector):
     id = "libgen"
     name = "Library Genesis"
     icon = "📚"
+    is_file_source = True
 
     # LibGen mirrors (in order of reliability)
     MIRRORS = [

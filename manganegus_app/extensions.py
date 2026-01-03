@@ -99,12 +99,19 @@ class Downloader:
     
     def _sanitize(self, name: str) -> str:
         return "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+
+    def _sanitize_filename(self, name: str) -> str:
+        clean = "".join(c for c in name if c.isalnum() or c in (' ', '-', '_', '.')).strip()
+        clean = clean.replace(os.sep, '_')
+        if os.altsep:
+            clean = clean.replace(os.altsep, '_')
+        return clean or "untitled"
     
     def _is_cancelled(self, job_id: str) -> bool:
         with self._lock:
             return self._cancel.get(job_id, False)
 
-    def start(self, chapters: List[Dict], title: str, source_id: str) -> str:
+    def start(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "") -> str:
         from sources import get_source_manager
         job_id = f"{source_id}:{title}:{int(time.time())}"
         with self._lock:
@@ -115,27 +122,77 @@ class Downloader:
             source = manager.get_source(source_id)
             if not source:
                 log(f"❌ Source '{source_id}' not found")
+                with self._lock:
+                    if job_id in self._active:
+                        del self._active[job_id]
+                    if job_id in self._cancel:
+                        del self._cancel[job_id]
                 return
             safe_title = self._sanitize(title)
+            if not safe_title:
+                safe_title = "untitled"
             series_dir = os.path.join(self.download_dir, safe_title)
             os.makedirs(series_dir, exist_ok=True)
             log(f"🚀 Downloading {len(chapters)} chapters from {source.name}")
+            
+            # Fetch full manga metadata for ComicInfo.xml
+            manga_details = None
+            if manga_id:
+                try:
+                    manga_details = source.get_manga_details(manga_id)
+                except Exception as e:
+                    log(f"⚠️ Failed to fetch manga details for metadata: {e}")
+
             for ch in chapters:
                 if self._is_cancelled(job_id):
                     log("⏹️ Download cancelled")
                     break
-                ch_num = ch.get("chapter", "0")
+                ch_num = str(ch.get("chapter", "0"))
                 ch_id = ch.get("id", "")
                 try:
                     pages = source.get_pages(ch_id)
                     if not pages:
                         log(f"⚠️ No pages for Chapter {ch_num}")
                         continue
-                    folder_name = f"{safe_title} - Ch{ch_num}"
+                    safe_ch = self._sanitize_filename(ch_num)
+                    folder_name = f"{safe_title} - Ch{safe_ch}"
+                    log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
+                    download_session = getattr(source, "get_download_session", None)
+                    download_session = download_session() if callable(download_session) else source.session
+                    if not download_session:
+                        download_session = requests.Session()
+
+                    if getattr(source, "is_file_source", False):
+                        page = pages[0]
+                        headers = dict(page.headers) if page.headers else {}
+                        if page.referer:
+                            headers['Referer'] = page.referer
+                        source.wait_for_rate_limit()
+                        resp = download_session.get(page.url, headers=headers, timeout=60, stream=True)
+                        if resp.status_code != 200:
+                            log(f"⚠️ Failed file download for Chapter {ch_num}: HTTP {resp.status_code}")
+                            continue
+                        ct = resp.headers.get('Content-Type', '')
+                        ext = os.path.splitext(page.url.split('?', 1)[0])[1] or ''
+                        if not ext:
+                            if 'pdf' in ct: ext = '.pdf'
+                            elif 'epub' in ct: ext = '.epub'
+                            elif 'cbz' in ct or 'zip' in ct: ext = '.cbz'
+                            else: ext = '.bin'
+                        filename = f"{folder_name}{ext}"
+                        filepath = os.path.join(series_dir, filename)
+                        with open(filepath, 'wb') as f:
+                            for chunk in resp.iter_content(chunk_size=1024 * 256):
+                                if chunk: f.write(chunk)
+                        log(f"✅ Saved file: {filename}")
+                        continue
+
                     temp_folder = os.path.join(series_dir, folder_name)
                     os.makedirs(temp_folder, exist_ok=True)
-                    log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
-                    download_session = source.session or requests.Session()
+                    
+                    # Create ComicInfo.xml
+                    self._write_comic_info(temp_folder, title, ch, source, manga_details)
+
                     for page in pages:
                         if self._is_cancelled(job_id):
                             break
@@ -145,6 +202,7 @@ class Downloader:
                                 headers = dict(page.headers) if page.headers else {}
                                 if page.referer:
                                     headers['Referer'] = page.referer
+                                source.wait_for_rate_limit()
                                 resp = download_session.get(page.url, headers=headers, timeout=30)
                                 if resp.status_code == 200:
                                     ext = '.jpg'
@@ -188,6 +246,42 @@ class Downloader:
                 return True
             return False
     
+    def _write_comic_info(self, folder: str, title: str, chapter: Dict, source: Any, manga_details: Any = None) -> None:
+        """Generate ComicInfo.xml metadata file."""
+        try:
+            from xml.etree.ElementTree import Element, SubElement, tostring
+            from xml.dom import minidom
+
+            root = Element('ComicInfo')
+            root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+            root.set('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema')
+
+            # Basic Info
+            SubElement(root, 'Title').text = chapter.get('title') or f"Chapter {chapter.get('chapter')}"
+            SubElement(root, 'Series').text = title
+            SubElement(root, 'Number').text = str(chapter.get('chapter', '0'))
+            SubElement(root, 'Web').text = chapter.get('url', '')
+            SubElement(root, 'Source').text = source.name
+
+            if manga_details:
+                if hasattr(manga_details, 'author') and manga_details.author:
+                    SubElement(root, 'Writer').text = manga_details.author
+                if hasattr(manga_details, 'description') and manga_details.description:
+                    SubElement(root, 'Summary').text = manga_details.description
+                if hasattr(manga_details, 'genres') and manga_details.genres:
+                    SubElement(root, 'Genre').text = ", ".join(manga_details.genres)
+                if hasattr(manga_details, 'status') and manga_details.status:
+                    SubElement(root, 'Notes').text = f"Status: {manga_details.status}"
+
+            # Manga specific
+            SubElement(root, 'Manga').text = 'YesAndRightToLeft'
+
+            xml_str = minidom.parseString(tostring(root)).toprettyxml(indent="   ")
+            with open(os.path.join(folder, 'ComicInfo.xml'), 'w', encoding='utf-8') as f:
+                f.write(xml_str)
+        except Exception as e:
+            log(f"⚠️ Failed to create ComicInfo.xml: {e}")
+
     def get_downloaded(self, title: str) -> List[str]:
         safe_title = self._sanitize(title)
         series_dir = os.path.join(self.download_dir, safe_title)

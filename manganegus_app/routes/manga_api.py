@@ -10,12 +10,29 @@ manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 # Initialize smart search
 _smart_search = SmartSearch()
 
+def _run_async(coro):
+    """Run async coroutine safely from sync context."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    if loop.is_running():
+        new_loop = asyncio.new_event_loop()
+        try:
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+
+    return loop.run_until_complete(coro)
+
 @manga_bp.route('/search', methods=['POST'])
 @csrf_protect
 def search():
     """Search for manga."""
     manager = get_source_manager()
-    data = request.json
+    data = request.get_json(silent=True) or {}
     query = data.get('query', '')
     source_id = data.get('source_id')
     if not query:
@@ -71,7 +88,7 @@ def smart_search():
             ...
         ]
     """
-    data = request.json
+    data = request.get_json(silent=True) or {}
     query = data.get('query', '').strip()
     limit = data.get('limit', 10)
     sources = data.get('sources')  # None = use default top 5
@@ -82,8 +99,7 @@ def smart_search():
 
     try:
         # Run async smart search
-        loop = asyncio.get_event_loop()
-        results = loop.run_until_complete(
+        results = _run_async(
             _smart_search.search(
                 query,
                 limit=limit,
@@ -107,7 +123,7 @@ def smart_search():
 def detect_url():
     """Detect source and manga ID from a URL."""
     manager = get_source_manager()
-    data = request.json
+    data = request.get_json(silent=True) or {}
     url = data.get('url', '').strip()
     if not url:
         return jsonify({'error': 'URL is required'}), 400
@@ -156,7 +172,7 @@ def get_latest():
 def get_chapters():
     """Get chapters for a manga."""
     manager = get_source_manager()
-    data = request.json
+    data = request.get_json(silent=True) or {}
     manga_id = data.get('id')
     source_id = data.get('source')
     offset = data.get('offset', 0)
@@ -177,7 +193,7 @@ def get_chapters():
 def get_chapter_pages():
     """Get page images for a chapter."""
     manager = get_source_manager()
-    data = request.json
+    data = request.get_json(silent=True) or {}
     chapter_id = data.get('chapter_id')
     source_id = data.get('source')
     if not chapter_id or not source_id:
@@ -221,6 +237,22 @@ def clear_cache():
     _smart_search.cache.clear()
     log("🗑️ Search cache cleared")
     return jsonify({'status': 'ok', 'message': 'Cache cleared'})
+
+@manga_bp.route('/all_chapters', methods=['POST'])
+@csrf_protect
+def get_all_chapters():
+    """Get all chapters for a manga (no pagination)."""
+    manager = get_source_manager()
+    data = request.get_json(silent=True) or {}
+    manga_id = data.get('id')
+    source_id = data.get('source')
+    if not manga_id or not source_id:
+        return jsonify({'error': 'Missing id or source'}), 400
+    chapters = manager.get_chapters(manga_id, source_id)
+    return jsonify({
+        'chapters': [c.to_dict() for c in chapters],
+        'total': len(chapters)
+    })
 
 @manga_bp.route('/search/cache/evict', methods=['POST'])
 @csrf_protect

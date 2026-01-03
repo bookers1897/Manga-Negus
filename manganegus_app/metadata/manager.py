@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 import time
 
 from .models import UnifiedMetadata, IDMapping
+from .matcher import TitleMatcher, get_cache
 from .providers.base import BaseMetadataProvider
 
 # Import all providers
@@ -175,9 +176,13 @@ class MetadataManager:
 
         logger.info(f"Found {len(all_results)} total results")
 
-        # TODO: Deduplicate results using fuzzy matching
-        # For now, return all results
-        return all_results
+        matcher = TitleMatcher()
+        deduped: Dict[str, UnifiedMetadata] = {}
+        for result in all_results:
+            key = matcher.normalize_title(result.get_primary_title())
+            if key not in deduped:
+                deduped[key] = result
+        return list(deduped.values())
 
     async def get_by_id(
         self,
@@ -236,20 +241,33 @@ class MetadataManager:
 
         logger.info(f"Enriching metadata for '{title}'...")
 
+        cache = get_cache()
+        cached_mapping = cache.get(title)
+
         # Step 1: Search AniList (best for initial match and ID mapping)
         anilist = self.providers.get('anilist')
         if not anilist:
             logger.error("AniList provider not available - cannot enrich metadata")
             return None
 
-        anilist_results = await anilist.search_series(title, limit=5)
-        if not anilist_results:
-            logger.warning(f"No AniList results for '{title}'")
-            return None
+        matcher = TitleMatcher()
+        primary_result = None
 
-        # Use first result (best match)
-        # TODO: Use fuzzy matching to pick best result
-        primary_result = anilist_results[0]
+        if cached_mapping and cached_mapping.anilist_id:
+            primary_result = await anilist.get_by_id(cached_mapping.anilist_id)
+
+        if not primary_result:
+            anilist_results = await anilist.search_series(title, limit=5)
+            if not anilist_results:
+                logger.warning(f"No AniList results for '{title}'")
+                return None
+
+            primary_result = max(
+                anilist_results,
+                key=lambda r: matcher.calculate_similarity(
+                    title, r.get_primary_title()
+                )
+            )
 
         logger.info(f"Primary match: {primary_result.get_primary_title()} "
                    f"(AniList ID: {primary_result.mappings.get('anilist')})")
@@ -287,6 +305,20 @@ class MetadataManager:
 
         # Step 3: Merge all results
         merged = self._merge_metadata(primary_result, secondary_results)
+
+        if merged:
+            mapping = IDMapping(
+                source_title=title,
+                anilist_id=merged.mappings.get('anilist'),
+                mal_id=merged.mappings.get('mal'),
+                kitsu_id=merged.mappings.get('kitsu'),
+                shikimori_id=merged.mappings.get('shikimori'),
+                mangaupdates_id=merged.mappings.get('mangaupdates'),
+                confidence=90.0,
+                matched_title=merged.get_primary_title(),
+                created_at=time.time()
+            )
+            cache.set(title, mapping)
 
         logger.info(f"Enriched metadata complete: {len(secondary_results)} additional sources")
 
@@ -404,17 +436,20 @@ class MetadataManager:
         if not self._initialized:
             await self.initialize()
 
-        health = {}
-        for provider_id, provider in self.providers.items():
+        async def _check(provider_id, provider):
             try:
-                # Try a simple search
-                results = await provider.search_series("test", limit=1)
-                health[provider_id] = True
+                await provider.search_series("test", limit=1)
+                return provider_id, True
             except Exception as e:
                 logger.error(f"Health check failed for {provider_id}: {e}")
-                health[provider_id] = False
+                return provider_id, False
 
-        return health
+        tasks = [
+            _check(provider_id, provider)
+            for provider_id, provider in self.providers.items()
+        ]
+        results = await asyncio.gather(*tasks)
+        return {provider_id: status for provider_id, status in results}
 
 
 # =============================================================================

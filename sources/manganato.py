@@ -42,8 +42,8 @@ class MangaNatoConnector(BaseConnector):
     
     # URL Detection patterns
     url_patterns = [
-        r'https?://(?:www\.)?(?:manganato|manganelo)\.(?:com|gg)/manga-([a-z0-9]+)',  # e.g., /manga-abcdefg
-        r'https?://(?:www\.)?(?:manganato|manganelo)\.(?:com|gg)/read-([a-z0-9]+)',  # e.g., /read-abcdefg
+        r'https?://(?:www\.)?(?:manganato|manganelo|chapmanganato)\.(?:com|gg|to)/manga-([a-z0-9]+)',  # e.g., /manga-abcdefg
+        r'https?://(?:www\.)?(?:manganato|manganelo|chapmanganato)\.(?:com|gg|to)/read-([a-z0-9]+)',  # e.g., /read-abcdefg
     ]
 
     rate_limit = 3.0          # 3 requests per second

@@ -61,3 +61,6 @@ temp/
 
 # Secret key (auto-generated)
 .secret_key
+
+.gemini/
+gha-creds-*.json

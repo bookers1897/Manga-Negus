@@ -16,6 +16,7 @@ Usage:
 
 import os
 import re
+from urllib.parse import quote, urljoin
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 
@@ -62,8 +63,7 @@ class LuaSourceAdapter(BaseConnector):
         self.name = f"{module_name} (Lua)"
         self.icon = "📜"
 
-        # Try to load the module
-        self._load_module()
+        # Defer module load until runtime is needed (session may be set later)
 
     def _load_module(self) -> bool:
         """Load and initialize the Lua module."""
@@ -93,6 +93,8 @@ class LuaSourceAdapter(BaseConnector):
                     "name": module.Name,
                     "root_url": module.RootURL,
                     "category": module.Category,
+                    "search_url": getattr(module, "SearchURL", None),
+                    "get_name_and_link": getattr(module, "OnGetNameAndLink", None),
                     "get_info": module.OnGetInfo,
                     "get_pages": module.OnGetPageNumber,
                 }
@@ -218,9 +220,49 @@ class LuaSourceAdapter(BaseConnector):
 
     def _search_generic(self, query: str, page: int = 1) -> List[MangaResult]:
         """Generic search for non-MangaDex modules."""
-        # TODO: Implement generic search using module's methods
-        source_log(f"[{self.id}] Generic search not yet implemented")
-        return []
+        self._runtime.reset_lists()
+
+        search_url = None
+        if self._module_info:
+            search_url = self._module_info.get("search_url")
+
+        if search_url:
+            if "{query}" in search_url:
+                search_url = search_url.replace("{query}", quote(query))
+            elif "%s" in search_url:
+                search_url = search_url % quote(query)
+            if not search_url.startswith("http"):
+                search_url = urljoin(self.base_url, search_url)
+        else:
+            search_url = f"{self.base_url}/search?query={quote(query)}"
+
+        try:
+            self._runtime.set_url(search_url)
+            get_name_and_link = None
+            if self._module_info:
+                get_name_and_link = self._module_info.get("get_name_and_link")
+            if not get_name_and_link:
+                get_name_and_link = "GetNameAndLink"
+
+            self._runtime.call_function(get_name_and_link)
+            results = []
+            for item in self._runtime.get_results():
+                link = item.get("link", "")
+                name = item.get("name", "")
+                if not link or not name:
+                    continue
+                if not link.startswith("http"):
+                    link = urljoin(self.base_url, link)
+                results.append(MangaResult(
+                    id=link,
+                    title=name,
+                    source=self.id,
+                    url=link
+                ))
+            return results
+        except Exception as e:
+            source_log(f"[{self.id}] Generic search error: {e}")
+            return []
 
     def get_chapters(
         self,
@@ -248,17 +290,51 @@ class LuaSourceAdapter(BaseConnector):
 
             # Call the module's GetInfo function
             get_info_func = self._module_info.get("get_info", "GetInfo")
+            self._runtime.reset_lists()
             self._runtime.call_function(get_info_func)
 
-            # Parse results from module
-            # TODO: This needs more implementation based on FMD's output format
+            results = []
+            for item in self._runtime.get_results():
+                link = item.get("link", "")
+                name = item.get("name", "")
+                if not link:
+                    continue
+                if not link.startswith("http"):
+                    link = urljoin(self.base_url, link)
+                chapter_num_match = re.search(r'[Cc]h(?:apter)?\.?\s*(\d+(?:\.\d+)?)', name)
+                chapter_num = chapter_num_match.group(1) if chapter_num_match else "0"
+                results.append(ChapterResult(
+                    id=link,
+                    chapter=chapter_num,
+                    title=name,
+                    language=language,
+                    url=link,
+                    source=self.id
+                ))
 
-            return []
+            results.sort(key=lambda x: float(x.chapter) if x.chapter else 0)
+            return results
 
         except Exception as e:
             self._handle_error(str(e))
             source_log(f"[{self.id}] Chapter error: {e}")
-            return []
+            self._runtime.reset_lists()
+            get_pages_func = self._module_info.get("get_pages", "GetPageNumber")
+            self._runtime.call_function(get_pages_func)
+
+            pages = []
+            for idx, item in enumerate(self._runtime.get_results()):
+                link = item.get("link", "")
+                if not link:
+                    continue
+                pages.append(PageResult(
+                    url=link,
+                    index=idx,
+                    headers={"User-Agent": "MangaNegus/3.0"},
+                    referer=self.base_url
+                ))
+
+            return pages
 
     def _get_chapters_mangadex(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
         """Get chapters from MangaDex API."""
@@ -335,7 +411,30 @@ class LuaSourceAdapter(BaseConnector):
             if "mangadex" in self.module_name.lower():
                 return self._get_pages_mangadex(chapter_id)
 
-            return []
+            if chapter_id.startswith("http"):
+                self._runtime.set_url(chapter_id)
+            else:
+                self._runtime.set_url(urljoin(self.base_url + "/", chapter_id))
+
+            self._runtime.reset_lists()
+            get_pages_func = self._module_info.get("get_pages", "GetPageNumber")
+            self._runtime.call_function(get_pages_func)
+
+            pages = []
+            for idx, item in enumerate(self._runtime.get_results()):
+                link = item.get("link", "")
+                if not link:
+                    continue
+                if not link.startswith("http"):
+                    link = urljoin(self.base_url, link)
+                pages.append(PageResult(
+                    url=link,
+                    index=idx,
+                    headers={"User-Agent": "MangaNegus/3.0"},
+                    referer=chapter_id if chapter_id.startswith("http") else self.base_url
+                ))
+
+            return pages
 
         except Exception as e:
             self._handle_error(str(e))

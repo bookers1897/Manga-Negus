@@ -23,7 +23,7 @@ except ImportError:
     HAS_BS4 = False
 
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus, source_log
 )
 
 
@@ -174,7 +174,9 @@ class MangaKakalotConnector(BaseConnector):
                     continue
                 
                 manga_url = link.get('href', '')
-                manga_id = self._extract_manga_id(manga_url)
+                if manga_url and not manga_url.startswith('http'):
+                    manga_url = f"{self.base_url.rstrip('/')}/{manga_url.lstrip('/')}"
+                manga_id = manga_url or self._extract_manga_id(manga_url)
                 
                 # Get cover
                 img = item.select_one('img')

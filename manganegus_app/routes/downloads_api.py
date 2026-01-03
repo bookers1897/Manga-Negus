@@ -9,20 +9,25 @@ downloads_bp = Blueprint('downloads_api', __name__)
 @csrf_protect
 def start_download():
     """Start downloading chapters."""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     chapters = data.get('chapters', [])
     title = data.get('title')
     source_id = data.get('source')
+    manga_id = data.get('manga_id', '')
     if not chapters or not title or not source_id:
         return jsonify({'error': 'Missing required fields'}), 400
-    job_id = downloader.start(chapters, title, source_id)
+    if len(chapters) > 500:
+        return jsonify({'error': 'Too many chapters requested'}), 400
+    if len(str(title)) > 200:
+        return jsonify({'error': 'Title too long'}), 400
+    job_id = downloader.start(chapters, title, source_id, manga_id)
     return jsonify({'status': 'started', 'job_id': job_id})
 
 @downloads_bp.route('/api/download/cancel', methods=['POST'])
 @csrf_protect
 def cancel_download():
     """Cancel an active download."""
-    data = request.json
+    data = request.get_json(silent=True) or {}
     job_id = data.get('job_id')
     if downloader.cancel(job_id):
         return jsonify({'status': 'ok'})
@@ -32,8 +37,12 @@ def cancel_download():
 @csrf_protect
 def get_downloaded_chapters():
     """Get list of downloaded chapters."""
-    data = request.json
-    chapters = downloader.get_downloaded(data.get('title', ''))
+    data = request.get_json(silent=True) or {}
+    title = data.get('title')
+    if not title:
+        manga_id = data.get('id', '')
+        title = f"manga_{str(manga_id)[:8]}" if manga_id else ''
+    chapters = downloader.get_downloaded(title or '')
     return jsonify({'chapters': chapters})
 
 @downloads_bp.route('/downloads/<path:filename>')

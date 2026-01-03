@@ -50,8 +50,8 @@ class MangaFireConnector(BaseConnector):
     
     # URL Detection patterns
     url_patterns = [
-        r'https?://(?:www\.)?mangafire\.to/manga/([a-z0-9-]+)',  # e.g., /manga/naruto
-        r'https?://(?:www\.)?mangafire\.to/read/([a-z0-9-]+)',   # e.g., /read/naruto
+        r'https?://(?:www\.)?mangafire\.to/manga/([a-z0-9.-]+)',  # e.g., /manga/naruto.4m
+        r'https?://(?:www\.)?mangafire\.to/read/([a-z0-9.-]+)',   # e.g., /read/naruto.4m
     ]
 
     rate_limit = 2.0
@@ -112,6 +112,10 @@ class MangaFireConnector(BaseConnector):
         session = self._scraper or self.session
         if not session:
             return None
+        if self.requires_cloudflare and not self._scraper:
+            self._handle_cloudflare()
+            self._log("⚠️ MangaFire requires cloudscraper for access")
+            return None
 
         self._wait_for_rate_limit()
 
@@ -169,6 +173,10 @@ class MangaFireConnector(BaseConnector):
         session = self._scraper or self.session
         if not session:
             return None
+        if self.requires_cloudflare and not self._scraper:
+            self._handle_cloudflare()
+            self._log("⚠️ MangaFire requires cloudscraper for access")
+            return None
 
         self._wait_for_rate_limit()
 
@@ -193,6 +201,10 @@ class MangaFireConnector(BaseConnector):
         """Log message."""
         from sources.base import source_log
         source_log(msg)
+
+    def get_download_session(self):
+        """Prefer cloudscraper session for downloads."""
+        return self._scraper or self.session
 
     # =========================================================================
     # PARSING HELPERS
