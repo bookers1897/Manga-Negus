@@ -28,7 +28,7 @@ except ImportError:
     HAS_BS4 = False
 
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus, source_log
 )
 
 

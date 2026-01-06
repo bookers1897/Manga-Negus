@@ -96,10 +96,6 @@ class WeebCentralV2Connector(BaseConnector):
         if not HAS_CURL_CFFI:
             return None
 
-    def get_download_session(self):
-        """Use curl_cffi session for downloads when available."""
-        return getattr(self, "_session", None) or self.session
-
         self._wait_for_rate_limit()
 
         try:
@@ -127,6 +123,10 @@ class WeebCentralV2Connector(BaseConnector):
             self._handle_error(str(e))
             source_log(f"[{self.id}] Request error: {e}")
             return None
+
+    def get_download_session(self):
+        """Use curl_cffi session for downloads when available."""
+        return getattr(self, "_session", None) or self.session
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
         """Search WeebCentral for manga."""

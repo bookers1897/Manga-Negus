@@ -34,12 +34,15 @@ class MangaNatoV2Connector(BaseConnector):
     """MangaNato scraper with Cloudflare bypass."""
     
     id = "manganato-v2"
-    name = "MangaNato V2"
-    base_url = "https://manganato.com"
+    name = "MangaKakalot"  # Updated Jan 2026: domain migration
+    base_url = "https://mangakakalot.gg"  # Working domain as of Jan 2026
     icon = "📖"
-    
-    # URL Detection patterns
+
+    # URL Detection patterns (updated for new domain)
     url_patterns = [
+        r'https?://(?:www\.)?mangakakalot\.gg/manga-([a-z0-9]+)',
+        r'https?://(?:www\.)?mangakakalot\.gg/read-([a-z0-9]+)',
+        # Legacy patterns for old domains
         r'https?://(?:www\.)?(?:manganato|manganelo|chapmanganato)\.(?:com|gg|to)/manga-([a-z0-9]+)',
         r'https?://(?:www\.)?(?:manganato|manganelo|chapmanganato)\.(?:com|gg|to)/read-([a-z0-9]+)',
     ]
@@ -74,7 +77,11 @@ class MangaNatoV2Connector(BaseConnector):
                 url,
                 impersonate="chrome120",
                 timeout=self.request_timeout,
-                headers={"Referer": "https://manganato.com/"}
+                headers={
+                    "Referer": "https://mangakakalot.gg/",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9"
+                }
             )
             
             if response.status_code == 200:
@@ -113,22 +120,31 @@ class MangaNatoV2Connector(BaseConnector):
         
         soup = BeautifulSoup(html, 'html.parser')
         results = []
-        
-        for item in soup.select('.search-story-item'):
+
+        # MangaKakalot.gg uses .story_item (updated Jan 2026)
+        for item in soup.select('.story_item'):
             try:
-                link = item.select_one('a.item-img')
-                if not link: continue
-                
-                href = link.get('href')
+                # Title and URL from h3.story_name > a
+                title_link = item.select_one('h3.story_name a')
+                if not title_link:
+                    continue
+
+                href = title_link.get('href', '')
+                title = title_link.text.strip()
                 manga_id = href.split('/')[-1] if href else ""
-                
-                img = link.select_one('img')
+
+                # Cover image
+                img = item.select_one('img')
                 cover = img.get('src') if img else None
-                title = img.get('alt') if img else item.select_one('.item-right h3 a').text
-                
-                author_elem = item.select_one('.item-author')
-                author = author_elem.text if author_elem else None
-                
+
+                # Author from span containing "Author(s)"
+                author = None
+                for span in item.select('span'):
+                    text = span.text.strip()
+                    if 'Author' in text:
+                        author = text.replace('Author(s) :', '').strip()
+                        break
+
                 results.append(MangaResult(
                     id=manga_id,
                     title=title,
@@ -137,7 +153,9 @@ class MangaNatoV2Connector(BaseConnector):
                     url=href,
                     author=author
                 ))
-            except: continue
+            except Exception as e:
+                source_log(f"[{self.id}] Failed to parse item: {e}")
+                continue
             
         return results
     
@@ -201,43 +219,38 @@ class MangaNatoV2Connector(BaseConnector):
 
     def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
         source_log(f"[{self.id}] Getting chapters for {manga_id}")
-        
-        # URL could be at manganato.com or chapmanganato.com
-        # Usually it's https://chapmanganato.com/manga-<id>
-        url = f"https://chapmanganato.com/{manga_id}"
-        if not manga_id.startswith("manga-"):
-             # Sometimes ID doesn't have prefix, sometimes it does. 
-             # Safe fallback: try redirect or search result link
-             pass
+
+        # Updated Jan 2026: use mangakakalot.gg
+        # URL format: https://mangakakalot.gg/manga/<id>
+        url = f"{self.base_url}/manga/{manga_id}"
 
         html = self._get(url)
-        # If 404, try adding 'manga-' prefix if missing
-        if not html and not manga_id.startswith('manga-'):
-             url = f"https://chapmanganato.com/manga-{manga_id}"
-             html = self._get(url)
+        if not html:
+            return []
 
-        if not html: return []
-        
         soup = BeautifulSoup(html, 'html.parser')
         results = []
-        
-        for li in soup.select('.row-content-chapter li'):
+
+        # MangaKakalot.gg uses .chapter-list > .row structure (updated Jan 2026)
+        for row in soup.select('.chapter-list .row'):
             try:
-                link = li.select_one('a.chapter-name')
-                if not link: continue
-                
-                href = link.get('href')
-                title = link.text
-                
+                link = row.select_one('a')
+                if not link:
+                    continue
+
+                href = link.get('href', '')
+                title = link.text.strip()
+
                 # Extract chapter number
                 match = re.search(r'chapter[-_ ]([\d\.]+)', href)
                 num = match.group(1) if match else "0"
-                
-                date_elem = li.select_one('.chapter-time')
-                date = date_elem.get('title') if date_elem else None
-                
+
+                # Published date from span with title attribute
+                date_spans = row.select('span[title]')
+                date = date_spans[0].get('title') if date_spans else None
+
                 results.append(ChapterResult(
-                    id=href, # Use full URL as ID for easy page fetching
+                    id=href,  # Use full URL as ID for easy page fetching
                     chapter=num,
                     title=title,
                     language="en",
@@ -245,7 +258,9 @@ class MangaNatoV2Connector(BaseConnector):
                     url=href,
                     source=self.id
                 ))
-            except: continue
+            except Exception as e:
+                source_log(f"[{self.id}] Failed to parse chapter: {e}")
+                continue
             
         results.sort(key=lambda x: float(x.chapter) if x.chapter.replace('.', '', 1).isdigit() else 0)
         return results
