@@ -2,8 +2,53 @@ from flask import Blueprint, jsonify, request, Response, render_template
 from manganegus_app.log import log, msg_queue
 import requests
 import queue
+import ipaddress
 
 main_bp = Blueprint('main_api', __name__)
+
+def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
+    """
+    Validate URL for SSRF protection.
+
+    Args:
+        url: URL to validate
+        allowed_domains: List of allowed domain names
+
+    Returns:
+        (is_valid, error_message)
+    """
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+
+        # Only allow http/https schemes
+        if parsed.scheme not in ('http', 'https'):
+            return False, f'Scheme {parsed.scheme} not allowed'
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False, 'Missing hostname'
+
+        # Check domain whitelist
+        if hostname not in allowed_domains:
+            # Try to resolve hostname to IP to check for private ranges
+            try:
+                import socket
+                ip_str = socket.gethostbyname(hostname)
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private/loopback/link-local addresses
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    return False, f'Access to private IP ranges not allowed'
+            except (socket.gaierror, ValueError):
+                pass  # Hostname doesn't resolve, will be caught by domain check
+
+            return False, f'Domain {hostname} not in whitelist'
+
+        return True, ''
+
+    except Exception as e:
+        return False, f'Invalid URL: {str(e)}'
 
 @main_bp.route('/')
 def index():
@@ -14,13 +59,14 @@ def index():
 def proxy_image():
     """
     Proxy external images to avoid CORS issues.
+    SECURITY: Protected against SSRF with domain whitelist and private IP blocking.
     Usage: /api/proxy/image?url=https://uploads.mangadex.org/covers/...
     """
     url = request.args.get('url', '')
     if not url:
         return jsonify({'error': 'Missing url parameter'}), 400
 
-    # Validate URL is from allowed domains
+    # Validate URL is from allowed domains (SSRF protection)
     allowed_domains = [
         'uploads.mangadex.org',
         'mangadex.org',
@@ -36,13 +82,11 @@ def proxy_image():
         's1.mbcdnv3.xyz',
     ]
 
-    try:
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        if parsed.hostname not in allowed_domains and parsed.hostname != 'localhost':
-            return jsonify({'error': f'Image proxying from {parsed.hostname} is not allowed'}), 403
-    except Exception:
-        return jsonify({'error': 'Invalid URL provided for proxying'}), 400
+    # SECURITY: Validate URL to prevent SSRF attacks
+    is_valid, error_msg = is_safe_url(url, allowed_domains)
+    if not is_valid:
+        log(f"🚨 SSRF attempt blocked: {url} - {error_msg}")
+        return jsonify({'error': f'Security: {error_msg}'}), 403
 
     try:
         headers = {

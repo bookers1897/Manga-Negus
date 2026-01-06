@@ -32,9 +32,13 @@ export async function loadChapters() {
             100
         );
 
+        let newChapters = null;
+
         if (state.chapterOffset === 0) {
             state.chapters = data.chapters;
+            // newChapters remains null to trigger full render
         } else {
+            newChapters = data.chapters;
             state.chapters = [...state.chapters, ...data.chapters];
         }
 
@@ -42,7 +46,7 @@ export async function loadChapters() {
         state.chapterOffset = data.nextOffset;
 
         renderTitleCard();
-        renderChapters();
+        renderChapters(newChapters);
 
         state.elements.loadMoreContainer.style.display = state.hasMoreChapters ? 'block' : 'none';
     } catch (e) {
@@ -157,32 +161,40 @@ function renderTitleCard() {
     state.elements.chapterCount.textContent = `(${state.chapters.length})`;
 }
 
-function renderChapters() {
-    // Clear grid
-    while (state.elements.chapterGrid.firstChild) {
-        state.elements.chapterGrid.removeChild(state.elements.chapterGrid.firstChild);
+function renderChapters(newItemsOnly = null) {
+    if (!newItemsOnly) {
+        // Full render - Clear grid
+        while (state.elements.chapterGrid.firstChild) {
+            state.elements.chapterGrid.removeChild(state.elements.chapterGrid.firstChild);
+        }
+
+        if (!state.chapters.length) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'empty-state';
+
+            const icon = document.createElement('i');
+            icon.className = 'ph ph-book-open';
+
+            const text = document.createElement('p');
+            text.textContent = 'No chapters';
+
+            emptyState.appendChild(icon);
+            emptyState.appendChild(text);
+            state.elements.chapterGrid.appendChild(emptyState);
+            return;
+        }
+
+        state.chapters.forEach(ch => {
+            const item = createChapterItem(ch);
+            state.elements.chapterGrid.appendChild(item);
+        });
+    } else {
+        // Append new items only
+        newItemsOnly.forEach(ch => {
+            const item = createChapterItem(ch);
+            state.elements.chapterGrid.appendChild(item);
+        });
     }
-
-    if (!state.chapters.length) {
-        const emptyState = document.createElement('div');
-        emptyState.className = 'empty-state';
-
-        const icon = document.createElement('i');
-        icon.className = 'ph ph-book-open';
-
-        const text = document.createElement('p');
-        text.textContent = 'No chapters';
-
-        emptyState.appendChild(icon);
-        emptyState.appendChild(text);
-        state.elements.chapterGrid.appendChild(emptyState);
-        return;
-    }
-
-    state.chapters.forEach(ch => {
-        const item = createChapterItem(ch);
-        state.elements.chapterGrid.appendChild(item);
-    });
 }
 
 function createChapterItem(chapter) {

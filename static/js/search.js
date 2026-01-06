@@ -78,7 +78,6 @@ export async function detectAndOpenFromURL() {
         window.dispatchEvent(new CustomEvent('log', {
             detail: { message: `❌ ${e.message || 'URL detection failed'}` }
         }));
-        alert(e.message || 'Could not detect manga from this URL. 18 sources supported - see tooltip on input field for list.');
     } finally {
         state.setLoading(false);
     }

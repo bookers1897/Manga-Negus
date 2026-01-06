@@ -26,6 +26,10 @@ export async function loadSources() {
 
     } catch (e) {
         console.error('Failed to load sources:', e);
+        state.elements.sourceSelect.innerHTML = '';
+        const option = document.createElement('option');
+        option.textContent = 'Error loading sources';
+        state.elements.sourceSelect.appendChild(option);
     }
 }
 

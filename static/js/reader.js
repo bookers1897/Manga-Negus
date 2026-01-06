@@ -7,9 +7,14 @@ import api from './api.js';
 import state from './state.js';
 import { sanitizeUrl } from './utils.js';
 
+let currentChapterId = null;
+
 export async function openReader(chapterId, chapterNum) {
+    currentChapterId = chapterId;
     state.elements.readerContainer.classList.add('active');
     state.elements.readerTitle.textContent = `Chapter ${chapterNum}`;
+
+    updateNavigationButtons();
 
     // Show loading state
     showReaderLoading();
@@ -38,6 +43,49 @@ export async function openReader(chapterId, chapterNum) {
 
 export function closeReader() {
     state.elements.readerContainer.classList.remove('active');
+    currentChapterId = null;
+}
+
+function updateNavigationButtons() {
+    if (!state.chapters.length || !currentChapterId) return;
+    
+    const currentIndex = state.chapters.findIndex(ch => ch.id === currentChapterId);
+    if (currentIndex === -1) return;
+
+    // Assuming Descending Order (Newest First in Array)
+    // Next (1 -> 2) implies moving to a LOWER index (newer chapter)
+    // Prev (2 -> 1) implies moving to a HIGHER index (older chapter)
+    
+    const nextBtn = state.elements.nextChapterBtn;
+    const prevBtn = state.elements.prevChapterBtn;
+
+    if (nextBtn) {
+        // "Next" button -> Go to Newer Chapter (Index - 1)
+        if (currentIndex > 0) {
+            nextBtn.disabled = false;
+            nextBtn.onclick = () => {
+                const nextCh = state.chapters[currentIndex - 1];
+                openReader(nextCh.id, nextCh.chapter);
+            };
+        } else {
+            nextBtn.disabled = true;
+            nextBtn.onclick = null;
+        }
+    }
+
+    if (prevBtn) {
+        // "Prev" button -> Go to Older Chapter (Index + 1)
+        if (currentIndex < state.chapters.length - 1) {
+            prevBtn.disabled = false;
+            prevBtn.onclick = () => {
+                const prevCh = state.chapters[currentIndex + 1];
+                openReader(prevCh.id, prevCh.chapter);
+            };
+        } else {
+            prevBtn.disabled = true;
+            prevBtn.onclick = null;
+        }
+    }
 }
 
 function renderPages(pages) {

@@ -268,10 +268,10 @@ class BaseConnector(ABC):
                 wait_time += random.uniform(0.05, 0.15)
                 time.sleep(wait_time)
                 self._tokens = 1
-            
-            # Consume token
-        self._tokens -= 1
-        self._last_request = time.time()
+
+            # Consume token (MUST be inside lock for thread safety)
+            self._tokens -= 1
+            self._last_request = time.time()
 
     def wait_for_rate_limit(self) -> None:
         """Public wrapper for rate limiting (for downloader use)."""

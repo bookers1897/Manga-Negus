@@ -80,7 +80,7 @@ class AsyncBaseConnector(ABC):
         """Initialize async connector."""
         self._session: Optional[AsyncSession] = None
         self._limiter = AsyncRateLimiter(self.rate_limit)
-        self._status = SourceStatus.ACTIVE
+        self._status = SourceStatus.ONLINE
         self._error_count = 0
         self._last_error = None
         self._initialized = False
@@ -203,14 +203,14 @@ class AsyncBaseConnector(ABC):
     def _handle_success(self) -> None:
         """Handle successful request."""
         self._error_count = 0
-        self._status = SourceStatus.ACTIVE
+        self._status = SourceStatus.ONLINE
 
     def _handle_error(self, error: str) -> None:
         """Handle request error."""
         self._error_count += 1
         self._last_error = error
         if self._error_count >= 5:
-            self._status = SourceStatus.ERROR
+            self._status = SourceStatus.OFFLINE
 
     def _handle_rate_limit(self, retry_after: int = 30) -> None:
         """Handle rate limit response."""
@@ -224,7 +224,7 @@ class AsyncBaseConnector(ABC):
     @property
     def is_available(self) -> bool:
         """Check if source is available."""
-        return self._status == SourceStatus.ACTIVE
+        return self._status == SourceStatus.ONLINE
 
     # =========================================================================
     # ABSTRACT METHODS

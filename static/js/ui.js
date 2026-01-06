@@ -44,6 +44,9 @@ export function log(message) {
 
 export function startLogPolling() {
     setInterval(async () => {
+        // Only poll if console is open
+        if (!state.elements.consolePanel || !state.elements.consolePanel.classList.contains('active')) return;
+
         try {
             const data = await api.getLogs();
             data.logs.forEach(msg => log(msg));

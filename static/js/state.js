@@ -88,6 +88,8 @@ class AppState {
             readerContent: document.getElementById('reader-content'),
             readerTitle: document.getElementById('reader-title'),
             readerCloseBtn: document.getElementById('reader-close-btn'),
+            prevChapterBtn: document.getElementById('prev-chapter-btn'),
+            nextChapterBtn: document.getElementById('next-chapter-btn'),
 
             // Source modal
             sourceModalOverlay: document.getElementById('source-modal-overlay'),
