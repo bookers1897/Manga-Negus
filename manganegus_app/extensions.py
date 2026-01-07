@@ -104,10 +104,10 @@ class Library:
             key = f"{source}:{manga_id}"
 
             with get_db_session() as session:
-                # Check if manga exists
+                # Check if manga exists (convert manga_id to string for VARCHAR column)
                 manga = session.query(Manga).filter_by(
                     source_id=source,
-                    source_manga_id=manga_id
+                    source_manga_id=str(manga_id)
                 ).first()
 
                 if not manga:
@@ -116,7 +116,7 @@ class Library:
                     manga = Manga(
                         id=str(uuid.uuid4()),
                         source_id=source,
-                        source_manga_id=manga_id,
+                        source_manga_id=str(manga_id),  # Store as string
                         title=title,
                         cover_image=cover,
                         last_scraped_at=now,
@@ -204,7 +204,7 @@ class Library:
             with get_db_session() as session:
                 manga = session.query(Manga).filter_by(
                     source_id=source,
-                    source_manga_id=manga_id
+                    source_manga_id=str(manga_id)  # Convert to string
                 ).first()
 
                 if manga:
@@ -252,7 +252,7 @@ class Library:
             with get_db_session() as session:
                 manga = session.query(Manga).filter_by(
                     source_id=source,
-                    source_manga_id=manga_id
+                    source_manga_id=str(manga_id)  # Convert to string
                 ).first()
 
                 if manga:
@@ -302,7 +302,7 @@ class Library:
             with get_db_session() as session:
                 manga = session.query(Manga).filter_by(
                     source_id=source,
-                    source_manga_id=manga_id
+                    source_manga_id=str(manga_id)  # Convert to string
                 ).first()
 
                 if manga:
