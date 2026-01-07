@@ -620,11 +620,20 @@ def extract_id_from_url(self, url: str) -> Optional[str]:
 
 ---
 
-**Last Updated:** 2026-01-02
-**Version:** 3.0.2 (Backend Refactoring + Frontend Modularization)
+**Last Updated:** 2026-01-07
+**Version:** 3.0.3 (Library Display Fix + PostgreSQL Integration)
 **For:** AI Assistants (Claude Code)
 
-**Recent Changes (Jan 2, 2026):**
+**Recent Changes (Jan 7, 2026):**
+- ✅ **Library Display Fix:** Fixed ES6 module initialization race condition causing library page not to display
+- ✅ **DOM Ready Check:** Added `document.readyState` check in `main.js` for deferred module loading
+- ✅ **PostgreSQL Database:** Migrated from JSON file storage to PostgreSQL with SQLAlchemy ORM
+- ✅ **Database Fixes:** Fixed ReadingStatus import error and VARCHAR/integer type casting issues
+- ✅ **Already Added State:** Library data caching working correctly, buttons show proper state
+- ✅ **Portrait Cards:** Updated library grid to use portrait format (160px) matching search view
+- ✅ **MAL Image Loading:** Direct CDN loading for MyAnimeList images without proxy
+
+**Previous Changes (Jan 2, 2026):**
 - ✅ **Backend Refactored:** Moved to `manganegus_app/` package with Flask blueprints
 - ✅ **Frontend Modularized:** Split 704-line monolithic JS into 10 ES6 modules (1,553 lines total)
 - ✅ **Code Cleanup:** Removed 195 lines of redundant Library/Downloader code

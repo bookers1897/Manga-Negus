@@ -19,6 +19,13 @@ export function showView(view) {
     const targetView = document.getElementById(`${view}-view`);
     if (targetView) {
         targetView.classList.add('active');
+    } else {
+        console.error(`❌ View not found: ${view}-view`);
+    }
+
+    // Trigger loadLibrary event when switching to library
+    if (view === 'library') {
+        window.dispatchEvent(new CustomEvent('loadLibrary'));
     }
 }
 

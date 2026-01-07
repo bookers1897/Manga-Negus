@@ -166,7 +166,14 @@ class MangaNegusApp {
 }
 
 // Initialize app on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
+// Check if DOM is already loaded (modules load deferred, so DOMContentLoaded might have already fired)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        const app = new MangaNegusApp();
+        app.init();
+    });
+} else {
+    // DOM already loaded, initialize immediately
     const app = new MangaNegusApp();
     app.init();
-});
+}
