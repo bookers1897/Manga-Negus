@@ -14,6 +14,9 @@ class AppState {
         this.sources = [];
         this.activeSource = null;
 
+        // Library state
+        this.libraryData = null;  // Cached library data for "Already Added" checks
+
         // Manga state
         this.currentManga = null;  // {id, source, title}
         this.chapters = [];

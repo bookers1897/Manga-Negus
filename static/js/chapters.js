@@ -5,6 +5,7 @@
 
 import api from './api.js';
 import state from './state.js';
+import { updateButtonState } from './library.js';
 
 export async function showMangaDetails(manga) {
     // Reset and set current manga
@@ -21,6 +22,9 @@ export async function showMangaDetails(manga) {
 
     // Render manga metadata immediately if available
     renderMangaMetadata();
+
+    // Update "Add to Library" button state
+    updateButtonState(state.elements.addLibraryBtn, manga);
 
     await loadChapters();
 }

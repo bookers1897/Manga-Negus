@@ -26,6 +26,9 @@ class MangaNegusApp {
         // Initialize modals
         library.initializeStatusModal();
 
+        // Load library data for "Already Added" checks (silent background load)
+        library.loadLibrary().catch(e => console.error('Failed to load library:', e));
+
         // Load sources and popular manga
         await sources.loadSources();
         search.loadPopular();

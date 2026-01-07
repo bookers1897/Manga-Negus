@@ -6,6 +6,7 @@
 import api from './api.js';
 import state from './state.js';
 import { proxyImageUrl } from './utils.js';
+import { updateButtonState } from './library.js';
 
 export async function loadPopular() {
     showLoadingState(state.elements.resultsGrid);
@@ -186,6 +187,9 @@ function createMangaCard(manga) {
 
     card.appendChild(cover);
     card.appendChild(content);
+
+    // Check if already in library and update button state
+    updateButtonState(addBtn, manga);
 
     // Event listeners
     card.addEventListener('click', e => {
