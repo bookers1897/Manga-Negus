@@ -10,16 +10,27 @@ import { proxyImageUrl } from './utils.js';
 export async function loadLibrary(filter = 'all') {
     try {
         const lib = await api.getLibrary();
+        console.log('📚 Library API response:', lib);
 
         // Ensure lib is an object
         const safeLib = (lib && typeof lib === 'object') ? lib : {};
+        console.log('📚 Safe library object:', safeLib);
 
         // Cache library data in state for "Already Added" checks
         state.libraryData = safeLib;
 
         let items = Object.entries(safeLib);
+        console.log('📚 Library entries:', items.length, items);
+
         if (filter !== 'all') {
             items = items.filter(([k, m]) => m && m.status === filter);
+            console.log('📚 Filtered entries:', items.length);
+        }
+
+        // Check if library grid exists
+        if (!state.elements.libraryGrid) {
+            console.error('❌ Library grid element not found!');
+            return;
         }
 
         // Clear grid safely
@@ -28,6 +39,7 @@ export async function loadLibrary(filter = 'all') {
         }
 
         if (!items.length) {
+            console.log('📚 No items to display, showing empty state');
             const emptyState = document.createElement('div');
             emptyState.className = 'empty-state';
 
@@ -43,15 +55,20 @@ export async function loadLibrary(filter = 'all') {
             return;
         }
 
+        console.log('📚 Rendering', items.length, 'library items...');
+
         // Build library items using safe DOM methods - NEW PORTRAIT FORMAT
-        items.forEach(([key, m]) => {
+        items.forEach(([key, m], index) => {
+            console.log(`📚 Processing item ${index + 1}/${items.length}:`, key, m);
+
             // Skip if manga data is invalid
             if (!m || !m.title) {
-                console.warn('Invalid library item:', key, m);
+                console.warn('⚠️ Invalid library item:', key, m);
                 return;
             }
 
             try {
+                console.log(`📚 Creating card for: ${m.title}`);
                 const card = document.createElement('div');
                 card.className = 'manga-card glass-panel';
                 card.dataset.key = key;
@@ -115,13 +132,16 @@ export async function loadLibrary(filter = 'all') {
                 });
 
                 state.elements.libraryGrid.appendChild(card);
+                console.log(`✅ Card appended for: ${m.title}`);
             } catch (itemError) {
-                console.error('Failed to render library item:', itemError, m);
+                console.error('❌ Failed to render library item:', itemError, m);
                 // Skip this item but continue with others
             }
         });
+
+        console.log(`✅ Finished rendering ${items.length} library items`);
     } catch (e) {
-        console.error('Failed to load library:', e);
+        console.error('❌ Failed to load library:', e);
     }
 }
 
