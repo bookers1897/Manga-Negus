@@ -100,13 +100,13 @@ class API {
         return resp.json();
     }
 
-    async addToLibrary(manga) {
+    async addToLibrary(manga, status = 'reading') {
         return this.post('/api/library/save', {
             id: manga.id,
             title: manga.title,
             source: manga.source,
             cover: manga.cover_url || manga.cover,  // Handle both properties
-            status: 'reading'
+            status: status
         });
     }
 

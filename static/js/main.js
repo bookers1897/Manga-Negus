@@ -23,6 +23,9 @@ class MangaNegusApp {
         // Bind all event listeners
         this.bindEvents();
 
+        // Initialize modals
+        library.initializeStatusModal();
+
         // Load sources and popular manga
         await sources.loadSources();
         search.loadPopular();

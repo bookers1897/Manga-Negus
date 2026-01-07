@@ -104,9 +104,15 @@ export async function loadLibrary(filter = 'all') {
     }
 }
 
-export async function addToLibrary(manga, buttonElement = null) {
+export async function addToLibrary(manga, buttonElement = null, status = null) {
+    // If no status provided, show modal to select status
+    if (!status) {
+        showStatusSelectionModal(manga, buttonElement);
+        return;
+    }
+
     try {
-        await api.addToLibrary(manga);
+        await api.addToLibrary(manga, status);
 
         // Log success
         window.dispatchEvent(new CustomEvent('log', {
@@ -125,6 +131,11 @@ export async function addToLibrary(manga, buttonElement = null) {
             buttonElement.disabled = true;
             buttonElement.style.opacity = '0.6';
             buttonElement.style.cursor = 'not-allowed';
+        }
+
+        // Reload library if we're on library view
+        if (state.activeView === 'library') {
+            await loadLibrary();
         }
     } catch (e) {
         console.error('Failed to add:', e);
@@ -147,4 +158,61 @@ export async function addToLibrary(manga, buttonElement = null) {
             }, 2000);
         }
     }
+}
+
+function showStatusSelectionModal(manga, buttonElement) {
+    const overlay = document.getElementById('library-status-modal-overlay');
+    const modal = document.getElementById('library-status-modal');
+
+    if (!overlay || !modal) {
+        console.error('Status modal not found');
+        return;
+    }
+
+    // Store manga and button in modal for later use
+    modal._pendingManga = manga;
+    modal._pendingButton = buttonElement;
+
+    // Show modal
+    overlay.classList.add('active');
+}
+
+export function initializeStatusModal() {
+    const overlay = document.getElementById('library-status-modal-overlay');
+    const modal = document.getElementById('library-status-modal');
+    const closeBtn = document.getElementById('close-library-status-modal');
+    const statusButtons = document.querySelectorAll('.status-option-btn');
+
+    if (!overlay || !modal) return;
+
+    // Close modal handlers
+    const closeModal = () => {
+        overlay.classList.remove('active');
+        modal._pendingManga = null;
+        modal._pendingButton = null;
+    };
+
+    closeBtn?.addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+    });
+
+    // Status selection handlers
+    statusButtons.forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const status = btn.dataset.status;
+            const manga = modal._pendingManga;
+            const buttonElement = modal._pendingButton;
+
+            if (!manga) {
+                console.error('No manga data in modal');
+                return;
+            }
+
+            closeModal();
+
+            // Call addToLibrary with selected status
+            await addToLibrary(manga, buttonElement, status);
+        });
+    });
 }

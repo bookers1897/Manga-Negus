@@ -277,6 +277,35 @@
         </footer>
     </div>
 
+    <!-- Library Status Selection Modal -->
+    <div class="modal-overlay" id="library-status-modal-overlay">
+        <div class="modal glass-panel-elevated library-status-modal" id="library-status-modal">
+            <div class="modal-header">
+                <h3>Add to Library</h3>
+                <button class="glass-btn nav-btn" id="close-library-status-modal">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+            <div class="modal-content">
+                <p class="modal-prompt">Where would you like to add it?</p>
+                <div class="status-options">
+                    <button class="status-option-btn glass-btn" data-status="reading">
+                        <i class="ph-fill ph-book-open"></i>
+                        <span>Reading</span>
+                    </button>
+                    <button class="status-option-btn glass-btn" data-status="plan_to_read">
+                        <i class="ph-fill ph-clock"></i>
+                        <span>Plan to Read</span>
+                    </button>
+                    <button class="status-option-btn glass-btn" data-status="completed">
+                        <i class="ph-fill ph-check-circle"></i>
+                        <span>Completed</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Source Status Modal -->
     <div class="modal-overlay" id="source-modal-overlay">
         <div class="modal glass-panel-elevated" id="source-modal">
