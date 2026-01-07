@@ -100,6 +100,23 @@ class MangaNegusApp {
         state.elements.loadMoreBtn.addEventListener('click', () => chapters.loadMoreChapters());
         state.elements.downloadSelectedBtn.addEventListener('click', () => chapters.downloadSelected());
 
+        // Add to Library button on detail page
+        state.elements.addLibraryBtn.addEventListener('click', () => {
+            if (state.currentManga) {
+                // Ensure manga has source property for Jikan manga
+                const manga = { ...state.currentManga };
+                if (!manga.source && manga.mal_id) {
+                    manga.source = 'jikan';
+                }
+                window.dispatchEvent(new CustomEvent('addToLibrary', {
+                    detail: {
+                        manga: manga,
+                        button: state.elements.addLibraryBtn
+                    }
+                }));
+            }
+        });
+
         // === Console ===
         state.elements.consoleToggle.addEventListener('click', () => ui.toggleConsole());
 

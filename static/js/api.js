@@ -102,9 +102,9 @@ class API {
 
     async addToLibrary(manga, status = 'reading') {
         return this.post('/api/library/save', {
-            id: manga.id,
+            id: manga.id || manga.mal_id || manga.manga_id,  // Handle Jikan (mal_id) and sources (id/manga_id)
             title: manga.title,
-            source: manga.source,
+            source: manga.source || 'jikan',  // Default to 'jikan' for Jikan manga
             cover: manga.cover_url || manga.cover,  // Handle both properties
             status: status
         });

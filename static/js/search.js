@@ -198,6 +198,10 @@ function createMangaCard(manga) {
 
     addBtn.addEventListener('click', e => {
         e.stopPropagation();
+        // Ensure manga has source property for Jikan manga
+        if (!manga.source && manga.mal_id) {
+            manga.source = 'jikan';
+        }
         window.dispatchEvent(new CustomEvent('addToLibrary', {
             detail: { manga, button: addBtn }
         }));
