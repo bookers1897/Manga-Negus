@@ -107,8 +107,8 @@ class MangaNegusApp {
 
         // Open manga details
         window.addEventListener('openManga', e => {
-            const { id, source, title } = e.detail;
-            chapters.showMangaDetails(id, source, title);
+            const { manga } = e.detail;
+            chapters.showMangaDetails(manga);
         });
 
         // Add to library

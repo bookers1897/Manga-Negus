@@ -11,9 +11,12 @@ export async function loadLibrary(filter = 'all') {
     try {
         const lib = await api.getLibrary();
 
-        let items = Object.entries(lib);
+        // Ensure lib is an object
+        const safeLib = (lib && typeof lib === 'object') ? lib : {};
+
+        let items = Object.entries(safeLib);
         if (filter !== 'all') {
-            items = items.filter(([k, m]) => m.status === filter);
+            items = items.filter(([k, m]) => m && m.status === filter);
         }
 
         // Clear grid safely
@@ -39,12 +42,19 @@ export async function loadLibrary(filter = 'all') {
 
         // Build library items using safe DOM methods
         items.forEach(([key, m]) => {
-            const item = document.createElement('div');
-            item.className = 'library-item glass-panel';
-            item.dataset.key = key;
-            item.dataset.source = m.source;
-            item.dataset.id = m.manga_id;
-            item.dataset.title = m.title;
+            // Skip if manga data is invalid
+            if (!m || !m.title) {
+                console.warn('Invalid library item:', key, m);
+                return;
+            }
+
+            try {
+                const item = document.createElement('div');
+                item.className = 'library-item glass-panel';
+                item.dataset.key = key;
+                item.dataset.source = m.source || 'unknown';
+                item.dataset.id = m.manga_id || key;
+                item.dataset.title = m.title;
 
             const cover = document.createElement('img');
             cover.className = 'library-item-cover';
@@ -72,11 +82,22 @@ export async function loadLibrary(filter = 'all') {
             // Click handler - will trigger manga details view
             item.addEventListener('click', () => {
                 window.dispatchEvent(new CustomEvent('openManga', {
-                    detail: { id: m.manga_id, source: m.source, title: m.title }
+                    detail: {
+                        manga: {
+                            id: m.manga_id,
+                            source: m.source,
+                            title: m.title,
+                            cover: m.cover
+                        }
+                    }
                 }));
             });
 
             state.elements.libraryGrid.appendChild(item);
+            } catch (itemError) {
+                console.error('Failed to render library item:', itemError, m);
+                // Skip this item but continue with others
+            }
         });
     } catch (e) {
         console.error('Failed to load library:', e);

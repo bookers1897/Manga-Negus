@@ -116,9 +116,70 @@
                 <button class="back-btn glass-btn" id="back-btn">
                     <i class="ph ph-arrow-left"></i> Back
                 </button>
-                
-                <div class="title-card glass-panel-elevated" id="title-card"></div>
-                
+
+                <!-- Hidden title card for compatibility -->
+                <div id="title-card" style="display: none;"></div>
+
+                <!-- Banner Hero -->
+                <div class="manga-banner" id="manga-banner"></div>
+
+                <!-- Manga Info Section -->
+                <div class="manga-info-container">
+                    <!-- Cover Poster (Left) -->
+                    <div class="manga-cover-section">
+                        <img class="manga-cover-large" id="manga-cover" src="/static/images/placeholder.svg" alt="Cover">
+                        <button class="glass-btn glass-btn-accent add-library-btn" id="add-library-btn" style="width: 100%; margin-top: 1rem;">
+                            <i class="ph ph-plus"></i> Add to Library
+                        </button>
+                    </div>
+
+                    <!-- Details (Right) -->
+                    <div class="manga-details-section">
+                        <h1 class="manga-title" id="manga-title">Loading...</h1>
+
+                        <div class="manga-meta-row" id="manga-meta-row">
+                            <span class="meta-chip" id="manga-status"></span>
+                            <span class="meta-chip" id="manga-type"></span>
+                            <span class="meta-chip" id="manga-year"></span>
+                        </div>
+
+                        <div class="manga-rating-section" id="manga-rating-section" style="display:none;">
+                            <div class="rating-score">
+                                <i class="ph-fill ph-star" style="color: #ffd700;"></i>
+                                <span id="manga-rating-avg">0.0</span>
+                                <span style="color: var(--text-secondary); font-size: 0.9rem;" id="manga-rating-count"></span>
+                            </div>
+                        </div>
+
+                        <div class="manga-synopsis" id="manga-synopsis">
+                            <p>No description available.</p>
+                        </div>
+
+                        <div class="manga-info-grid">
+                            <div class="info-item" id="manga-author-item" style="display:none;">
+                                <span class="info-label">Author</span>
+                                <span class="info-value" id="manga-author"></span>
+                            </div>
+                            <div class="info-item" id="manga-artist-item" style="display:none;">
+                                <span class="info-label">Artist</span>
+                                <span class="info-value" id="manga-artist"></span>
+                            </div>
+                            <div class="info-item" id="manga-chapters-item" style="display:none;">
+                                <span class="info-label">Chapters</span>
+                                <span class="info-value" id="manga-chapters-count"></span>
+                            </div>
+                            <div class="info-item" id="manga-volumes-item" style="display:none;">
+                                <span class="info-label">Volumes</span>
+                                <span class="info-value" id="manga-volumes-count"></span>
+                            </div>
+                        </div>
+
+                        <div class="manga-genres" id="manga-genres"></div>
+
+                        <div class="manga-tags" id="manga-tags" style="margin-top: 1rem;"></div>
+                    </div>
+                </div>
+
                 <div class="chapter-controls">
                     <div class="chapter-label">
                         Chapters <span class="chapter-count" id="chapter-count">(0)</span>

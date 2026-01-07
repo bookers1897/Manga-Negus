@@ -15,9 +15,12 @@ export async function loadPopular() {
         if (resp.error) {
             throw new Error(resp.error);
         }
-        renderResults(resp);
+        // Ensure we have an array
+        const results = Array.isArray(resp) ? resp : [];
+        renderResults(results);
     } catch (e) {
-        showErrorState(state.elements.resultsGrid, 'Failed to load');
+        console.error('Failed to load popular:', e);
+        showErrorState(state.elements.resultsGrid, 'Failed to load popular manga');
     }
 }
 
@@ -29,7 +32,8 @@ export async function search() {
     showLoadingState(state.elements.resultsGrid);
 
     try {
-        const resp = await api.search(query, state.activeSource);
+        // Use smart search for metadata-enriched results
+        const resp = await api.smartSearch(query, state.activeSource);
         if (!resp.ok) {
             const err = await resp.json();
             throw new Error(err.error || 'Search failed');
@@ -70,9 +74,15 @@ export async function detectAndOpenFromURL() {
         // Clear URL input
         state.elements.urlInput.value = '';
 
-        // Trigger manga details open
+        // Trigger manga details open with minimal manga object
         window.dispatchEvent(new CustomEvent('openManga', {
-            detail: { id: data.manga_id, source: data.source_id, title: data.title || '' }
+            detail: {
+                manga: {
+                    id: data.manga_id,
+                    source: data.source_id,
+                    title: data.title || ''
+                }
+            }
         }));
     } catch (e) {
         window.dispatchEvent(new CustomEvent('log', {
@@ -89,27 +99,50 @@ function renderResults(results) {
         state.elements.resultsGrid.removeChild(state.elements.resultsGrid.firstChild);
     }
 
-    if (!results.length) {
+    // Ensure results is an array
+    const safeResults = Array.isArray(results) ? results : [];
+
+    if (!safeResults.length) {
         showEmptyState(state.elements.resultsGrid, 'No results');
         return;
     }
 
-    results.forEach(m => {
-        const card = createMangaCard(m);
-        state.elements.resultsGrid.appendChild(card);
+    safeResults.forEach(m => {
+        try {
+            const card = createMangaCard(m);
+            state.elements.resultsGrid.appendChild(card);
+        } catch (e) {
+            console.error('Failed to render manga card:', e, m);
+            // Skip this card but continue with others
+        }
     });
 }
 
 function createMangaCard(manga) {
+    // Ensure manga object exists
+    if (!manga) {
+        throw new Error('Manga object is required');
+    }
+
     const card = document.createElement('div');
     card.className = 'manga-card glass-panel';
-    card.dataset.id = manga.id;
-    card.dataset.source = manga.source;
+    card.dataset.id = manga.id || manga.mal_id || 'unknown';
+    card.dataset.source = manga.source || 'jikan';
 
     const cover = document.createElement('img');
     cover.className = 'manga-card-cover';
-    cover.src = proxyImageUrl(manga.cover);
-    cover.alt = manga.title;
+
+    // Jikan images don't need proxying - use directly from MAL CDN
+    const coverUrl = manga.cover_url || manga.cover;
+    if (coverUrl && coverUrl.includes('myanimelist.net')) {
+        cover.src = coverUrl;  // Direct URL for Jikan/MAL images
+    } else if (coverUrl) {
+        cover.src = proxyImageUrl(coverUrl);  // Proxy for other sources
+    } else {
+        cover.src = '/static/images/placeholder.svg';
+    }
+
+    cover.alt = manga.title || 'Manga cover';
     cover.loading = 'lazy';
     cover.onerror = () => cover.src = '/static/images/placeholder.svg';
 
@@ -118,18 +151,28 @@ function createMangaCard(manga) {
 
     const title = document.createElement('h3');
     title.className = 'manga-card-title';
-    title.textContent = manga.title;
+    title.textContent = manga.title || 'Unknown Title';
+
+    // Show rating if available (Jikan manga)
+    if (manga.rating && typeof manga.rating.average === 'number') {
+        const ratingDiv = document.createElement('div');
+        ratingDiv.className = 'manga-card-rating';
+
+        const star = document.createElement('i');
+        star.className = 'ph-fill ph-star';
+        star.style.color = '#ffd700';
+
+        const score = document.createElement('span');
+        score.textContent = manga.rating.average.toFixed(1);
+
+        ratingDiv.appendChild(star);
+        ratingDiv.appendChild(score);
+        content.appendChild(ratingDiv);
+    }
 
     const desc = document.createElement('p');
     desc.className = 'manga-card-desc';
-    desc.textContent = manga.author || manga.source;
-
-    const footer = document.createElement('div');
-    footer.className = 'manga-card-footer';
-
-    const label = document.createElement('span');
-    label.className = 'manga-card-label';
-    label.textContent = manga.source;
+    desc.textContent = manga.author || manga.source || 'MyAnimeList';
 
     const addBtn = document.createElement('button');
     addBtn.className = 'glass-btn add-btn';
@@ -137,12 +180,9 @@ function createMangaCard(manga) {
     icon.className = 'ph ph-plus';
     addBtn.appendChild(icon);
 
-    footer.appendChild(label);
-    footer.appendChild(addBtn);
-
     content.appendChild(title);
     content.appendChild(desc);
-    content.appendChild(footer);
+    content.appendChild(addBtn);
 
     card.appendChild(cover);
     card.appendChild(content);
@@ -151,7 +191,7 @@ function createMangaCard(manga) {
     card.addEventListener('click', e => {
         if (!e.target.closest('.add-btn')) {
             window.dispatchEvent(new CustomEvent('openManga', {
-                detail: { id: manga.id, source: manga.source, title: manga.title }
+                detail: { manga: manga }  // Pass full manga object with all metadata
             }));
         }
     });

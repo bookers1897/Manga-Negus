@@ -4,11 +4,49 @@ from sources import get_source_manager
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.search.smart_search import SmartSearch
+from manganegus_app.jikan_api import get_jikan_client
 
 manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 
 # Initialize smart search
 _smart_search = SmartSearch()
+
+def _enrich_with_jikan(manga_list):
+    """Enrich manga list with Jikan metadata (MAL data)"""
+    try:
+        jikan = get_jikan_client()
+        enriched = []
+
+        for manga in manga_list:
+            # Search Jikan for this manga
+            jikan_results = jikan.search_manga(manga.get('title', ''), limit=1)
+
+            if jikan_results:
+                jikan_data = jikan_results[0]
+                # Merge Jikan metadata
+                manga_dict = manga if isinstance(manga, dict) else manga.to_dict()
+                manga_dict.update({
+                    'cover_url': jikan_data['cover_url'],
+                    'synopsis': jikan_data.get('synopsis'),
+                    'rating': jikan_data.get('rating'),
+                    'genres': jikan_data.get('genres', []),
+                    'tags': jikan_data.get('tags', []),
+                    'author': jikan_data.get('author'),
+                    'status': jikan_data.get('status'),
+                    'type': jikan_data.get('type'),
+                    'year': jikan_data.get('year'),
+                    'volumes': jikan_data.get('volumes'),
+                    'mal_id': jikan_data.get('mal_id'),
+                })
+                enriched.append(manga_dict)
+            else:
+                enriched.append(manga if isinstance(manga, dict) else manga.to_dict())
+
+        return enriched
+    except Exception as e:
+        log(f"⚠️ Jikan enrichment failed: {e}")
+        # Return original data if enrichment fails
+        return [m if isinstance(m, dict) else m.to_dict() for m in manga_list]
 
 def _run_async(coro):
     """Run async coroutine safely from sync context."""
@@ -30,15 +68,19 @@ def _run_async(coro):
 @manga_bp.route('/search', methods=['POST'])
 @csrf_protect
 def search():
-    """Search for manga."""
-    manager = get_source_manager()
+    """Search for manga using Jikan (MyAnimeList) API."""
     data = request.get_json(silent=True) or {}
-    query = data.get('query', '')
-    source_id = data.get('source_id')
+    query = data.get('query', '').strip()
+    limit = data.get('limit', 15)
+
     if not query:
         return jsonify([])
-    results = manager.search(query, source_id)
-    return jsonify([r.to_dict() for r in results])
+
+    log(f"🔍 Searching Jikan for '{query}'...")
+    jikan = get_jikan_client()
+    results = jikan.search_manga(query, limit=limit)
+
+    return jsonify(results)
 
 @manga_bp.route('/search/smart', methods=['POST'])
 @csrf_protect
@@ -141,17 +183,38 @@ def detect_url():
 
 @manga_bp.route('/popular')
 def get_popular():
-    """Get popular manga."""
-    manager = get_source_manager()
-    source_id = request.args.get('source_id')
+    """Get popular manga directly from Jikan (MyAnimeList)."""
     try:
         page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
         if page < 1 or page > 1000:
             return jsonify({'error': 'Page must be between 1 and 1000'}), 400
+        if limit < 1 or limit > 25:
+            return jsonify({'error': 'Limit must be between 1 and 25'}), 400
     except ValueError:
-        return jsonify({'error': 'Invalid page number'}), 400
-    results = manager.get_popular(source_id, page)
-    return jsonify([r.to_dict() for r in results])
+        return jsonify({'error': 'Invalid parameters'}), 400
+
+    log(f"📚 Loading top manga from Jikan (page {page})...")
+    jikan = get_jikan_client()
+    results = jikan.get_top_manga(limit=limit, page=page)
+
+    return jsonify(results)
+
+@manga_bp.route('/trending')
+def get_trending():
+    """Get trending/seasonal manga from Jikan."""
+    try:
+        limit = int(request.args.get('limit', 20))
+        if limit < 1 or limit > 25:
+            return jsonify({'error': 'Limit must be between 1 and 25'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid limit'}), 400
+
+    log(f"🔥 Loading trending manga from Jikan...")
+    jikan = get_jikan_client()
+    results = jikan.get_seasonal_manga(limit=limit)
+
+    return jsonify(results)
 
 @manga_bp.route('/latest')
 def get_latest():
@@ -170,23 +233,58 @@ def get_latest():
 @manga_bp.route('/chapters', methods=['POST'])
 @csrf_protect
 def get_chapters():
-    """Get chapters for a manga."""
+    """
+    Get chapters for a manga.
+
+    If manga comes from Jikan (has mal_id but no source), automatically searches
+    sources to find chapter availability.
+    """
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
     manga_id = data.get('id')
     source_id = data.get('source')
+    manga_title = data.get('title')
+    mal_id = data.get('mal_id')
     offset = data.get('offset', 0)
     limit = data.get('limit', 100)
+
+    # If no source specified but we have a title (Jikan manga), search sources
+    if not source_id and manga_title:
+        log(f"🔍 Auto-detecting source for '{manga_title}'...")
+
+        # Try to find this manga in our sources
+        search_results = manager.search(manga_title, source_id=None)
+
+        if search_results:
+            # Use the first result (most relevant)
+            best_match = search_results[0]
+            manga_id = best_match.id
+            source_id = best_match.source
+            log(f"✅ Found in {source_id}: {best_match.title}")
+        else:
+            return jsonify({
+                'error': 'Could not find this manga in any source',
+                'message': 'Try searching for it manually in the source selector'
+            }), 404
+
     if not manga_id or not source_id:
         return jsonify({'error': 'Missing id or source'}), 400
-    chapters = manager.get_chapters(manga_id, source_id)
-    paginated = chapters[offset:offset + limit]
-    return jsonify({
-        'chapters': [c.to_dict() for c in paginated],
-        'total': len(chapters),
-        'hasMore': offset + limit < len(chapters),
-        'nextOffset': offset + limit
-    })
+
+    try:
+        chapters = manager.get_chapters(manga_id, source_id)
+        paginated = chapters[offset:offset + limit]
+
+        return jsonify({
+            'chapters': [c.to_dict() for c in paginated],
+            'total': len(chapters),
+            'hasMore': offset + limit < len(chapters),
+            'nextOffset': offset + limit,
+            'source_id': source_id,  # Return which source we used
+            'manga_id': manga_id      # Return the source's manga ID
+        })
+    except Exception as e:
+        log(f"❌ Failed to get chapters: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @manga_bp.route('/chapter_pages', methods=['POST'])
 @csrf_protect

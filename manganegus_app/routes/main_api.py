@@ -80,6 +80,7 @@ def proxy_image():
         's1.mbcdnv1.xyz',
         's1.mbcdnv2.xyz',
         's1.mbcdnv3.xyz',
+        'temp.compsci88.com',  # WeebCentral V2
     ]
 
     # SECURITY: Validate URL to prevent SSRF attacks

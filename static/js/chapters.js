@@ -6,19 +6,21 @@
 import api from './api.js';
 import state from './state.js';
 
-export async function showMangaDetails(mangaId, sourceId, title = '') {
+export async function showMangaDetails(manga) {
     // Reset and set current manga
     state.resetMangaState();
-    state.currentManga = { id: mangaId, source: sourceId, title: title };
+    state.currentManga = manga;
 
     // Switch to details view
     window.dispatchEvent(new CustomEvent('showView', {
         detail: { view: 'details' }
     }));
 
-    // Show loading states
-    showTitleCardLoading();
+    // Show loading state for chapters
     showChaptersLoading();
+
+    // Render manga metadata immediately if available
+    renderMangaMetadata();
 
     await loadChapters();
 }
@@ -29,21 +31,36 @@ export async function loadChapters() {
             state.currentManga.id,
             state.currentManga.source,
             state.chapterOffset,
-            100
+            100,
+            state.currentManga.title,  // Pass title for auto-detection
+            state.currentManga.mal_id  // Pass MAL ID if available
         );
 
+        // Handle errors from API
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        // Update source info if auto-detected
+        if (data.source_id && data.manga_id) {
+            state.currentManga.source = data.source_id;
+            state.currentManga.id = data.manga_id;
+        }
+
+        // Ensure chapters is always an array
+        const chapters = data.chapters || [];
         let newChapters = null;
 
         if (state.chapterOffset === 0) {
-            state.chapters = data.chapters;
+            state.chapters = chapters;
             // newChapters remains null to trigger full render
         } else {
-            newChapters = data.chapters;
-            state.chapters = [...state.chapters, ...data.chapters];
+            newChapters = chapters;
+            state.chapters = [...state.chapters, ...chapters];
         }
 
-        state.hasMoreChapters = data.hasMore;
-        state.chapterOffset = data.nextOffset;
+        state.hasMoreChapters = data.hasMore || false;
+        state.chapterOffset = data.nextOffset || 0;
 
         renderTitleCard();
         renderChapters(newChapters);
@@ -51,6 +68,8 @@ export async function loadChapters() {
         state.elements.loadMoreContainer.style.display = state.hasMoreChapters ? 'block' : 'none';
     } catch (e) {
         console.error('Failed to load chapters:', e);
+        // Ensure chapters is empty array on error
+        state.chapters = [];
         showChaptersError(e.message || 'Failed to load chapters');
     }
 }
@@ -77,6 +96,141 @@ export async function loadMoreChapters() {
     icon.className = 'ph ph-plus-circle';
     state.elements.loadMoreBtn.appendChild(icon);
     state.elements.loadMoreBtn.appendChild(document.createTextNode(' Load More'));
+}
+
+function renderMangaMetadata() {
+    const manga = state.currentManga;
+    if (!manga) return;
+
+    // Banner
+    if (manga.cover_url || manga.cover) {
+        state.elements.mangaBanner.style.backgroundImage = `url(${manga.cover_url || manga.cover})`;
+    } else {
+        state.elements.mangaBanner.style.backgroundImage = 'none';
+    }
+
+    // Cover image
+    if (manga.cover_url || manga.cover) {
+        state.elements.mangaCover.src = manga.cover_url || manga.cover;
+        state.elements.mangaCover.onerror = () => {
+            state.elements.mangaCover.src = '/static/images/placeholder.svg';
+        };
+    }
+
+    // Title
+    state.elements.mangaTitle.textContent = manga.title || `${manga.source} / ${manga.id.substring(0,8)}...`;
+
+    // Meta chips (status, type, year)
+    if (manga.status) {
+        state.elements.mangaStatus.textContent = manga.status;
+        state.elements.mangaStatus.style.display = 'inline-block';
+    } else {
+        state.elements.mangaStatus.style.display = 'none';
+    }
+
+    if (manga.type) {
+        state.elements.mangaType.textContent = manga.type;
+        state.elements.mangaType.style.display = 'inline-block';
+    } else {
+        state.elements.mangaType.style.display = 'none';
+    }
+
+    if (manga.year) {
+        state.elements.mangaYear.textContent = manga.year;
+        state.elements.mangaYear.style.display = 'inline-block';
+    } else {
+        state.elements.mangaYear.style.display = 'none';
+    }
+
+    // Rating
+    if (manga.rating && manga.rating.average) {
+        state.elements.mangaRatingAvg.textContent = manga.rating.average.toFixed(1);
+        if (manga.rating.count) {
+            state.elements.mangaRatingCount.textContent = `(${manga.rating.count} ratings)`;
+        }
+        state.elements.mangaRatingSection.style.display = 'flex';
+    } else {
+        state.elements.mangaRatingSection.style.display = 'none';
+    }
+
+    // Synopsis
+    if (manga.synopsis || manga.description) {
+        // Clear existing content
+        while (state.elements.mangaSynopsis.firstChild) {
+            state.elements.mangaSynopsis.removeChild(state.elements.mangaSynopsis.firstChild);
+        }
+        const p = document.createElement('p');
+        p.textContent = manga.synopsis || manga.description;
+        state.elements.mangaSynopsis.appendChild(p);
+    } else {
+        while (state.elements.mangaSynopsis.firstChild) {
+            state.elements.mangaSynopsis.removeChild(state.elements.mangaSynopsis.firstChild);
+        }
+        const p = document.createElement('p');
+        p.textContent = 'No description available.';
+        state.elements.mangaSynopsis.appendChild(p);
+    }
+
+    // Author
+    if (manga.author) {
+        state.elements.mangaAuthor.textContent = manga.author;
+        state.elements.mangaAuthorItem.style.display = 'flex';
+    } else {
+        state.elements.mangaAuthorItem.style.display = 'none';
+    }
+
+    // Artist
+    if (manga.artist) {
+        state.elements.mangaArtist.textContent = manga.artist;
+        state.elements.mangaArtistItem.style.display = 'flex';
+    } else {
+        state.elements.mangaArtistItem.style.display = 'none';
+    }
+
+    // Chapter count (will be updated after chapters load)
+    state.elements.mangaChaptersItem.style.display = 'none';
+
+    // Volumes
+    if (manga.volumes) {
+        state.elements.mangaVolumesCount.textContent = manga.volumes;
+        state.elements.mangaVolumesItem.style.display = 'flex';
+    } else {
+        state.elements.mangaVolumesItem.style.display = 'none';
+    }
+
+    // Genres
+    if (manga.genres && manga.genres.length > 0) {
+        // Clear existing
+        while (state.elements.mangaGenres.firstChild) {
+            state.elements.mangaGenres.removeChild(state.elements.mangaGenres.firstChild);
+        }
+        manga.genres.forEach(genre => {
+            const chip = document.createElement('span');
+            chip.className = 'genre-chip';
+            chip.textContent = genre;
+            state.elements.mangaGenres.appendChild(chip);
+        });
+        state.elements.mangaGenres.style.display = 'flex';
+    } else {
+        state.elements.mangaGenres.style.display = 'none';
+    }
+
+    // Tags
+    if (manga.tags && manga.tags.length > 0) {
+        // Clear existing
+        while (state.elements.mangaTags.firstChild) {
+            state.elements.mangaTags.removeChild(state.elements.mangaTags.firstChild);
+        }
+        manga.tags.forEach(tag => {
+            const chip = document.createElement('span');
+            chip.className = 'tag-chip';
+            chip.textContent = tag;
+            state.elements.mangaTags.appendChild(chip);
+        });
+        state.elements.mangaTags.style.display = 'flex';
+    } else {
+        state.elements.mangaTags.style.display = 'none';
+    }
 }
 
 function renderTitleCard() {
@@ -194,6 +348,12 @@ function renderChapters(newItemsOnly = null) {
             const item = createChapterItem(ch);
             state.elements.chapterGrid.appendChild(item);
         });
+    }
+
+    // Update chapter count in metadata
+    if (state.chapters.length > 0) {
+        state.elements.mangaChaptersCount.textContent = state.chapters.length;
+        state.elements.mangaChaptersItem.style.display = 'flex';
     }
 }
 

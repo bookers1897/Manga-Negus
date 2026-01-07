@@ -85,6 +85,10 @@ class API {
         return this.post('/api/search', { query, source_id: sourceId });
     }
 
+    async smartSearch(query, sourceId) {
+        return this.post('/api/search/smart', { query, source_id: sourceId });
+    }
+
     async detectUrl(url) {
         return this.post('/api/detect_url', { url });
     }
@@ -101,7 +105,7 @@ class API {
             id: manga.id,
             title: manga.title,
             source: manga.source,
-            cover: manga.cover,
+            cover: manga.cover_url || manga.cover,  // Handle both properties
             status: 'reading'
         });
     }
@@ -120,12 +124,14 @@ class API {
 
     // === Chapter APIs ===
 
-    async getChapters(mangaId, source, offset = 0, limit = 100) {
+    async getChapters(mangaId, source, offset = 0, limit = 100, title = null, malId = null) {
         const resp = await this.post('/api/chapters', {
             id: mangaId,
             source,
             offset,
-            limit
+            limit,
+            title,
+            mal_id: malId
         });
         return resp.json();
     }
