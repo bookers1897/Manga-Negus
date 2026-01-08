@@ -99,8 +99,14 @@ const API = {
         return Array.isArray(data) ? data : [];
     },
 
-    async getTrending(limit = 20) {
-        const data = await this.request(`/api/trending?limit=${limit}`);
+    async getTrending(page = 1, limit = 20) {
+        const data = await this.request(`/api/trending?page=${page}&limit=${limit}`);
+        return Array.isArray(data) ? data : [];
+    },
+
+    async getLatestFeed(sourceId = '', page = 1) {
+        const url = `/api/latest_feed?page=${page}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`;
+        const data = await this.request(url);
         return Array.isArray(data) ? data : [];
     },
 
@@ -551,7 +557,8 @@ async function loadPopular() {
     log('Loading popular manga from Jikan (MyAnimeList)...');
 
     try {
-        const results = await API.getPopular(1, 20);
+        const page = Math.max(1, Math.floor(Math.random() * 5) + 1); // randomize to vary content
+        const results = await API.getPopular(page, 20);
 
         if (!results || results.length === 0) {
             log('No results returned from API');
@@ -589,10 +596,13 @@ async function loadTrending() {
     els.discoverEmpty.classList.add('hidden');
     updateDiscoverSubtitle('// TRENDING NOW');
 
-    log('Loading trending manga from Jikan (seasonal)...');
+    log('Loading trending + latest updates...');
 
     try {
-        const results = await API.getTrending(20);
+        const page = Math.max(1, Math.floor(Math.random() * 5) + 1); // randomize page for variety
+        const trending = await API.getTrending(page, 12);
+        const latest = await API.getLatestFeed(state.currentSource || '', 1);
+        const results = [...(trending || []), ...(latest || [])].slice(0, 20);
 
         if (!results || results.length === 0) {
             els.discoverGrid.classList.add('hidden');
@@ -601,7 +611,7 @@ async function loadTrending() {
         }
 
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        log(`✅ Loaded ${results.length} trending manga`);
+        log(`✅ Loaded ${results.length} trending/latest manga`);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
         els.discoverGrid.innerHTML = `
