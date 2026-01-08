@@ -1,0 +1,1344 @@
+/*
+================================================================================
+MangaNegus v2.3 - Stylesheet
+================================================================================
+iOS Liquid Glass Design
+================================================================================
+*/
+
+/* === Variables === */
+:root {
+    --bg-primary: rgba(28, 28, 30, 0.72);
+    --bg-secondary: rgba(44, 44, 46, 0.65);
+    --bg-tertiary: rgba(58, 58, 60, 0.5);
+    --border-color: rgba(255, 255, 255, 0.06);
+    --border-highlight: rgba(255, 255, 255, 0.12);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(235, 235, 245, 0.6);
+    --text-tertiary: rgba(235, 235, 245, 0.3);
+    --accent-color: #ff453a;
+    --accent-glow: rgba(255, 69, 58, 0.4);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* === Reset === */
+* { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    color: var(--text-primary);
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow-x: hidden;
+    min-height: 100vh;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-tertiary); border-radius: 4px; }
+
+/* === Background === */
+.ambient-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: 
+        radial-gradient(ellipse 80% 50% at 20% 40%, rgba(255, 69, 58, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 80% at 80% 20%, rgba(175, 82, 222, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 50% 90%, rgba(255, 159, 10, 0.1) 0%, transparent 50%);
+    animation: ambientShift 25s ease-in-out infinite;
+}
+
+@keyframes ambientShift {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+/* === App Container === */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    max-width: 100vw;
+}
+
+/* === Glass Panels === */
+.glass-panel {
+    background: var(--bg-primary);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 0.5px solid var(--border-highlight);
+    box-shadow: var(--shadow-sm);
+}
+
+.glass-panel-elevated {
+    background: var(--bg-secondary);
+    backdrop-filter: blur(50px) saturate(200%);
+    -webkit-backdrop-filter: blur(50px) saturate(200%);
+    border: 0.5px solid var(--border-highlight);
+    box-shadow: var(--shadow-md);
+}
+
+/* === Inputs & Buttons === */
+.glass-input {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem 1rem;
+    font-size: 16px;
+    border-radius: 0.75rem;
+    width: 100%;
+    transition: all 0.25s ease;
+}
+
+.glass-input:focus {
+    background: var(--bg-secondary);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    outline: none;
+}
+
+.glass-input::placeholder { color: var(--text-tertiary); }
+
+.glass-btn {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.glass-btn:hover { background: var(--bg-secondary); }
+.glass-btn:active { transform: scale(0.96); }
+
+.glass-btn-accent {
+    background: linear-gradient(180deg, var(--accent-color) 0%, #cc362e 100%);
+    border: none;
+    color: white;
+    box-shadow: 0 2px 8px var(--accent-glow);
+}
+
+.download-btn {
+    background: linear-gradient(180deg, var(--accent-color) 0%, #cc362e 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+/* === Header === */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem;
+    border-radius: 1rem;
+}
+
+.header-center {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.logo-container {
+    position: relative;
+    width: 28px;
+    height: 28px;
+}
+
+.logo-glow {
+    position: absolute;
+    inset: -6px;
+    background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+    border-radius: 50%;
+    filter: blur(8px);
+    animation: logoPulse 3s ease-in-out infinite;
+}
+
+@keyframes logoPulse {
+    0%, 100% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+.logo-image {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.app-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.nav-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 0.625rem;
+}
+
+/* === Source Bar === */
+.source-bar {
+    margin: 0 0.5rem 0.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+}
+
+.source-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.source-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.source-select {
+    flex: 1;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 0.5rem;
+}
+
+.source-status-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border-radius: 0.5rem;
+}
+
+/* === Main Content === */
+.main-content {
+    flex: 1;
+    margin: 0.25rem 0.5rem;
+    border-radius: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    min-height: 400px;
+}
+
+.view-panel {
+    position: absolute;
+    inset: 0;
+    padding: 1rem;
+    overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+.view-panel.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* === Search === */
+.search-container {
+    position: relative;
+    margin-bottom: 1.25rem;
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.875rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+}
+
+.search-input {
+    padding-left: 2.5rem;
+    padding-right: 5rem;
+    height: 2.75rem;
+}
+
+.search-btn {
+    position: absolute;
+    right: 0.375rem;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 2rem;
+    padding: 0 0.875rem;
+    font-size: 0.75rem;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.section-header i { color: var(--accent-color); }
+.section-header span { font-size: 0.875rem; font-weight: 600; }
+
+/* === Results Grid === */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));  /* Narrower for portrait manga covers */
+    gap: 1rem;
+    padding-bottom: 5rem;
+}
+
+.manga-card {
+    padding: 0;
+    border-radius: 1rem;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.manga-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.manga-card-cover {
+    width: 100%;
+    height: 240px;  /* Portrait rectangle - taller for manga covers */
+    object-fit: cover;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+}
+
+.manga-card-content {
+    padding: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.manga-card-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+}
+
+.manga-card-rating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.manga-card-rating i {
+    font-size: 0.875rem;
+}
+
+.manga-card-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 0 0 auto;  /* Push button to bottom */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.manga-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.75rem;
+    padding-top: 0.625rem;
+    border-top: 0.5px solid var(--border-color);
+}
+
+.manga-card-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.add-btn {
+    font-size: 0.6875rem;
+    padding: 0.25rem 0.625rem;
+    color: var(--accent-color);
+    margin-top: auto;
+    width: 100%;
+}
+
+/* === Library === */
+.library-header {
+    margin-bottom: 1rem;
+}
+
+.library-header h2 {
+    margin: 0 0 0.75rem;
+    font-size: 1.25rem;
+}
+
+.library-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.filter-btn.active {
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
+}
+
+.library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+    padding-bottom: 2rem;
+}
+
+.library-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.875rem;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.library-item:hover { transform: scale(1.01); }
+
+.library-item-cover {
+    width: 48px;
+    height: 64px;
+    border-radius: 0.375rem;
+    object-fit: cover;
+    background: var(--bg-tertiary);
+    flex-shrink: 0;
+}
+
+.library-item-info { flex: 1; min-width: 0; }
+
+.library-item-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.library-item-progress {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin: 0.25rem 0 0;
+}
+
+/* === Details === */
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 1rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 2rem;
+}
+
+.title-card {
+    padding: 1rem;
+    border-radius: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.title-card-header { margin-bottom: 1rem; }
+
+.manga-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.3;
+}
+
+.quick-download {
+    padding: 0.875rem;
+    border-radius: 0.875rem;
+}
+
+.quick-download-header {
+    margin-bottom: 0.75rem;
+}
+
+.quick-download-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.download-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.chapter-input {
+    flex: 1;
+    min-width: 0;
+    height: 2.5rem;
+    text-align: center;
+    font-weight: 600;
+    padding: 0.5rem;
+    -moz-appearance: textfield;
+}
+
+.chapter-input::-webkit-outer-spin-button,
+.chapter-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-arrow {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--text-tertiary);
+}
+
+.dl-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border-radius: 0.625rem;
+    flex-shrink: 0;
+}
+
+/* === Chapter Grid === */
+.chapter-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.chapter-label {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.chapter-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.chapter-action-btn {
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
+    border-radius: 0.5rem;
+}
+
+.chapter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.5rem;
+    padding-bottom: 6rem;
+}
+
+.chapter-item {
+    padding: 0.625rem 0.75rem;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.chapter-item:hover { border-color: var(--accent-color); }
+
+.chapter-item.selected {
+    background: rgba(255, 69, 58, 0.15);
+    border-color: var(--accent-color);
+}
+
+.chapter-checkbox {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.chapter-checkbox i {
+    font-size: 0.625rem;
+    opacity: 0;
+    color: white;
+}
+
+.chapter-item.selected .chapter-checkbox {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.chapter-item.selected .chapter-checkbox i { opacity: 1; }
+
+.chapter-num {
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.chapter-title {
+    font-size: 0.6875rem;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: auto;
+    max-width: 60px;
+}
+
+.load-more-container { margin-top: 1rem; }
+
+.load-more-btn {
+    width: 100%;
+    padding: 0.875rem;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-highlight);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.load-more-btn:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+/* === Floating Bar === */
+.floating-bar {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem 0.5rem 0.5rem;
+    border-radius: 2rem;
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.floating-bar.active { transform: translateX(-50%) translateY(0); }
+
+.selection-count {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.floating-bar-text {
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+/* === Console === */
+.console-toggle {
+    position: fixed;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 80;
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+}
+
+.console-toggle.active {
+    background: var(--accent-color);
+    color: white;
+}
+
+.console-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 70;
+    border-radius: 1.25rem 1.25rem 0 0;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.console-panel.active { transform: translateY(0); }
+
+.console-resize-handle {
+    height: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-tertiary);
+    border-bottom: 0.5px solid var(--border-color);
+}
+
+.resize-bar {
+    width: 36px;
+    height: 4px;
+    background: var(--text-tertiary);
+    border-radius: 2px;
+}
+
+.console-content {
+    height: 140px;
+    overflow-y: auto;
+    padding: 0.75rem;
+    font-family: 'SF Mono', monospace;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+}
+
+.log-entry {
+    padding: 0.25rem 0 0.25rem 0.5rem;
+    border-left: 2px solid var(--accent-color);
+    margin-bottom: 0.25rem;
+}
+
+/* === Footer === */
+.app-footer {
+    padding: 1rem;
+    margin: 0.5rem;
+    margin-top: 0;
+    border-radius: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-brand {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.footer-link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.footer-link:hover { color: var(--accent-color); }
+
+/* === Menu === */
+.menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 90;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.menu-overlay.active { opacity: 1; visibility: visible; }
+
+.hamburger-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    max-width: 80vw;
+    height: 100vh;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+}
+
+.hamburger-menu.active { transform: translateX(0); }
+
+.menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 0.5px solid var(--border-color);
+}
+
+.menu-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.menu-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.875rem 1rem;
+    border-radius: 0.75rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-size: 1rem;
+}
+
+.menu-item:hover { background: var(--bg-tertiary); }
+.menu-item i { font-size: 1.25rem; color: var(--accent-color); width: 24px; }
+
+/* === Reader === */
+.reader-container {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.reader-container.active { opacity: 1; visibility: visible; }
+
+.reader-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+}
+
+.reader-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: white;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+}
+
+.reader-close-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+.reader-content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    gap: 0.5rem;
+}
+
+.reader-page {
+    width: 100%;
+    max-width: 800px;
+    height: auto;
+}
+
+.reader-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+}
+
+.reader-nav-btn {
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    border-radius: 0.5rem;
+    color: white;
+    font-size: 0.875rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.reader-nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.reader-page-indicator {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.reader-quality-toggle {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+}
+
+/* === Modal === */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 150;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.active { opacity: 1; visibility: visible; }
+
+.modal {
+    width: 90%;
+    max-width: 400px;
+    max-height: 80vh;
+    border-radius: 1.25rem;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 0.5px solid var(--border-color);
+}
+
+.modal-header h3 { margin: 0; font-size: 1.125rem; }
+
+.modal-content {
+    padding: 1rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.source-status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.75rem;
+    background: var(--bg-tertiary);
+}
+
+.source-status-item.unavailable { opacity: 0.6; }
+
+.source-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.source-name { font-weight: 600; }
+
+/* === Library Status Modal === */
+.library-status-modal {
+    max-width: 450px;
+    animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-prompt {
+    text-align: center;
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem 0;
+}
+
+.status-options {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+
+.status-option-btn {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    width: 100%;
+    justify-content: flex-start;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 1rem;
+    transition: all 0.2s ease;
+    background: var(--bg-secondary);
+    border: 2px solid transparent;
+}
+
+.status-option-btn:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--accent-color);
+    transform: translateX(4px);
+}
+
+.status-option-btn i {
+    font-size: 1.5rem;
+    color: var(--accent-color);
+}
+
+.status-option-btn span {
+    flex: 1;
+    text-align: left;
+}
+
+.source-status-badge {
+    font-size: 0.625rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 1rem;
+    background: var(--bg-secondary);
+    text-transform: uppercase;
+}
+
+.source-status-badge.online { background: #30d158; color: white; }
+.source-status-badge.rate_limited { background: #ff9500; color: white; }
+.source-status-badge.offline { background: #ff453a; color: white; }
+
+.reset-btn {
+    font-size: 0.75rem;
+    padding: 0.375rem 0.75rem;
+}
+
+/* === Utilities === */
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 3rem;
+    color: var(--text-secondary);
+}
+
+.spinner {
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+}
+
+.empty-state i { font-size: 3rem; opacity: 0.5; margin-bottom: 1rem; display: block; }
+.empty-state p { margin: 0; }
+
+/* === Media Queries === */
+@media (max-width: 374px) {
+    .results-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .chapter-grid { grid-template-columns: repeat(2, 1fr); }
+    .download-input-row { flex-wrap: wrap; }
+    .input-group { width: 100%; }
+    .dl-btn { width: 100%; margin-top: 0.5rem; }
+}
+
+@media (min-width: 640px) {
+    .chapter-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .results-grid { gap: 1.5rem; }  /* More spacing on larger screens */
+}
+
+/* === Manga Detail Page Layout === */
+
+.manga-banner {
+    width: 100%;
+    height: 200px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    position: relative;
+    margin: -1rem -1rem 0 -1rem;
+    border-radius: 12px 12px 0 0;
+    overflow: hidden;
+}
+
+/* Blur the background image to hide low quality and create depth */
+.manga-banner::before {
+    content: '';
+    position: absolute;
+    inset: -10px; /* Extend beyond bounds to hide blur edges */
+    background-image: inherit;
+    background-size: cover;
+    background-position: center;
+    filter: blur(8px) brightness(0.7);
+    z-index: 1;
+}
+
+/* Dark gradient overlay */
+.manga-banner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 0%, rgba(28, 28, 30, 0.95) 100%);
+    z-index: 2;
+}
+
+.manga-info-container {
+    display: flex;
+    gap: 1.5rem;
+    margin: 1.5rem 0;
+    flex-direction: column;
+}
+
+.manga-cover-section {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.manga-cover-large {
+    width: 180px;
+    height: 260px;
+    object-fit: cover;
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-color);
+}
+
+.manga-details-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.manga-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0;
+    line-height: 1.2;
+    color: var(--text-primary);
+}
+
+.manga-meta-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.meta-chip {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: capitalize;
+}
+
+.manga-rating-section {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.rating-score {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.manga-synopsis {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.manga-synopsis p {
+    margin: 0;
+}
+
+.manga-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.info-label {
+    font-size: 0.85rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.info-value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.manga-genres, .manga-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.genre-chip, .tag-chip {
+    padding: 0.35rem 0.75rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-highlight);
+    border-radius: 16px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.genre-chip:hover, .tag-chip:hover {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    transform: translateY(-1px);
+}
+
+/* Responsive adjustments for manga detail page */
+@media (min-width: 768px) {
+    .manga-banner {
+        height: 300px;
+    }
+
+    .manga-info-container {
+        flex-direction: row;
+        align-items: flex-start;
+    }
+
+    .manga-cover-large {
+        width: 220px;
+        height: 320px;
+    }
+
+    .manga-title {
+        font-size: 2.25rem;
+    }
+
+    .manga-info-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 1024px) {
+    .manga-cover-large {
+        width: 250px;
+        height: 360px;
+    }
+
+    .manga-info-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}

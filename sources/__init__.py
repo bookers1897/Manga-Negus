@@ -157,10 +157,16 @@ class SourceManager:
         
         # Classes to skip (adapters/factories that need constructor args)
         skip_classes = {'LuaSourceAdapter'}
+        skip_playwright_modules = {'mangafire_v2'}
+        skip_playwright = os.environ.get("SKIP_PLAYWRIGHT_SOURCES", "").lower() in {"1", "true", "yes", "on"}
 
         for _, module_name, _ in pkgutil.iter_modules([sources_dir]):
             # Skip base module, __init__, and utility modules
             if module_name in ('base', '__init__', 'lua_runtime', 'async_base', 'async_utils'):
+                continue
+
+            if skip_playwright and module_name in skip_playwright_modules:
+                print(f"⚠️ Skipping {module_name} (Playwright disabled via SKIP_PLAYWRIGHT_SOURCES)")
                 continue
 
             try:

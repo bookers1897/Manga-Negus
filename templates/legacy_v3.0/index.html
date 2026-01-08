@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MangaNegus v2.3</title>
+    
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/fill/style.css">
+    
+    <link rel="stylesheet" href="/static/legacy_v3.0/styles.css">
+</head>
+<body>
+    <!-- Background -->
+    <div class="ambient-bg"></div>
+    
+    <!-- App Container -->
+    <div class="app-container">
+        
+        <!-- Header -->
+        <header class="header glass-panel">
+            <button class="nav-btn glass-btn" id="menu-btn">
+                <i class="ph ph-list"></i>
+            </button>
+            
+            <div class="header-center">
+                <div class="logo-container">
+                    <div class="logo-glow"></div>
+                    <img src="/static/images/sharingan.png" alt="Logo" class="logo-image" 
+                         onerror="this.style.display='none'">
+                </div>
+                <h1 class="app-title">漫画キング</h1>
+            </div>
+            
+            <button class="nav-btn glass-btn" id="library-btn">
+                <i class="ph ph-books"></i>
+            </button>
+        </header>
+
+        <!-- Source Selector -->
+        <div class="source-bar glass-panel">
+            <div class="source-selector">
+                <span class="source-label">Source:</span>
+                <select class="source-select glass-input" id="source-select">
+                    <option value="">Loading...</option>
+                </select>
+                <button class="source-status-btn glass-btn" id="source-status-btn" title="Source Status">
+                    <i class="ph ph-pulse"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-content glass-panel">
+            
+            <!-- Search View -->
+            <section class="view-panel active" id="search-view">
+                <div class="search-container">
+                    <i class="ph ph-magnifying-glass search-icon"></i>
+                    <input type="text" class="glass-input search-input" id="search-input"
+                           placeholder="Search manga..." autocomplete="off">
+                    <button class="glass-btn glass-btn-accent search-btn" id="search-btn">Search</button>
+                </div>
+                
+                <!-- URL Detection Container -->
+                <div class="url-detection-container" style="margin-top: 1rem; margin-bottom: 1rem;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i class="ph ph-link" style="color: var(--text-secondary); font-size: 1.2rem;"></i>
+                        <input type="text" class="glass-input" id="url-input"
+                               placeholder="Or paste manga URL (18 sources supported)..."
+                               autocomplete="off"
+                               style="flex: 1;"
+                               title="Supported: MangaDex, WeebCentral, MangaNato, MangaFire, MangaSee, MangaHere, MangaKakalot, MangaFreak, MangaKatana, MangaPark, MangaBuddy, MangaReader, AsuraScans, FlameScans, TCBScans, ReaperScans">
+                        <button class="glass-btn glass-btn-accent" id="detect-url-btn" style="min-width: 100px;">
+                            <i class="ph ph-magnifying-glass"></i> Detect
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="section-header">
+                    <i class="ph-fill ph-fire"></i>
+                    <span>Trending Now</span>
+                </div>
+                
+                <div class="results-grid" id="results-grid">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Library View -->
+            <section class="view-panel" id="library-view">
+                <div class="library-header">
+                    <h2>My Library</h2>
+                    <div class="library-filters">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="reading">Reading</button>
+                        <button class="filter-btn" data-filter="plan_to_read">Plan to Read</button>
+                        <button class="filter-btn" data-filter="completed">Completed</button>
+                    </div>
+                </div>
+                
+                <div class="library-grid" id="library-grid">
+                    <div class="empty-state">
+                        <i class="ph ph-books"></i>
+                        <p>Your library is empty</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Details View -->
+            <section class="view-panel" id="details-view">
+                <button class="back-btn glass-btn" id="back-btn">
+                    <i class="ph ph-arrow-left"></i> Back
+                </button>
+
+                <!-- Hidden title card for compatibility -->
+                <div id="title-card" style="display: none;"></div>
+
+                <!-- Banner Hero -->
+                <div class="manga-banner" id="manga-banner"></div>
+
+                <!-- Manga Info Section -->
+                <div class="manga-info-container">
+                    <!-- Cover Poster (Left) -->
+                    <div class="manga-cover-section">
+                        <img class="manga-cover-large" id="manga-cover" src="/static/images/placeholder.svg" alt="Cover">
+                        <button class="glass-btn glass-btn-accent add-library-btn" id="add-library-btn" style="width: 100%; margin-top: 1rem;">
+                            <i class="ph ph-plus"></i> Add to Library
+                        </button>
+                    </div>
+
+                    <!-- Details (Right) -->
+                    <div class="manga-details-section">
+                        <h1 class="manga-title" id="manga-title">Loading...</h1>
+
+                        <div class="manga-meta-row" id="manga-meta-row">
+                            <span class="meta-chip" id="manga-status"></span>
+                            <span class="meta-chip" id="manga-type"></span>
+                            <span class="meta-chip" id="manga-year"></span>
+                        </div>
+
+                        <div class="manga-rating-section" id="manga-rating-section" style="display:none;">
+                            <div class="rating-score">
+                                <i class="ph-fill ph-star" style="color: #ffd700;"></i>
+                                <span id="manga-rating-avg">0.0</span>
+                                <span style="color: var(--text-secondary); font-size: 0.9rem;" id="manga-rating-count"></span>
+                            </div>
+                        </div>
+
+                        <div class="manga-synopsis" id="manga-synopsis">
+                            <p>No description available.</p>
+                        </div>
+
+                        <div class="manga-info-grid">
+                            <div class="info-item" id="manga-author-item" style="display:none;">
+                                <span class="info-label">Author</span>
+                                <span class="info-value" id="manga-author"></span>
+                            </div>
+                            <div class="info-item" id="manga-artist-item" style="display:none;">
+                                <span class="info-label">Artist</span>
+                                <span class="info-value" id="manga-artist"></span>
+                            </div>
+                            <div class="info-item" id="manga-chapters-item" style="display:none;">
+                                <span class="info-label">Chapters</span>
+                                <span class="info-value" id="manga-chapters-count"></span>
+                            </div>
+                            <div class="info-item" id="manga-volumes-item" style="display:none;">
+                                <span class="info-label">Volumes</span>
+                                <span class="info-value" id="manga-volumes-count"></span>
+                            </div>
+                        </div>
+
+                        <div class="manga-genres" id="manga-genres"></div>
+
+                        <div class="manga-tags" id="manga-tags" style="margin-top: 1rem;"></div>
+                    </div>
+                </div>
+
+                <div class="chapter-controls">
+                    <div class="chapter-label">
+                        Chapters <span class="chapter-count" id="chapter-count">(0)</span>
+                    </div>
+                    <div class="chapter-actions">
+                        <button class="chapter-action-btn glass-btn" id="select-all-btn">
+                            <i class="ph ph-check-square"></i> All
+                        </button>
+                        <button class="chapter-action-btn glass-btn" id="clear-selection-btn">
+                            <i class="ph ph-square"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="chapter-grid" id="chapter-grid">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+                
+                <div class="load-more-container" id="load-more-container" style="display:none;">
+                    <button class="load-more-btn" id="load-more-btn">
+                        <i class="ph ph-plus-circle"></i> Load More
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer glass-panel">
+            <span class="footer-brand">MangaNegus v2.3</span>
+            <a href="https://github.com/bookers1897/Manga-Negus" target="_blank" class="footer-link">
+                <i class="ph ph-github-logo"></i> GitHub
+            </a>
+        </footer>
+    </div>
+
+    <!-- Hamburger Menu -->
+    <div class="menu-overlay" id="menu-overlay"></div>
+    <nav class="hamburger-menu glass-panel-elevated" id="hamburger-menu">
+        <div class="menu-header">
+            <h2 class="menu-title">Menu</h2>
+            <button class="glass-btn nav-btn" id="close-menu-btn">
+                <i class="ph ph-x"></i>
+            </button>
+        </div>
+        <div class="menu-nav">
+            <button class="menu-item" data-view="search">
+                <i class="ph ph-magnifying-glass"></i> Search
+            </button>
+            <button class="menu-item" data-view="library">
+                <i class="ph ph-books"></i> Library
+            </button>
+        </div>
+    </nav>
+
+    <!-- Floating Action Bar -->
+    <div class="floating-bar glass-panel-elevated" id="floating-bar">
+        <div class="selection-count glass-btn-accent" id="selection-count">0</div>
+        <span class="floating-bar-text">selected</span>
+        <button class="glass-btn download-btn" id="download-selected-btn">
+            <i class="ph ph-download"></i> Download
+        </button>
+    </div>
+
+    <!-- Console -->
+    <button class="console-toggle glass-btn" id="console-toggle">
+        <i class="ph ph-terminal"></i>
+    </button>
+    <div class="console-panel glass-panel-elevated" id="console-panel">
+        <div class="console-resize-handle"><div class="resize-bar"></div></div>
+        <div class="console-content" id="console-content">
+            <div class="log-entry">MangaNegus v2.3 initialized</div>
+        </div>
+    </div>
+
+    <!-- Reader -->
+    <div class="reader-container" id="reader-container">
+        <header class="reader-header">
+            <button class="reader-close-btn" id="reader-close-btn">
+                <i class="ph ph-x"></i>
+            </button>
+            <h3 class="reader-title" id="reader-title">Chapter</h3>
+            <button class="reader-quality-toggle" id="quality-toggle">HD</button>
+        </header>
+        <div class="reader-content" id="reader-content"></div>
+        <footer class="reader-footer">
+            <button class="reader-nav-btn" id="prev-chapter-btn">
+                <i class="ph ph-caret-left"></i> Prev
+            </button>
+            <span class="reader-page-indicator" id="page-indicator">1 / ?</span>
+            <button class="reader-nav-btn" id="next-chapter-btn">
+                Next <i class="ph ph-caret-right"></i>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Library Status Selection Modal -->
+    <div class="modal-overlay" id="library-status-modal-overlay">
+        <div class="modal glass-panel-elevated library-status-modal" id="library-status-modal">
+            <div class="modal-header">
+                <h3>Add to Library</h3>
+                <button class="glass-btn nav-btn" id="close-library-status-modal">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+            <div class="modal-content">
+                <p class="modal-prompt">Where would you like to add it?</p>
+                <div class="status-options">
+                    <button class="status-option-btn glass-btn" data-status="reading">
+                        <i class="ph-fill ph-book-open"></i>
+                        <span>Reading</span>
+                    </button>
+                    <button class="status-option-btn glass-btn" data-status="plan_to_read">
+                        <i class="ph-fill ph-clock"></i>
+                        <span>Plan to Read</span>
+                    </button>
+                    <button class="status-option-btn glass-btn" data-status="completed">
+                        <i class="ph-fill ph-check-circle"></i>
+                        <span>Completed</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source Status Modal -->
+    <div class="modal-overlay" id="source-modal-overlay">
+        <div class="modal glass-panel-elevated" id="source-modal">
+            <div class="modal-header">
+                <h3>Source Status</h3>
+                <button class="glass-btn nav-btn" id="close-source-modal">
+                    <i class="ph ph-x"></i>
+                </button>
+            </div>
+            <div class="modal-content" id="source-status-content"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/static/legacy_v3.0/main.js"></script>

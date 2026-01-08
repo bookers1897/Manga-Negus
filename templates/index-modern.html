@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MangaNegus v4.0 - Editorial Design</title>
+
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/fill/style.css">
+
+    <!-- New Modern Styles -->
+    <link rel="stylesheet" href="/static/css/modern-styles.css">
+</head>
+<body>
+    <!-- Halftone Background -->
+    <div class="halftone-bg"></div>
+
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+        <i class="ph ph-list"></i>
+    </button>
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- App Container -->
+    <div class="app-container">
+
+        <!-- Vertical Sidebar Navigation -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Logo -->
+            <div class="sidebar-logo">
+                <h1 class="app-title-main">MANGA<br>NEGUS</h1>
+                <div class="app-subtitle">Editorial Reader</div>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="sidebar-nav">
+                <button class="nav-item active" data-view="search">
+                    <i class="ph-fill ph-magnifying-glass"></i>
+                    <span>Discover</span>
+                </button>
+                <button class="nav-item" data-view="library">
+                    <i class="ph-fill ph-books"></i>
+                    <span>Library</span>
+                </button>
+            </nav>
+
+            <!-- Source Selector -->
+            <div class="sidebar-source">
+                <label class="source-label-new">Data Source</label>
+                <select class="source-select-new" id="source-select">
+                    <option value="">Loading sources...</option>
+                </select>
+                <button class="source-status-new" id="source-status-btn">
+                    <i class="ph ph-pulse"></i>
+                    <span>Source Status</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-wrapper">
+            <main class="content-area">
+
+                <!-- Search View -->
+                <section class="view-panel active" id="search-view">
+                    <!-- Search Hero -->
+                    <div class="search-hero">
+                        <h1 class="search-title">DISCOVER</h1>
+
+                        <!-- Search Input -->
+                        <div class="search-container-new">
+                            <input type="text" class="search-input-new" id="search-input"
+                                   placeholder="Search for manga..." autocomplete="off">
+                            <button class="search-btn-new" id="search-btn">
+                                <span>Search</span>
+                            </button>
+                        </div>
+
+                        <!-- URL Detection -->
+                        <div class="url-container-new">
+                            <label class="url-label">Or Paste URL (18 Sources Supported)</label>
+                            <div class="url-input-group">
+                                <input type="text" class="url-input-new" id="url-input"
+                                       placeholder="https://mangadex.org/title/..." autocomplete="off">
+                                <button class="url-btn-new" id="detect-url-btn">Detect</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trending Section -->
+                    <div class="section-header-new">
+                        <h2>TRENDING</h2>
+                        <div class="section-accent"></div>
+                        <span class="section-counter" id="trending-count">20</span>
+                    </div>
+
+                    <!-- Results Grid -->
+                    <div class="magazine-grid" id="results-grid">
+                        <!-- Loading State -->
+                        <div class="loading-state-new">
+                            <div class="spinner-new"></div>
+                            <span class="loading-text">Loading manga...</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Library View -->
+                <section class="view-panel" id="library-view">
+                    <!-- Library Header -->
+                    <div class="search-hero">
+                        <h1 class="search-title">MY LIBRARY</h1>
+
+                        <!-- Filters -->
+                        <div class="library-filters-new">
+                            <button class="filter-btn-new active" data-filter="all">All</button>
+                            <button class="filter-btn-new" data-filter="reading">Reading</button>
+                            <button class="filter-btn-new" data-filter="completed">Completed</button>
+                            <button class="filter-btn-new" data-filter="plan_to_read">Plan to Read</button>
+                            <button class="filter-btn-new" data-filter="on_hold">On Hold</button>
+                            <button class="filter-btn-new" data-filter="dropped">Dropped</button>
+                        </div>
+                    </div>
+
+                    <!-- Library Grid -->
+                    <div class="magazine-grid" id="library-grid">
+                        <!-- Empty State -->
+                        <div class="empty-state-new">
+                            <i class="ph ph-books"></i>
+                            <p>Your library is empty</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Details View (existing functionality) -->
+                <section class="view-panel" id="details-view">
+                    <!-- Keep existing details view structure for now -->
+                    <button class="search-btn-new" id="back-btn" style="margin-bottom: 2rem;">
+                        <i class="ph ph-arrow-left"></i> Back
+                    </button>
+
+                    <div id="manga-details-container">
+                        <!-- Manga details will be loaded here -->
+                    </div>
+                </section>
+
+            </main>
+        </div>
+
+    </div>
+
+    <!-- Modals (keep existing modal structure) -->
+    <!-- Library Status Modal -->
+    <div class="modal-overlay" id="library-status-modal-overlay">
+        <div class="modal-panel glass-panel-elevated" id="library-status-modal">
+            <button class="modal-close" id="close-library-status-modal">
+                <i class="ph ph-x"></i>
+            </button>
+            <h2 class="modal-title">Add to Library</h2>
+            <p class="modal-subtitle">Where would you like to add it?</p>
+            <div class="status-options">
+                <button class="status-option-btn" data-status="reading">
+                    <i class="ph-fill ph-book-open"></i>
+                    <span>Reading</span>
+                </button>
+                <button class="status-option-btn" data-status="completed">
+                    <i class="ph-fill ph-check-circle"></i>
+                    <span>Completed</span>
+                </button>
+                <button class="status-option-btn" data-status="plan_to_read">
+                    <i class="ph-fill ph-bookmark"></i>
+                    <span>Plan to Read</span>
+                </button>
+                <button class="status-option-btn" data-status="on_hold">
+                    <i class="ph-fill ph-pause-circle"></i>
+                    <span>On Hold</span>
+                </button>
+                <button class="status-option-btn" data-status="dropped">
+                    <i class="ph-fill ph-x-circle"></i>
+                    <span>Dropped</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source Status Modal -->
+    <div class="modal-overlay" id="source-modal-overlay">
+        <div class="modal-panel glass-panel-elevated">
+            <button class="modal-close" id="close-source-modal">
+                <i class="ph ph-x"></i>
+            </button>
+            <h2 class="modal-title">Source Status</h2>
+            <div id="source-status-grid" class="source-status-grid">
+                <!-- Source status will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Console Panel (bottom drawer) -->
+    <div class="console-panel" id="console-panel">
+        <div class="console-header">
+            <span class="console-title">
+                <i class="ph-fill ph-terminal"></i> Console
+            </span>
+            <button class="console-close" id="console-toggle">
+                <i class="ph ph-caret-down"></i>
+            </button>
+        </div>
+        <div class="console-content" id="console-content">
+            <!-- Console logs will appear here -->
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/static/legacy_v3.0/main.js"></script>
+    <script type="module" src="/static/js/modern-adapter.js"></script>
+
+    <!-- Mobile Menu Script -->
+    <script>
+        // Mobile menu toggle
+        const mobileToggle = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+
+        mobileToggle?.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        });
+
+        overlay?.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        });
+    </script>
+</body>
+</html>
