@@ -210,6 +210,12 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function safeCreateIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+}
+
 function showToast(message) {
     if (state.toastTimer) clearTimeout(state.toastTimer);
     els.toastMessage.textContent = message;
@@ -295,7 +301,7 @@ function renderNav() {
             `;
         }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
@@ -359,7 +365,7 @@ function renderSources() {
         </button>
     `;
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     document.querySelectorAll('.source-btn[data-source]').forEach(btn => {
