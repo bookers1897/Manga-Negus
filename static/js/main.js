@@ -491,7 +491,7 @@ function updateDiscoverSubtitle(text) {
     }
 }
 
-function renderPagination(view, currentPage, totalPages = 20) {
+function renderDiscoverPagination(view, currentPage, totalPages = 20) {
     if (!els.discoverPagination) return;
     els.discoverPagination.classList.remove('hidden');
     els.discoverPagination.innerHTML = `
@@ -640,7 +640,7 @@ async function loadPopular(page = 1) {
 
         log(`✅ Loaded ${results.length} popular manga (page ${page})`);
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        renderPagination('popular', page);
+        renderDiscoverPagination('popular', page);
     } catch (error) {
         log(`❌ ERROR loading popular: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -688,7 +688,7 @@ async function loadDiscover(page = 1) {
 
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
         log(`✅ Loaded ${results.length} trending/latest manga`);
-        renderPagination('discover', chosenPage);
+        renderDiscoverPagination('discover', chosenPage);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -767,7 +767,7 @@ async function loadTrendingView(page = 1) {
             return;
         }
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        renderPagination('trending', page);
+        renderDiscoverPagination('trending', page);
         log(`✅ Loaded ${results.length} trending manga (page ${page})`);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
