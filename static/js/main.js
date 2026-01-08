@@ -210,6 +210,12 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function safeCreateIcons() {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+}
+
 function showToast(message) {
     if (state.toastTimer) clearTimeout(state.toastTimer);
     els.toastMessage.textContent = message;
@@ -295,7 +301,7 @@ function renderNav() {
             `;
         }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
@@ -359,7 +365,7 @@ function renderSources() {
         </button>
     `;
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     document.querySelectorAll('.source-btn[data-source]').forEach(btn => {
@@ -421,7 +427,7 @@ async function showSourceStatus() {
         `);
 
         els.sourceStatusGrid.innerHTML = [...sourceCards, ...skippedCards].join('') || '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No sources available</p>';
-        lucide.createIcons();
+        safeCreateIcons();
     } catch (error) {
         els.sourceStatusGrid.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load sources</p>';
     }
@@ -485,7 +491,7 @@ function updateDiscoverSubtitle(text) {
     }
 }
 
-function renderPagination(view, currentPage, totalPages = 20) {
+function renderDiscoverPagination(view, currentPage, totalPages = 20) {
     if (!els.discoverPagination) return;
     els.discoverPagination.classList.remove('hidden');
     els.discoverPagination.innerHTML = `
@@ -578,7 +584,7 @@ async function searchManga(query) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -634,7 +640,7 @@ async function loadPopular(page = 1) {
 
         log(`✅ Loaded ${results.length} popular manga (page ${page})`);
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        renderPagination('popular', page);
+        renderDiscoverPagination('popular', page);
     } catch (error) {
         log(`❌ ERROR loading popular: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -648,7 +654,7 @@ async function loadPopular(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -682,7 +688,7 @@ async function loadDiscover(page = 1) {
 
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
         log(`✅ Loaded ${results.length} trending/latest manga`);
-        renderPagination('discover', chosenPage);
+        renderDiscoverPagination('discover', chosenPage);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -696,7 +702,7 @@ async function loadDiscover(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -736,7 +742,7 @@ async function loadHistory() {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -761,7 +767,7 @@ async function loadTrendingView(page = 1) {
             return;
         }
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        renderPagination('trending', page);
+        renderDiscoverPagination('trending', page);
         log(`✅ Loaded ${results.length} trending manga (page ${page})`);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
@@ -776,7 +782,7 @@ async function loadTrendingView(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -856,7 +862,7 @@ async function addToLibrary(mangaId, source, title, cover, status) {
         if (state.currentManga && state.currentManga.id === mangaId && state.currentManga.source === source) {
             els.addToLibraryBtn.innerHTML = '<i data-lucide="check" width="20"></i> In Library';
             els.addToLibraryBtn.classList.add('secondary');
-            lucide.createIcons();
+            safeCreateIcons();
         }
     } catch (error) {
         log(`❌ Failed to add to library: ${error.message}`);
@@ -922,7 +928,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         `;
     }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners to cards
     gridEl.querySelectorAll('.card').forEach((card, index) => {
@@ -1043,7 +1049,7 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
         els.addToLibraryBtn.innerHTML = '<i data-lucide="heart" width="20"></i> Add to Library';
         els.addToLibraryBtn.classList.remove('secondary');
     }
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Load chapters
     await loadChapters(1);
@@ -1132,7 +1138,7 @@ function renderChapters() {
         `;
     }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     els.chaptersList.querySelectorAll('.chapter-item').forEach(item => {
@@ -1241,7 +1247,7 @@ function renderPagination() {
         </button>
     `;
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     document.getElementById('prev-chapters-page')?.addEventListener('click', () => {
         if (state.currentPage > 1) loadChapters(state.currentPage - 1);
@@ -1324,7 +1330,7 @@ function showLibraryStatusModal(mangaId, source, title, coverUrl) {
         });
     });
 
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 // ========================================
@@ -1444,7 +1450,7 @@ async function init() {
     renderNav();
 
     // Initialize Lucide icons
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Load initial content
     loadDiscover();
@@ -1487,7 +1493,7 @@ async function init() {
         state.searchQuery = '';
         els.clearSearchBtn.classList.add('hidden');
         els.searchModeIcon.setAttribute('data-lucide', isTitle ? 'search' : 'link');
-        lucide.createIcons();
+        safeCreateIcons();
 
         // Show toast to inform user
         showToast(isTitle ? 'Search Mode: Title' : 'Search Mode: URL');
@@ -1553,7 +1559,7 @@ async function init() {
     // Console
     els.consoleToggleBtn.addEventListener('click', () => {
         els.consoleModal.classList.add('active');
-        lucide.createIcons();
+        safeCreateIcons();
     });
     els.consoleClose.addEventListener('click', () => {
         els.consoleModal.classList.remove('active');
