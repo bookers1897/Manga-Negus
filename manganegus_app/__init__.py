@@ -1,3 +1,7 @@
+# Load environment variables FIRST before any other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import sys
 import json
@@ -8,6 +12,8 @@ import threading
 import secrets
 from typing import Dict, List, Optional, Any
 from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import g
+import uuid
 
 def create_app():
     """Create and configure an instance of the Flask application."""
@@ -51,6 +57,10 @@ def create_app():
     # =============================================================================
     from .log import log, msg_queue
     from .csrf import ensure_csrf_token, get_csrf_token
+
+    @app.before_request
+    def assign_request_id():
+        g.request_id = uuid.uuid4().hex[:12]
 
     app.before_request(ensure_csrf_token)
 

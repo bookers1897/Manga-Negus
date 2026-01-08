@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.extensions import library
+from .validators import validate_fields
 
 library_bp = Blueprint('library_api', __name__, url_prefix='/api/library')
 
@@ -15,17 +16,17 @@ def get_library():
 def save_to_library():
     """Add manga to library."""
     data = request.get_json(silent=True) or {}
-    manga_id = data.get('id')
-    title = data.get('title')
-    source = data.get('source')
-    if not manga_id or not title or not source:
-        return jsonify({'error': 'Missing required fields: id, title, and source'}), 400
-    if len(str(manga_id)) > 500 or len(str(title)) > 500 or len(str(source)) > 100:
-        return jsonify({'error': 'Field values too long'}), 400
+    error = validate_fields(data, [
+        ('id', str, 500),
+        ('title', str, 500),
+        ('source', str, 100),
+    ])
+    if error:
+        return jsonify({'error': error}), 400
     key = library.add(
-        manga_id=manga_id,
-        title=title,
-        source=source,
+        manga_id=data['id'],
+        title=data['title'],
+        source=data['source'],
         status=data.get('status', 'reading'),
         cover=data.get('cover')
     )
@@ -36,10 +37,14 @@ def save_to_library():
 def update_status():
     """Update manga reading status."""
     data = request.get_json(silent=True) or {}
-    key = data.get('key')
-    status = data.get('status')
-    if not key or not status:
-        return jsonify({'error': 'Missing required fields: key and status'}), 400
+    error = validate_fields(data, [
+        ('key', str, 600),
+        ('status', str, 30),
+    ])
+    if error:
+        return jsonify({'error': error}), 400
+    key = data['key']
+    status = data['status']
     valid_statuses = {'reading', 'plan_to_read', 'completed', 'dropped', 'on_hold'}
     if status not in valid_statuses:
         return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
@@ -63,8 +68,8 @@ def update_progress():
 def delete_from_library():
     """Remove manga from library."""
     data = request.get_json(silent=True) or {}
-    key = data.get('key')
-    if not key:
-        return jsonify({'error': 'Missing required field: key'}), 400
-    library.remove(key)
+    error = validate_fields(data, [('key', str, 600)])
+    if error:
+        return jsonify({'error': error}), 400
+    library.remove(data['key'])
     return jsonify({'status': 'ok'})

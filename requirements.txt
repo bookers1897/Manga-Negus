@@ -38,6 +38,7 @@ cachetools>=6.2.0
 # PostgreSQL database
 psycopg2-binary>=2.9.11
 sqlalchemy>=2.0.45
+pytest>=7.4.0
 alembic>=1.17.0
 
 # For iOS Code App, you may need specific versions:

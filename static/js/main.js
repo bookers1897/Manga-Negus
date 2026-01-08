@@ -75,7 +75,7 @@ const API = {
 
     async getSourceHealth() {
         const data = await this.request('/api/sources/health');
-        return data.sources || [];
+        return data || {};
     },
 
     async search(query, limit = 15) {
@@ -96,6 +96,11 @@ const API = {
 
     async getPopular(page = 1, limit = 20) {
         const data = await this.request(`/api/popular?page=${page}&limit=${limit}`);
+        return Array.isArray(data) ? data : [];
+    },
+
+    async getTrending(limit = 20) {
+        const data = await this.request(`/api/trending?limit=${limit}`);
         return Array.isArray(data) ? data : [];
     },
 
@@ -364,16 +369,30 @@ async function showSourceStatus() {
     `;
 
     try {
-        const sources = await API.getSourceHealth();
-        els.sourceStatusGrid.innerHTML = sources.map(source => `
+        const health = await API.getSourceHealth();
+        const sourceCards = (health.sources || []).map(source => `
             <div class="source-status-item">
                 <span class="source-status-name">${escapeHtml(source.name)}</span>
                 <div class="source-status-indicator">
-                    <div class="status-dot ${source.available ? '' : 'offline'}"></div>
-                    <span>${source.available ? 'ONLINE' : 'OFFLINE'}</span>
+                    <div class="status-dot ${source.is_available ? '' : 'offline'}"></div>
+                    <span>${source.is_available ? 'ONLINE' : 'OFFLINE'}</span>
                 </div>
+                ${source.last_error ? `<p class="source-status-note">${escapeHtml(source.last_error)}</p>` : ''}
             </div>
-        `).join('');
+        `);
+
+        const skippedCards = (health.skipped || []).map(s => `
+            <div class="source-status-item">
+                <span class="source-status-name">${escapeHtml(s.name)} (skipped)</span>
+                <div class="source-status-indicator">
+                    <div class="status-dot offline"></div>
+                    <span>SKIPPED</span>
+                </div>
+                <p class="source-status-note">Reason: ${escapeHtml(s.reason || 'disabled')}</p>
+            </div>
+        `);
+
+        els.sourceStatusGrid.innerHTML = [...sourceCards, ...skippedCards].join('') || '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No sources available</p>';
         lucide.createIcons();
     } catch (error) {
         els.sourceStatusGrid.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load sources</p>';
@@ -396,7 +415,7 @@ function setView(viewId) {
         case 'discover':
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'Discover';
-            if (!state.searchQuery) loadPopular();
+            if (!state.searchQuery) loadTrending();
             break;
         case 'popular':
             els.discoverView.classList.remove('hidden');
@@ -432,13 +451,19 @@ function setView(viewId) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+function updateDiscoverSubtitle(text) {
+    if (els.discoverSubtitle) {
+        els.discoverSubtitle.textContent = text;
+    }
+}
+
 // ========================================
 // Search Functionality
 // ========================================
 async function performSearch() {
     const query = state.searchQuery.trim();
     if (!query) {
-        loadPopular();
+        loadTrending();
         return;
     }
 
@@ -517,10 +542,11 @@ async function loadPopular() {
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
-            <span class="loading-text">Loading trending...</span>
+            <span class="loading-text">Loading popular...</span>
         </div>
     `;
     els.discoverEmpty.classList.add('hidden');
+    updateDiscoverSubtitle('// MOST POPULAR');
 
     log('Loading popular manga from Jikan (MyAnimeList)...');
 
@@ -545,6 +571,46 @@ async function loadPopular() {
                 </div>
                 <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
                     Failed to load manga<br/>
+                    ${escapeHtml(error.message)}
+                </p>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+}
+
+async function loadTrending() {
+    els.discoverGrid.innerHTML = `
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading trending...</span>
+        </div>
+    `;
+    els.discoverEmpty.classList.add('hidden');
+    updateDiscoverSubtitle('// TRENDING NOW');
+
+    log('Loading trending manga from Jikan (seasonal)...');
+
+    try {
+        const results = await API.getTrending(20);
+
+        if (!results || results.length === 0) {
+            els.discoverGrid.classList.add('hidden');
+            els.discoverEmpty.classList.remove('hidden');
+            return;
+        }
+
+        renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
+        log(`✅ Loaded ${results.length} trending manga`);
+    } catch (error) {
+        log(`❌ ERROR loading trending: ${error.message}`);
+        els.discoverGrid.innerHTML = `
+            <div style="grid-column: 1/-1; padding: 48px 24px; text-align: center;">
+                <div class="empty-icon-box" style="margin: 0 auto 16px;">
+                    <i data-lucide="alert-circle" width="32" height="32"></i>
+                </div>
+                <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
+                    Failed to load trending<br/>
                     ${escapeHtml(error.message)}
                 </p>
             </div>
@@ -1181,7 +1247,7 @@ async function init() {
     lucide.createIcons();
 
     // Load initial content
-    loadPopular();
+    loadTrending();
 
     // Event Listeners
 
@@ -1204,7 +1270,7 @@ async function init() {
         state.searchQuery = '';
         els.searchInput.value = '';
         els.clearSearchBtn.classList.add('hidden');
-        loadPopular();
+        loadTrending();
     });
 
     els.searchBtn.addEventListener('click', () => {

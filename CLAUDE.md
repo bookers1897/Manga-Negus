@@ -469,6 +469,7 @@ priority_order = [
 - MangaFire V2 (playwright-stealth)
 
 **Playwright note:** In restricted environments you can skip Playwright-backed sources (e.g., `mangafire_v2`) by setting `SKIP_PLAYWRIGHT_SOURCES=1` before startup. Otherwise, ensure Chromium sandbox is available.
+**Testing/CI note:** To avoid heavy source discovery in tests, set `SKIP_SOURCE_DISCOVERY=1` (sources list will be empty but APIs stay responsive).
 
 **Tier 3 (Standard Scraping):**
 - MangaNato, MangaSee, AsuraScans, etc. (BeautifulSoup4)

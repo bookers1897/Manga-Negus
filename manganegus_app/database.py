@@ -275,6 +275,13 @@ def migrate_from_json(library_json_path: str):
         migrated_count = 0
 
         for manga_id, entry in library_data.items():
+            # Skip if already present
+            existing = session.query(Manga).filter_by(
+                source_id=entry.get('source', 'unknown'),
+                source_manga_id=manga_id
+            ).first()
+            if existing:
+                continue
             # Create Manga entry
             manga = Manga(
                 source_id=entry.get('source', 'unknown'),
