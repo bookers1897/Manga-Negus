@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request, send_from_directory
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.extensions import downloader, DOWNLOAD_DIR
+from .validators import validate_fields
 
 downloads_bp = Blueprint('downloads_api', __name__)
 
@@ -10,12 +11,17 @@ downloads_bp = Blueprint('downloads_api', __name__)
 def start_download():
     """Start downloading chapters."""
     data = request.get_json(silent=True) or {}
+    error = validate_fields(data, [
+        ('chapters', list, None),
+        ('title', str, 200),
+        ('source', str, 100),
+    ])
+    if error:
+        return jsonify({'error': error}), 400
     chapters = data.get('chapters', [])
-    title = data.get('title')
-    source_id = data.get('source')
+    source_id = data['source']
+    title = data['title']
     manga_id = data.get('manga_id', '')
-    if not chapters or not title or not source_id:
-        return jsonify({'error': 'Missing required fields'}), 400
     if len(chapters) > 500:
         return jsonify({'error': 'Too many chapters requested'}), 400
     if len(str(title)) > 200:

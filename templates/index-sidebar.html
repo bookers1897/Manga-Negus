@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MangaNegus v3.1 - Sidebar Edition</title>
+
+    <!-- Phosphor Icons -->
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/fill/style.css">
+
+    <!-- Sidebar Glass Styles -->
+    <link rel="stylesheet" href="/static/css/sidebar-glass.css">
+</head>
+<body>
+    <!-- Background -->
+    <div class="ambient-bg"></div>
+
+    <!-- Mobile Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+        <i class="ph ph-list"></i>
+    </button>
+
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- App Container -->
+    <div class="app-container">
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Logo -->
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <div class="logo-container">
+                        <div class="logo-glow"></div>
+                        <img src="/static/images/sharingan.png" alt="Logo" class="logo-image"
+                             onerror="this.style.display='none'">
+                    </div>
+                    <h1 class="app-title">漫画キング</h1>
+                </div>
+                <div class="app-subtitle">Manga Negus</div>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="sidebar-nav">
+                <button class="nav-item" data-view="search" id="search-nav-btn">
+                    <i class="ph-fill ph-magnifying-glass"></i>
+                    <span>Search</span>
+                </button>
+                <button class="nav-item" data-view="library" id="library-btn">
+                    <i class="ph-fill ph-books"></i>
+                    <span>Library</span>
+                </button>
+            </nav>
+
+            <!-- Source Selector -->
+            <div class="sidebar-source">
+                <label class="source-label">Source</label>
+                <select class="glass-input" id="source-select">
+                    <option value="">Loading...</option>
+                </select>
+                <button class="glass-btn source-status-btn" id="source-status-btn">
+                    <i class="ph ph-pulse"></i>
+                    <span>Status</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="main-wrapper">
+            <main class="main-content">
+                <div class="view-container">
+
+                    <!-- Search View -->
+                    <section class="view-panel active" id="search-view">
+                        <div class="search-container">
+                            <i class="ph ph-magnifying-glass search-icon"></i>
+                            <input type="text" class="glass-input search-input" id="search-input"
+                                   placeholder="Search manga..." autocomplete="off">
+                            <button class="glass-btn glass-btn-accent" id="search-btn">Search</button>
+                        </div>
+
+                        <!-- URL Detection Container -->
+                        <div class="url-detection-container">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <i class="ph ph-link" style="color: var(--text-secondary); font-size: 1.2rem;"></i>
+                                <input type="text" class="glass-input" id="url-input"
+                                       placeholder="Or paste manga URL (18 sources supported)..."
+                                       autocomplete="off"
+                                       style="flex: 1;"
+                                       title="Supported: MangaDex, WeebCentral, MangaNato, MangaFire, MangaSee, MangaHere, MangaKakalot, MangaFreak, MangaKatana, MangaPark, MangaBuddy, MangaReader, AsuraScans, FlameScans, TCBScans, ReaperScans">
+                                <button class="glass-btn glass-btn-accent" id="detect-url-btn">
+                                    <i class="ph ph-magnifying-glass"></i> Detect
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="section-header">
+                            <i class="ph-fill ph-fire"></i>
+                            <span>Trending Now</span>
+                        </div>
+
+                        <div class="results-grid" id="results-grid">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span>Loading...</span>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Library View -->
+                    <section class="view-panel" id="library-view">
+                        <div class="library-header">
+                            <h2>My Library</h2>
+                            <div class="library-filters">
+                                <button class="filter-btn active" data-filter="all">All</button>
+                                <button class="filter-btn" data-filter="reading">Reading</button>
+                                <button class="filter-btn" data-filter="completed">Completed</button>
+                                <button class="filter-btn" data-filter="plan_to_read">Plan to Read</button>
+                                <button class="filter-btn" data-filter="on_hold">On Hold</button>
+                                <button class="filter-btn" data-filter="dropped">Dropped</button>
+                            </div>
+                        </div>
+
+                        <div class="library-grid" id="library-grid">
+                            <div class="empty-state">
+                                <i class="ph ph-books"></i>
+                                <p>Empty</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Details View -->
+                    <section class="view-panel" id="details-view">
+                        <button class="glass-btn" id="back-btn" style="margin-bottom: 1rem;">
+                            <i class="ph ph-arrow-left"></i> Back
+                        </button>
+
+                        <div class="glass-panel" style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                                <div class="manga-cover-section">
+                                    <img class="manga-cover-large" id="manga-cover" src="/static/images/placeholder.svg" alt="Cover">
+                                    <button class="glass-btn glass-btn-accent add-library-btn" id="add-library-btn" style="width: 100%; margin-top: 1rem;">
+                                        <i class="ph ph-plus"></i> Add to Library
+                                    </button>
+                                </div>
+                                <div class="manga-info-section" style="flex: 1; min-width: 280px;">
+                                    <h1 class="manga-title-large" id="manga-title">Loading...</h1>
+                                    <p class="manga-description" id="manga-description">No description available.</p>
+                                    <div class="manga-meta-tags" id="manga-meta"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel">
+                            <div class="chapters-header">
+                                <h2 class="chapters-title">Chapters</h2>
+                                <div class="chapter-controls">
+                                    <button class="glass-btn" id="select-all-chapters">
+                                        <i class="ph ph-checks"></i> Select All
+                                    </button>
+                                    <button class="glass-btn" id="deselect-all-chapters">
+                                        <i class="ph ph-x"></i> Deselect
+                                    </button>
+                                    <button class="glass-btn glass-btn-accent" id="download-selection">
+                                        <i class="ph ph-download-simple"></i> Download Selected
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="chapters-list" id="chapters-list">
+                                <div class="loading-state">
+                                    <div class="spinner"></div>
+                                    <span>Loading chapters...</span>
+                                </div>
+                            </div>
+
+                            <div class="pagination" id="pagination"></div>
+                        </div>
+                    </section>
+
+                </div>
+            </main>
+        </div>
+
+    </div>
+
+    <!-- Hamburger Menu (Mobile Drawer) -->
+    <div class="hamburger-menu" id="hamburger-menu">
+        <div class="menu-header">
+            <h2 class="menu-title">Menu</h2>
+            <button class="menu-close-btn glass-btn" id="close-menu-btn">
+                <i class="ph ph-x"></i>
+            </button>
+        </div>
+        <div class="menu-content">
+            <button class="menu-item" data-view="search">
+                <i class="ph ph-magnifying-glass"></i> Search
+            </button>
+            <button class="menu-item" data-view="library">
+                <i class="ph ph-books"></i> Library
+            </button>
+        </div>
+    </div>
+    <div class="menu-overlay" id="menu-overlay"></div>
+
+    <!-- Library Status Modal -->
+    <div class="modal-overlay" id="library-status-modal-overlay">
+        <div class="modal-panel glass-panel-elevated" id="library-status-modal">
+            <button class="modal-close" id="close-library-status-modal">
+                <i class="ph ph-x"></i>
+            </button>
+            <h2 class="modal-title">Add to Library</h2>
+            <p class="modal-subtitle">Where would you like to add it?</p>
+            <div class="status-options">
+                <button class="status-option-btn" data-status="reading">
+                    <i class="ph-fill ph-book-open"></i>
+                    <span>Reading</span>
+                </button>
+                <button class="status-option-btn" data-status="completed">
+                    <i class="ph-fill ph-check-circle"></i>
+                    <span>Completed</span>
+                </button>
+                <button class="status-option-btn" data-status="plan_to_read">
+                    <i class="ph-fill ph-bookmark"></i>
+                    <span>Plan to Read</span>
+                </button>
+                <button class="status-option-btn" data-status="on_hold">
+                    <i class="ph-fill ph-pause-circle"></i>
+                    <span>On Hold</span>
+                </button>
+                <button class="status-option-btn" data-status="dropped">
+                    <i class="ph-fill ph-x-circle"></i>
+                    <span>Dropped</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source Status Modal -->
+    <div class="modal-overlay" id="source-modal-overlay">
+        <div class="modal-panel glass-panel-elevated">
+            <button class="modal-close" id="close-source-modal">
+                <i class="ph ph-x"></i>
+            </button>
+            <h2 class="modal-title">Source Status</h2>
+            <div id="source-status-grid" class="source-status-grid"></div>
+        </div>
+    </div>
+
+    <!-- Reader Modal -->
+    <div class="reader-container" id="reader-container">
+        <div class="reader-header">
+            <button class="reader-close-btn glass-btn" id="close-reader">
+                <i class="ph ph-x"></i> Close
+            </button>
+            <span class="reader-chapter-title" id="reader-chapter-title">Chapter</span>
+            <div class="reader-controls">
+                <button class="glass-btn" id="prev-page-btn">
+                    <i class="ph ph-caret-left"></i>
+                </button>
+                <span class="reader-page-indicator" id="page-indicator">1 / 1</span>
+                <button class="glass-btn" id="next-page-btn">
+                    <i class="ph ph-caret-right"></i>
+                </button>
+            </div>
+        </div>
+        <div class="reader-content" id="reader-content">
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Loading pages...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Console Panel -->
+    <div class="console-panel" id="console-panel">
+        <div class="console-header">
+            <span class="console-title">
+                <i class="ph-fill ph-terminal"></i> Console
+            </span>
+            <button class="console-close glass-btn" id="console-toggle">
+                <i class="ph ph-caret-down"></i>
+            </button>
+        </div>
+        <div class="console-content" id="console-content"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/static/legacy_v3.0/main.js"></script>
+
+    <!-- Mobile Menu Script -->
+    <script>
+        // Mobile menu toggle
+        const mobileToggle = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+
+        mobileToggle?.addEventListener('click', () => {
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        });
+
+        overlay?.addEventListener('click', () => {
+            sidebar.classList.remove('active');
+            overlay.classList.remove('active');
+        });
+
+        // Sidebar navigation - make first search button work
+        const searchNavBtn = document.getElementById('search-nav-btn');
+        if (searchNavBtn) {
+            searchNavBtn.addEventListener('click', () => {
+                // Remove active from all nav items
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                searchNavBtn.classList.add('active');
+
+                // Close mobile menu
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('active');
+                    overlay.classList.remove('active');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

@@ -116,6 +116,8 @@ class SourceManager:
             "comicx"            # Recent addition
         ]
         
+        self._skipped_sources: list[dict[str, str]] = []
+
         # Initialize
         self._create_session()
         self._discover_sources()
@@ -157,10 +159,27 @@ class SourceManager:
         
         # Classes to skip (adapters/factories that need constructor args)
         skip_classes = {'LuaSourceAdapter'}
+        skip_playwright_modules = {'mangafire_v2'}
+        skip_playwright = os.environ.get("SKIP_PLAYWRIGHT_SOURCES", "").lower() in {"1", "true", "yes", "on"}
+        skip_discovery = os.environ.get("SKIP_SOURCE_DISCOVERY", "").lower() in {"1", "true", "yes", "on"}
+
+        if skip_discovery:
+            print("⚠️ Skipping source discovery (SKIP_SOURCE_DISCOVERY=1)")
+            return
 
         for _, module_name, _ in pkgutil.iter_modules([sources_dir]):
             # Skip base module, __init__, and utility modules
             if module_name in ('base', '__init__', 'lua_runtime', 'async_base', 'async_utils'):
+                continue
+
+            if skip_playwright and module_name in skip_playwright_modules:
+                print(f"⚠️ Skipping {module_name} (Playwright disabled via SKIP_PLAYWRIGHT_SOURCES)")
+                self._skipped_sources.append({
+                    "id": "mangafire-v2",
+                    "name": "MangaFire V2",
+                    "icon": "🔥",
+                    "reason": "playwright_disabled"
+                })
                 continue
 
             try:
@@ -546,6 +565,7 @@ class SourceManager:
         return {
             "active_source": self._active_source_id,
             "sources": [s.get_health_info() for s in self._sources.values()],
+            "skipped": self._skipped_sources,
             "available_count": sum(1 for s in self._sources.values() if s.is_available),
             "total_count": len(self._sources)
         }

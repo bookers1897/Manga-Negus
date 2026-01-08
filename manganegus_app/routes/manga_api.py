@@ -5,6 +5,7 @@ from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.search.smart_search import SmartSearch
 from manganegus_app.jikan_api import get_jikan_client
+from .validators import validate_fields
 
 manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 
@@ -166,7 +167,7 @@ def detect_url():
     """Detect source and manga ID from a URL."""
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
-    url = data.get('url', '').strip()
+    url = (data.get('url') or '').strip()
     if not url:
         return jsonify({'error': 'URL is required'}), 400
     result = manager.detect_source_from_url(url)
@@ -241,15 +242,15 @@ def get_chapters():
     """
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
-    manga_id = data.get('id')
-    source_id = data.get('source')
-    manga_title = data.get('title')
-    mal_id = data.get('mal_id')
     offset = data.get('offset', 0)
     limit = data.get('limit', 100)
+    manga_title = data.get('title')
+    mal_id = data.get('mal_id')
+    manga_id = data.get('id')
+    source_id = data.get('source')
 
-    # If no source specified but we have a title (Jikan manga), search sources
-    if not source_id and manga_title:
+    # If no source specified or it's a Jikan pseudo-source, try to auto-detect real source
+    if (not source_id or source_id == 'jikan') and manga_title:
         log(f"🔍 Auto-detecting source for '{manga_title}'...")
 
         # Try to find this manga in our sources
@@ -292,10 +293,14 @@ def get_chapter_pages():
     """Get page images for a chapter."""
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
-    chapter_id = data.get('chapter_id')
-    source_id = data.get('source')
-    if not chapter_id or not source_id:
-        return jsonify({'error': 'Missing chapter_id or source'}), 400
+    error = validate_fields(data, [
+        ('chapter_id', str, 500),
+        ('source', str, 100)
+    ])
+    if error:
+        return jsonify({'error': error}), 400
+    chapter_id = data['chapter_id']
+    source_id = data['source']
     pages = manager.get_pages(chapter_id, source_id)
     if not pages:
         return jsonify({'error': 'Failed to fetch pages'}), 500
@@ -342,10 +347,14 @@ def get_all_chapters():
     """Get all chapters for a manga (no pagination)."""
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
-    manga_id = data.get('id')
-    source_id = data.get('source')
-    if not manga_id or not source_id:
-        return jsonify({'error': 'Missing id or source'}), 400
+    error = validate_fields(data, [
+        ('id', str, 500),
+        ('source', str, 100)
+    ])
+    if error:
+        return jsonify({'error': error}), 400
+    manga_id = data['id']
+    source_id = data['source']
     chapters = manager.get_chapters(manga_id, source_id)
     return jsonify({
         'chapters': [c.to_dict() for c in chapters],
