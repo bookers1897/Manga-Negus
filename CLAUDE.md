@@ -1,23 +1,27 @@
 # CLAUDE.md
 
-**MangaNegus v3.0.3** - Complete AI Assistant Guide
+**MangaNegus v3.1** - Complete AI Assistant Guide
 
 A comprehensive guide for AI assistants working with MangaNegus, a Flask-based manga aggregator, library manager, and reader.
+
+**Last Updated:** 2026-01-08
+**Version:** 3.1.0 (Redesign Edition)
 
 ---
 
 ## Table of Contents
 
 1. [Project Overview](#project-overview)
-2. [Architecture Deep Dive](#architecture-deep-dive)
-3. [Database Schema](#database-schema)
-4. [Backend Structure](#backend-structure)
-5. [Frontend Architecture](#frontend-architecture)
-6. [Source System](#source-system)
-7. [Development Workflows](#development-workflows)
-8. [Recent Changes & Bug Fixes](#recent-changes--bug-fixes)
-9. [Troubleshooting](#troubleshooting)
-10. [Design Philosophy](#design-philosophy)
+2. [Environment Setup](#environment-setup)
+3. [Architecture Deep Dive](#architecture-deep-dive)
+4. [Frontend Redesign (v3.1)](#frontend-redesign-v31)
+5. [Backend Structure](#backend-structure)
+6. [Database Schema](#database-schema)
+7. [Source System](#source-system)
+8. [Development Workflows](#development-workflows)
+9. [Cleanup & File Reorganization](#cleanup--file-reorganization)
+10. [Recent Bug Fixes](#recent-bug-fixes)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -26,11 +30,12 @@ A comprehensive guide for AI assistants working with MangaNegus, a Flask-based m
 ### What is MangaNegus?
 
 MangaNegus is a **multi-source manga aggregator** that allows users to:
-- Search and discover manga from 31+ sources
-- Build and manage a personal library
-- Download chapters as CBZ files
+- Search and discover manga from 34+ sources
+- Build and manage a personal library with PostgreSQL backend
+- Download chapters as CBZ files with ComicInfo.xml metadata
 - Read manga in a fullscreen reader
 - Track reading progress across different sources
+- Paste URLs from 18+ sources for instant manga loading
 
 **Target Platform:** iOS Code App (mobile Safari)
 **Author:** [@bookers1897](https://github.com/bookers1897)
@@ -39,35 +44,104 @@ MangaNegus is a **multi-source manga aggregator** that allows users to:
 ### Technology Stack
 
 **Backend:**
-- Flask 3.0.0 (Python web framework)
+- Flask 3.0.0 (Python web framework with blueprints)
 - PostgreSQL + SQLAlchemy ORM (database)
 - Alembic (database migrations)
 - BeautifulSoup4 (HTML parsing)
 - lupa (Lua runtime for FMD modules)
-- curl_cffi (Cloudflare bypass)
+- curl_cffi (Cloudflare bypass with TLS fingerprinting)
 - cloudscraper (Alternative CF bypass)
 
 **Frontend:**
 - Vanilla JavaScript ES6 Modules (no framework!)
-- Phosphor Icons (icon library)
-- CSS3 with Glassmorphism design
+- Lucide Icons (formerly Phosphor)
+- CSS3 with modern glassmorphism design
+- Modal overlays with blur backgrounds
 
 **Data Storage:**
-- PostgreSQL database (library, manga, reading progress)
+- PostgreSQL database (library, manga metadata, reading progress)
 - File system (CBZ downloads in `static/downloads/`)
 
 ### Key Features
 
-1. **Multi-Source Aggregation:** 31+ manga sources including MangaDex, WeebCentral, MangaNato, Jikan (MyAnimeList)
+1. **34+ Manga Sources:** MangaDex, WeebCentral, MangaNato, MangaSee, Jikan (MyAnimeList), Anna's Archive, LibGen, and more
 2. **Hybrid Python + Lua Architecture:** Run 590+ FMD Lua modules alongside native Python connectors
 3. **HTMX Bypass:** Special headers for modern dynamic sites using HTMX
 4. **Token Bucket Rate Limiting:** Per-source rate limiting prevents IP bans
 5. **Automatic Fallback:** Priority-based source routing when sources fail
-6. **Glassmorphism UI:** iOS-inspired liquid glass design aesthetic
+6. **Modern Glassmorphism UI:** Dark theme with blur effects and smooth animations
 7. **CBZ Downloads:** Background threaded downloads with ComicInfo.xml metadata
 8. **URL Detection:** Paste manga URLs from 18+ sources to jump directly to manga
-9. **Library Management:** Track reading status (reading, completed, plan to read, on hold, dropped)
-10. **Fullscreen Reader:** Swipe-friendly manga reader for mobile
+9. **Library Management:** PostgreSQL-backed library with status tracking
+10. **Fullscreen Reader:** Mobile-friendly manga reader with lazy loading
+
+---
+
+## Environment Setup
+
+### Python Virtual Environment
+
+**Location:** `/home/kingwavy/projects/Manga-Negus/.venv/`
+
+**Activation:**
+```bash
+source .venv/bin/activate
+```
+
+**Python Version:** Python 3.13 (symlinked from `/usr/bin/python`)
+
+**Important:** Always activate the virtual environment before running Flask or installing packages:
+```bash
+cd /home/kingwavy/projects/Manga-Negus
+source .venv/bin/activate
+python run.py
+```
+
+### Why Virtual Environment is Critical
+
+- **Isolated dependencies:** Prevents conflicts with system Python packages
+- **lupa installation:** Lua runtime requires specific compilation flags
+- **Arch Linux compatibility:** System has externally-managed Python, venv is required
+- **Consistent environment:** All team members and AI assistants use same package versions
+
+### Quick Start Commands
+
+```bash
+# Activate venv and start server
+cd /home/kingwavy/projects/Manga-Negus
+source .venv/bin/activate
+python run.py
+
+# Install new packages
+source .venv/bin/activate
+pip install <package-name>
+
+# Run database migrations
+source .venv/bin/activate
+alembic upgrade head
+
+# Check installed packages
+source .venv/bin/activate
+pip list
+```
+
+### Storage Modes
+
+- **PostgreSQL (set `DATABASE_URL`):** Durable, concurrent-safe library/metadata; supports Alembic migrations and multi-user access.
+- **File fallback (no `DATABASE_URL`):** Uses `library.json`/SQLite; zero setup but single-user oriented and less resilient to concurrent writes.
+
+```bash
+# Example .env entry for Postgres
+DATABASE_URL=postgresql://user:password@localhost/manganegus
+```
+
+### Codex/AI Assistant Note
+
+**If you're having trouble finding the Python environment:**
+1. Always look for `.venv/` directory first
+2. Use `source .venv/bin/activate` before any Python commands
+3. The virtual environment is hidden (starts with dot) - use `ls -la` to see it
+4. Never use system Python directly - always activate venv first
 
 ---
 
@@ -78,11 +152,11 @@ MangaNegus is a **multi-source manga aggregator** that allows users to:
 ```
 User Browser
     ↓
-[index.html] - Single Page Application (SPA)
+[index-redesign.html] - Single Page Application (SPA) with modern UI
     ↓
-[static/js/*.js] - ES6 Modules
+[static/js/redesign.js] - Main application module
     ↓
-[Flask Routes] - API Endpoints
+[Flask Routes] - API Endpoints via blueprints
     ↓
 [SourceManager] - Multi-source orchestration
     ↓
@@ -95,767 +169,405 @@ User Browser
 
 **Searching for manga "Naruto":**
 
-1. **User Input:** User types "Naruto" in search box
-2. **Frontend (search.js):** Captures input, calls `api.search('naruto')`
-3. **API Module (api.js):** Adds CSRF token, sends POST to `/api/search`
-4. **Backend Route (manga_api.py):** Receives request, calls `SourceManager.search_all()`
-5. **Source Manager (sources/__init__.py):** Tries sources in priority order:
-   - WeebCentral (Lua) → 1170 chapters
-   - MangaDex (Python) → Official API
-   - Jikan (Python) → MyAnimeList metadata
-6. **Connector (sources/weebcentral_lua.py):** Makes HTTP request with HTMX headers
-7. **Parser:** Extracts manga data from HTML/JSON response
-8. **Response:** Returns list of MangaResult objects
-9. **Frontend (search.js):** Renders manga cards in results grid
-10. **User Interaction:** User clicks card → triggers `openManga` event → loads chapters
+1. **User Input:** User types "Naruto" in search box, clicks search button
+2. **Frontend (redesign.js):** `performSearch()` calls `API.search('naruto')`
+3. **API Module:** Adds CSRF token, sends POST to `/api/search`
+4. **Flask Route (manga_api.py):** `/api/search` endpoint receives request
+5. **SourceManager:** Tries sources in priority order (WeebCentral V2, MangaDex, etc.)
+6. **Source Connector:** Scrapes/API calls specific source for results
+7. **Response:** JSON array of manga objects returned to frontend
+8. **Frontend Rendering:** `renderMangaGrid()` creates card elements with covers, scores, authors, tags
 
-### Design Patterns
+### Project Structure
 
-**1. Factory Pattern (App Creation)**
-```python
-# run.py
-from manganegus_app import create_app
-app = create_app()
 ```
-
-**2. Singleton Pattern (Shared Instances)**
-```python
-# manganegus_app/extensions.py
-library_manager = LibraryManager()
-downloader = Downloader()
-```
-
-**3. Observer Pattern (Event-Driven Frontend)**
-```javascript
-// Dispatch events
-window.dispatchEvent(new CustomEvent('openManga', { detail: { manga } }));
-
-// Listen for events
-window.addEventListener('openManga', (e) => {
-    showMangaDetails(e.detail.manga);
-});
-```
-
-**4. Strategy Pattern (Source Selection)**
-```python
-# Different strategies for different sources
-class MangaDexConnector(BaseConnector):
-    def search(self, query): # API strategy
-
-class WeebCentralConnector(BaseConnector):
-    def search(self, query): # HTML scraping strategy
-```
-
-**5. Decorator Pattern (Rate Limiting)**
-```python
-def _request_with_rate_limit(self, func, *args, **kwargs):
-    self._wait_for_rate_limit()  # Decorator behavior
-    return func(*args, **kwargs)
+Manga-Negus/
+├── .venv/                      # Python virtual environment (CRITICAL!)
+├── run.py                      # Flask entry point
+├── requirements.txt            # Python dependencies
+├── .env                        # Environment variables (DB connection)
+├── manganegus.db              # SQLite fallback database
+├── library.json               # Legacy file-based library (deprecated)
+├── manganegus_app/            # Flask application package
+│   ├── __init__.py            # App factory (create_app)
+│   ├── extensions.py          # Library, Downloader singletons
+│   ├── models.py              # SQLAlchemy models
+│   ├── log.py                 # Thread-safe logging
+│   ├── csrf.py                # CSRF protection
+│   └── routes/                # Flask blueprints
+│       ├── main_api.py        # Index, CSRF, image proxy, /redesign route
+│       ├── sources_api.py     # Source health, list
+│       ├── manga_api.py       # Search, detect_url, popular
+│       ├── library_api.py     # Library CRUD, status, progress
+│       └── downloads_api.py   # Download, serve CBZ
+├── templates/
+│   ├── index.html             # Original UI (v3.0)
+│   └── index-redesign.html    # New modern UI (v3.1) - TO BE RENAMED
+├── static/
+│   ├── css/
+│   │   ├── styles.css         # Original styles (v3.0)
+│   │   └── redesign.css       # New modern styles (v3.1) - TO BE RENAMED
+│   ├── js/
+│   │   ├── main.js            # Original app coordinator (v3.0)
+│   │   ├── api.js             # CSRF-protected API singleton
+│   │   ├── state.js           # Reactive state container
+│   │   ├── utils.js           # XSS prevention utilities
+│   │   ├── sources.js         # Source management
+│   │   ├── search.js          # Search, trending, URL detection
+│   │   ├── library.js         # Library CRUD operations
+│   │   ├── chapters.js        # Chapter loading, downloads
+│   │   ├── reader.js          # Fullscreen manga reader
+│   │   ├── ui.js              # View management, logging
+│   │   └── redesign.js        # New unified module (v3.1) - TO BE RENAMED
+│   ├── images/                # Logos, placeholders
+│   └── downloads/             # CBZ files (auto-created)
+├── sources/
+│   ├── __init__.py            # SourceManager (auto-discovery, fallback)
+│   ├── base.py                # BaseConnector (rate limiting, logging)
+│   ├── webdriver.py           # Selenium helpers
+│   ├── lua_runtime.py         # Lua interpreter wrapper
+│   ├── lua_adapter.py         # Base Lua adapter
+│   ├── weebcentral_lua.py     # HTMX + curl_cffi (1170 chapters!)
+│   ├── mangadex.py            # Official API
+│   ├── annasarchive.py        # Shadow library
+│   ├── libgen.py              # LibGen API
+│   └── [30+ other sources]
+├── alembic/                   # Database migration scripts
+├── alembic.ini                # Alembic configuration
+├── claude_md_backup/          # Backup folder for old documentation
+└── CLAUDE.md                  # This file!
 ```
 
 ---
 
-## Database Schema
+## Frontend Redesign (v3.1)
 
-### PostgreSQL Tables
+### Overview
 
-**Table: `manga`**
-- Stores metadata about manga titles
-- One entry per manga per source
+The v3.1 redesign is a complete UI overhaul with:
+- **Modern glassmorphism design** with dark theme
+- **Blur effects** on modals and overlays
+- **Smooth animations** with elastic easing
+- **Better organization** - unified JavaScript module instead of 10 separate files
+- **Enhanced UX** - search button, console modal, source switching sidebar
+- **Responsive design** - works on mobile and desktop
 
-```sql
-CREATE TABLE manga (
-    id SERIAL PRIMARY KEY,
-    source_id VARCHAR(50) NOT NULL,           -- e.g., "mangadex", "jikan"
-    source_manga_id VARCHAR(255) NOT NULL,    -- ID from source (stored as VARCHAR!)
-    title VARCHAR(500) NOT NULL,
-    cover_url TEXT,
-    description TEXT,
-    author VARCHAR(255),
-    status VARCHAR(50),                       -- e.g., "ongoing", "completed"
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(source_id, source_manga_id)
-);
-```
+### Key Design Changes
 
-**Table: `library_entries`**
-- User's personal library (which manga they're tracking)
-- Links to `manga` table via foreign key
+**Visual:**
+- Dark background (#0a0a0a) with subtle gradient mesh
+- Glass panels with backdrop-blur and transparency
+- Red accent color (#dc2626) for primary actions
+- Lucide icons (cleaner than Phosphor)
+- Card-based layout with hover effects
 
-```sql
-CREATE TABLE library_entries (
-    id SERIAL PRIMARY KEY,
-    manga_id INTEGER NOT NULL REFERENCES manga(id) ON DELETE CASCADE,
-    status VARCHAR(20) DEFAULT 'reading',     -- reading, completed, plan_to_read, on_hold, dropped
-    last_read_chapter VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+**Functional:**
+- **Sidebar Navigation:** 4 sections (Discover, Popular, Library, History)
+- **Source Selector:** Top 6 sources in sidebar + "All Sources" modal
+- **Search Bar:** Hybrid mode - toggle between title search and URL paste
+- **Console Modal:** Popup with blur background showing debug logs
+- **Better Cards:** Score badge, author, genre tags, view count
 
-### Important Database Notes
+### File Structure (Current)
 
-**⚠️ Critical Type Casting Issue:**
+- **Default UI (redesign):** `templates/index.html`, `static/css/styles.css`, `static/js/main.js`; served at `/` and `/redesign`.
+- **Legacy UI (v3.0):** `templates/legacy_v3.0/index.html`, `static/legacy_v3.0/styles.css`, `static/legacy_v3.0/main.js`; served at `/legacy`. Sidebar/modern previews reference the legacy JS.
 
-The `source_manga_id` column is **VARCHAR**, but some sources (like Jikan/MyAnimeList) return integer IDs (e.g., `2`, `656`, `13`).
+### Implementation Details
 
-**Always convert to string when querying:**
-```python
-# CORRECT ✅
-manga = session.query(Manga).filter_by(
-    source_id='jikan',
-    source_manga_id=str(manga_id)  # Convert to string!
-).first()
+**HTML (`index.html`):**
+- Modern semantic structure
+- Modal overlays for library status, source status, console logs
+- Sidebar with navigation and source selection
+- Search bar with mode toggle button
+- Clean card grid layouts
 
-# WRONG ❌ (causes PostgreSQL type error)
-manga = session.query(Manga).filter_by(
-    source_id='jikan',
-    source_manga_id=manga_id  # Integer won't match VARCHAR
-).first()
-```
+**CSS (`styles.css`):**
+- CSS custom properties for theming
+- Glassmorphism effects (backdrop-filter: blur)
+- Smooth transitions with cubic-bezier easing
+- Responsive breakpoints for mobile/desktop
+- Hover states and animations
 
-**Why VARCHAR instead of INTEGER?**
-- Some sources use alphanumeric IDs (e.g., MangaDex: `"801513ba-a712-498c-8f57-cae55b38cc92"`)
-- VARCHAR accommodates both formats
-
-### Status Enums
-
-**Reading Status Options:**
-- `reading` - Currently reading
-- `completed` - Finished reading
-- `plan_to_read` - Want to read later
-- `on_hold` - Paused temporarily
-- `dropped` - Stopped reading
-
-**Implementation:**
-- Stored as **inline string enums** in database column definition
-- NO separate `ReadingStatus` enum class exists
-- Validation happens at application level
-
-```python
-# CORRECT ✅
-valid_statuses = {'reading', 'completed', 'plan_to_read', 'dropped', 'on_hold'}
-reading_status = status if status in valid_statuses else 'reading'
-
-# WRONG ❌ (this class doesn't exist)
-from .models import ReadingStatus  # ImportError!
-```
+**JavaScript (`main.js`):**
+- **Critical Fix:** DOM elements initialized in `initElements()` after DOM ready
+- Single unified module (easier to maintain than 10 separate files)
+- State management object
+- API integration with CSRF protection
+- Event-driven architecture
+- Modal management
+- Source switching
+- Search mode toggle
+- Console logging to modal
 
 ---
 
 ## Backend Structure
 
-### File Organization
-
-```
-manganegus_app/
-├── __init__.py          # Flask app factory
-├── extensions.py        # Singleton instances (LibraryManager, Downloader)
-├── models.py            # SQLAlchemy ORM models (Manga, LibraryEntry)
-├── log.py               # Thread-safe logging queue
-├── csrf.py              # CSRF token generation
-└── routes/
-    ├── main_api.py      # Index page, CSRF, image proxy
-    ├── sources_api.py   # Source health checks
-    ├── manga_api.py     # Search, URL detection, popular manga
-    ├── library_api.py   # Library CRUD operations
-    └── downloads_api.py # CBZ downloads, file serving
-```
-
 ### Flask Blueprints
 
-MangaNegus uses **Flask blueprints** to organize routes:
+MangaNegus uses Flask blueprints for modular API organization:
 
-| Blueprint | Prefix | File | Purpose |
-|-----------|--------|------|---------|
-| `main_bp` | `/` | `main_api.py` | Homepage, CSRF tokens, image proxy |
-| `sources_bp` | `/api` | `sources_api.py` | Source status, health checks |
-| `manga_bp` | `/api` | `manga_api.py` | Manga search, URL detection |
-| `library_bp` | `/api` | `library_api.py` | Library management |
-| `downloads_bp` | `/api` | `downloads_api.py` | Chapter downloads |
+| Blueprint | Prefix | File | Routes |
+|-----------|--------|------|--------|
+| main_bp | / | main_api.py | Index, CSRF token, image proxy, /redesign |
+| sources_bp | /api | sources_api.py | Source health, list sources |
+| manga_bp | /api | manga_api.py | Search, detect_url, popular |
+| library_bp | /api/library | library_api.py | Library CRUD, status, progress |
+| downloads_bp | /api | downloads_api.py | Download, serve CBZ |
 
 ### Critical API Endpoints
 
-**GET `/`**
-- Serves main SPA (index.html)
-
-**GET `/api/csrf-token`**
-- Returns CSRF token for POST requests
-- Required for all state-changing operations
-
-**POST `/api/search`**
-- **Body:** `{ "query": "naruto", "page": 1 }`
-- **Returns:** List of manga results
-- **Process:** Tries sources in priority order until success
-
-**POST `/api/detect_url`**
-- **Body:** `{ "url": "https://mangadex.org/title/..." }`
-- **Returns:** `{ "source_id": "mangadex", "manga_id": "...", "source_name": "MangaDex" }`
-- **Process:** Matches URL against 18 regex patterns
-
-**GET `/api/library`**
-- **Returns:** User's library as `{ "source:id": { manga_data } }` object
-- **Format:** Key is `"{source_id}:{manga_id}"`, value is manga object
-
-**POST `/api/save`**
-- **Body:** `{ "manga": {...}, "status": "reading" }`
-- **Process:** Adds manga to PostgreSQL library
-- **Note:** Creates `manga` record if not exists, then `library_entry`
-
-**POST `/api/chapters`**
-- **Body:** `{ "manga_id": "...", "source": "mangadex" }`
-- **Returns:** Paginated list of chapters (100 per page)
-
-**POST `/api/download`**
-- **Body:** `{ "manga_id": "...", "source": "...", "chapters": [...] }`
-- **Process:** Starts background thread to download CBZ
-- **Returns:** Immediately with download ID
-
-**GET `/downloads/<filename>.cbz`**
-- Serves downloaded CBZ file
-- Files stored in `static/downloads/`
-
-### LibraryManager (extensions.py)
-
-**Purpose:** Handles all library database operations
-
-**Key Methods:**
-
 ```python
-def add_to_library(self, manga_data: dict, status: str = 'reading') -> bool:
-    """
-    Add manga to user's library.
+# Main
+GET  /                           # Original UI (v3.0)
+GET  /redesign                   # New UI (v3.1)
+GET  /api/csrf-token             # Get CSRF token for POST requests
+GET  /api/image-proxy            # Proxy images through server (CORS bypass)
 
-    Args:
-        manga_data: Dict with keys: id/manga_id, source, title, cover
-        status: One of: reading, completed, plan_to_read, on_hold, dropped
+# Sources
+GET  /api/sources                # List all 34 sources with metadata
+GET  /api/sources/health         # Check availability of all sources
 
-    Returns:
-        True if successful, False otherwise
+# Manga
+POST /api/search                 # Search manga by title
+POST /api/detect_url             # Detect source from URL (18 patterns)
+GET  /api/popular                # Get popular manga from Jikan API
+POST /api/chapters               # Get chapters (paginated, 100/page)
+POST /api/chapter_pages          # Stream reader pages
 
-    Process:
-        1. Validate status string
-        2. Convert manga_id to string (for PostgreSQL)
-        3. Check if manga exists in manga table
-        4. Create manga record if not exists
-        5. Create library_entry record
-        6. Fallback to library.json if database fails
-    """
+# Library (PostgreSQL backend)
+GET  /api/library                # Get user's library (returns dict)
+POST /api/library/save           # Add manga to library
+POST /api/library/update_status  # Update reading status
+POST /api/library/update_progress # Update last chapter read
+POST /api/library/delete         # Remove from library
+
+# Downloads
+POST /api/download               # Background download (threading)
+GET  /downloads/<file>           # Serve CBZ files
 ```
 
+### Database Models (models.py)
+
 ```python
-def get_library(self) -> dict:
-    """
-    Get user's entire library.
+class Manga(Base):
+    """PostgreSQL model for manga metadata"""
+    id = Column(Integer, primary_key=True)
+    source_id = Column(String(50))           # e.g., 'mangadex', 'weebcentral-v2'
+    source_manga_id = Column(String(500))     # Source's internal ID
+    title = Column(String(500))
+    cover_url = Column(Text)
+    status = Column(String(50))               # 'reading', 'completed', etc.
+    last_chapter = Column(String(50))
+    added_at = Column(DateTime)
 
-    Returns:
-        Dict mapping "source:id" to manga objects
-
-    Example:
-        {
-            "jikan:13": {
-                "title": "One Piece",
-                "source": "jikan",
-                "manga_id": "13",
-                "cover": "https://...",
-                "status": "reading",
-                "last_chapter": "1050"
-            }
-        }
-    """
+    # Computed key format: "source:manga_id"
+    # e.g., "mangadex:abc123", "jikan:13"
 ```
 
-### Downloader (extensions.py)
+**Key Format:** Library uses composite keys like `"mangadex:abc-123-def"` or `"jikan:13"`
 
-**Purpose:** Background CBZ creation with threading
-
-**Key Features:**
-- Downloads chapters in separate thread (non-blocking)
-- Creates ComicInfo.xml metadata
-- Compresses to CBZ format
-- Rate limiting per source
-- Progress tracking via logs
-
-**Download Process:**
-1. User clicks "Download Selected"
-2. Frontend sends POST to `/api/download`
-3. Backend starts background thread
-4. Thread iterates through chapters:
-   - Fetch page list for chapter
-   - Download each image
-   - Save to temp directory
-5. Create ComicInfo.xml metadata
-6. ZIP all files to CBZ
-7. Move CBZ to `static/downloads/`
-8. Clean up temp files
-9. Log completion
+**Status Values:** `'reading'`, `'completed'`, `'plan_to_read'`, `'on_hold'`, `'dropped'`
 
 ---
 
-## Frontend Architecture
+## Database Schema
 
-### ES6 Module System
+### PostgreSQL Setup
 
-MangaNegus uses **native ES6 modules** (no build step required!):
-
-```html
-<!-- index.html -->
-<script type="module" src="/static/js/main.js"></script>
+**Environment Variable (.env):**
+```bash
+DATABASE_URL=postgresql://user:password@localhost/manganegus
 ```
 
-**Benefits:**
-- ✅ No webpack/vite/build tooling needed
-- ✅ Native browser support
-- ✅ Fast development (edit and refresh)
-- ✅ Smaller bundle size (no React/Vue runtime)
-- ✅ Works perfectly on iOS Code App
+**Migration Commands:**
+```bash
+source .venv/bin/activate
+alembic upgrade head          # Apply all migrations
+alembic revision -m "message" # Create new migration
+```
 
-### Module Breakdown
+### Library Table Structure
 
-**main.js (172 lines)** - Application Coordinator
-```javascript
-class MangaNegusApp {
-    async init() {
-        await api.fetchCsrfToken();      // Get CSRF token
-        state.cacheElements();            // Cache DOM references
-        this.bindEvents();                // Wire up event listeners
-        library.initializeStatusModal();  // Initialize modals
-        await sources.loadSources();      // Load source list
-        search.loadPopular();             // Load trending manga
+```sql
+CREATE TABLE manga (
+    id SERIAL PRIMARY KEY,
+    source_id VARCHAR(50) NOT NULL,
+    source_manga_id VARCHAR(500) NOT NULL,
+    title VARCHAR(500) NOT NULL,
+    cover_url TEXT,
+    status VARCHAR(50) DEFAULT 'reading',
+    last_chapter VARCHAR(50),
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_id, source_manga_id)
+);
+```
+
+### Query Patterns
+
+**Get library (dictionary format):**
+```python
+library = {}
+mangas = session.query(Manga).all()
+for manga in mangas:
+    key = f"{manga.source_id}:{manga.source_manga_id}"
+    library[key] = {
+        'manga_id': manga.source_manga_id,
+        'source': manga.source_id,
+        'title': manga.title,
+        'cover': manga.cover_url,
+        'status': manga.status,
+        'last_chapter': manga.last_chapter,
+        'added_at': manga.added_at.isoformat()
     }
-}
 ```
 
-**api.js (173 lines)** - CSRF-Protected API Singleton
-```javascript
-class API {
-    csrfToken = null;
-
-    async fetchCsrfToken() {
-        const data = await this.get('/api/csrf-token');
-        this.csrfToken = data.token;
-    }
-
-    async post(url, body) {
-        return fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': this.csrfToken  // Required!
-            },
-            body: JSON.stringify(body)
-        });
-    }
-}
+**Add to library:**
+```python
+key = f"{source}:{manga_id}"
+manga = Manga(
+    source_id=source,
+    source_manga_id=str(manga_id),  # MUST convert to string for VARCHAR
+    title=title,
+    cover_url=cover,
+    status=status or 'reading'
+)
+session.add(manga)
+session.commit()
 ```
-
-**state.js (218 lines)** - Reactive State Container
-```javascript
-class State {
-    currentView = 'search';
-    previousView = null;
-    selectedSource = '';
-    libraryData = null;  // Cached for "Already Added" checks
-    elements = {};       // Cached DOM references
-
-    cacheElements() {
-        this.elements = {
-            searchInput: document.getElementById('search-input'),
-            searchBtn: document.getElementById('search-btn'),
-            resultsGrid: document.getElementById('results-grid'),
-            libraryGrid: document.getElementById('library-grid'),
-            // ... 30+ more elements
-        };
-    }
-}
-```
-
-**utils.js (88 lines)** - XSS Prevention Utilities
-```javascript
-// ALWAYS use these when inserting user/API data!
-
-function escapeHtml(unsafe) {
-    return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
-
-function sanitizeUrl(url) {
-    try {
-        const parsed = new URL(url);
-        if (!['http:', 'https:'].includes(parsed.protocol)) {
-            return '/static/images/placeholder.svg';
-        }
-        return url;
-    } catch {
-        return '/static/images/placeholder.svg';
-    }
-}
-
-// Safe DOM manipulation - ALWAYS use createElement + textContent!
-const card = document.createElement('div');
-card.textContent = manga.title;  // Auto-escaped, safe!
-// NEVER: card.innerHTML = manga.title;  // XSS vulnerability!
-```
-
-**sources.js (103 lines)** - Source Management
-- Loads available sources from `/api/sources`
-- Populates source dropdown
-- Shows source health modal
-- Handles source switching
-
-**search.js (215 lines)** - Search, Trending, URL Detection
-- Handles search form submission
-- Loads trending/popular manga
-- URL detection (paste manga URL to jump to it)
-- Renders search results as cards
-- Updates "Already Added" button states
-
-**library.js (129 lines)** - Library CRUD Operations
-```javascript
-async function loadLibrary(filter = 'all') {
-    const lib = await api.getLibrary();
-    state.libraryData = lib;  // Cache for button states
-
-    let items = Object.entries(lib);
-    if (filter !== 'all') {
-        items = items.filter(([k, m]) => m.status === filter);
-    }
-
-    // Render cards using safe DOM methods
-    items.forEach(([key, manga]) => {
-        const card = document.createElement('div');
-        card.className = 'manga-card glass-panel';
-        // ... build card structure ...
-        libraryGrid.appendChild(card);
-    });
-}
-```
-
-**chapters.js (332 lines)** - Chapter Loading, Downloads
-- Fetches paginated chapters (100 per page)
-- Chapter selection (checkboxes)
-- Range downloads (chapters 1-10)
-- Selection downloads (selected chapters)
-- CBZ download progress tracking
-
-**reader.js (98 lines)** - Fullscreen Manga Reader
-- Fullscreen overlay reader
-- Lazy image loading
-- Swipe navigation (mobile-friendly)
-- Page indicators
-
-**ui.js (59 lines)** - View Management, Logging
-```javascript
-function showView(view) {
-    // Remove active from all views
-    document.querySelectorAll('.view-panel').forEach(v =>
-        v.classList.remove('active')
-    );
-
-    // Activate target view
-    const targetView = document.getElementById(`${view}-view`);
-    targetView.classList.add('active');
-
-    // Trigger special events
-    if (view === 'library') {
-        window.dispatchEvent(new CustomEvent('loadLibrary'));
-    }
-}
-```
-
-### Event-Driven Communication
-
-Modules communicate via **CustomEvents** (loose coupling):
-
-```javascript
-// Module A dispatches event
-window.dispatchEvent(new CustomEvent('openManga', {
-    detail: { manga: { id: '123', source: 'mangadex', title: 'Naruto' } }
-}));
-
-// Module B listens for event
-window.addEventListener('openManga', (e) => {
-    const { manga } = e.detail;
-    showMangaDetails(manga);
-});
-```
-
-**Key Events:**
-- `openManga` - Open manga details view
-- `addToLibrary` - Add manga to library
-- `openReader` - Open fullscreen reader
-- `showView` - Switch between views
-- `loadLibrary` - Reload library data
-- `log` - Display console message
-
-### DOM Ready Race Condition Fix
-
-**Problem:** ES6 modules load with `defer` attribute, so `DOMContentLoaded` may have already fired before module executes.
-
-**Solution (main.js:169-179):**
-```javascript
-// Check if DOM is already loaded
-if (document.readyState === 'loading') {
-    // DOM still loading, wait for event
-    document.addEventListener('DOMContentLoaded', () => {
-        const app = new MangaNegusApp();
-        app.init();
-    });
-} else {
-    // DOM already loaded, initialize immediately
-    const app = new MangaNegusApp();
-    app.init();
-}
-```
-
-This **fixes the library display bug** where event listeners weren't being attached.
 
 ---
 
 ## Source System
 
-### BaseConnector Interface
+### Multi-Source Architecture
 
-All source connectors inherit from `BaseConnector`:
-
-```python
-class BaseConnector:
-    id = "source_id"           # Unique identifier
-    name = "Source Name"        # Display name
-    base_url = "https://..."    # Base URL
-    icon = "🔥"                 # Emoji icon
-    url_patterns = []           # Regex patterns for URL detection
-    rate_limit = 1.0            # Requests per second
-    rate_limit_burst = 3        # Burst capacity
-    request_timeout = 15        # Timeout in seconds
-
-    def search(self, query: str, page: int = 1) -> List[MangaResult]:
-        """Search for manga by title"""
-
-    def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
-        """Get chapter list for manga"""
-
-    def get_pages(self, chapter_id: str) -> List[PageResult]:
-        """Get page URLs for chapter"""
-```
-
-### Source Priority Order
-
-Sources are tried in priority order until one succeeds:
+**SourceManager** (`sources/__init__.py`) auto-discovers all source connectors:
 
 ```python
+# Priority order for fallback
 priority_order = [
-    "lua-weebcentral",  # 1170 chapters (HTMX breakthrough!)
-    "mangadex",         # Official API, most reliable
-    "jikan",            # MyAnimeList metadata
+    "weebcentral-v2",   # HTMX bypass, 1170 chapters for One Piece
+    "mangadex",         # Official API, reliable
     "manganato",        # .gg domain
-    "mangafire",        # Cloudflare bypass working
-    # ... 26 more sources
+    "mangafire-v2",     # Cloudflare bypass
+    "mangasee-v2",      # Updated connector
+    "asurascans",       # Fast updates
+    # ... 28 more sources
 ]
 ```
 
-### Rate Limiting (Token Bucket Algorithm)
+### Source Categories
 
-Each source has its own rate limiter:
+**Tier 1 (Official APIs):**
+- MangaDex (api.mangadex.org)
+- Jikan / MyAnimeList (api.jikan.moe)
+
+**Tier 2 (HTMX Sites):**
+- WeebCentral V2 (curl_cffi + HTMX headers)
+- MangaFire V2 (playwright-stealth)
+
+**Playwright note:** In restricted environments you can skip Playwright-backed sources (e.g., `mangafire_v2`) by setting `SKIP_PLAYWRIGHT_SOURCES=1` before startup. Otherwise, ensure Chromium sandbox is available.
+
+**Tier 3 (Standard Scraping):**
+- MangaNato, MangaSee, AsuraScans, etc. (BeautifulSoup4)
+
+**Tier 4 (Archives):**
+- Anna's Archive (shadow library)
+- Library Genesis (95TB+ collection)
+
+**Tier 5 (Gallery-DL Wrappers):**
+- Dynasty Scans, Imgur, MangaPark, Tapas, Webtoon via gallery-dl
+
+**Tier 6 (Lua Adapters):**
+- 590+ FMD Lua modules (experimental)
+
+### Rate Limiting
+
+Each source has token bucket rate limiting:
 
 ```python
+# base.py
 def _wait_for_rate_limit(self):
-    # Calculate elapsed time since last request
     elapsed = time.time() - self._last_request
-
-    # Refill tokens based on elapsed time
-    self._tokens = min(
-        self.rate_limit_burst,
-        self._tokens + elapsed * self.rate_limit
-    )
-
-    # Wait if no tokens available
+    self._tokens = min(self.rate_limit_burst, self._tokens + elapsed * self.rate_limit)
     if self._tokens < 1.0:
-        wait_time = (1.0 - self._tokens) / self.rate_limit
-        time.sleep(wait_time)
-        self._tokens = 0
-    else:
-        self._tokens -= 1.0
-
-    self._last_request = time.time()
+        time.sleep((1.0 - self._tokens) / self.rate_limit)
 ```
 
-**Example:**
-- MangaDex: 2.0 req/s, burst 5
-- WeebCentral: 1.5 req/s, burst 3
-- MangaFire: 2.0 req/s, burst 4
+**Example Configuration:**
+```python
+class MangaDexConnector(BaseConnector):
+    rate_limit = 2.0        # 2 requests per second
+    rate_limit_burst = 5    # Burst up to 5 requests
+    request_timeout = 20    # 20 second timeout
+```
 
 ### Cloudflare Bypass Strategies
 
-**1. curl_cffi (Best)**
-```python
-from curl_cffi import requests as curl_requests
+1. **curl_cffi** (Best for HTMX sites)
+   ```python
+   from curl_cffi import requests as curl_requests
+   session = curl_requests.Session()
+   response = session.get(url, impersonate="chrome120")
+   ```
 
-session = curl_requests.Session()
-resp = session.get(
-    url,
-    impersonate="chrome120",  # Mimics Chrome TLS fingerprint
-    headers={"HX-Request": "true"},  # HTMX headers
-    timeout=20
-)
-```
+2. **cloudscraper** (Basic JS challenges)
+   ```python
+   import cloudscraper
+   scraper = cloudscraper.create_scraper()
+   html = scraper.get(url).text
+   ```
 
-**2. cloudscraper (Fallback)**
-```python
-import cloudscraper
-
-scraper = cloudscraper.create_scraper()
-resp = scraper.get(url)
-```
-
-**3. Selenium (Last Resort)**
-```python
-from selenium import webdriver
-
-driver = webdriver.Chrome()
-driver.get(url)
-html = driver.page_source
-```
-
-### HTMX Breakthrough (WeebCentral)
-
-**Discovery (Dec 2025):** WeebCentral migrated from REST to HTMX endpoints.
-
-**Problem:** HTTP 200 OK but empty results
-**Root Cause:** Missing HTMX headers
-**Solution:**
-```python
-headers = {
-    "HX-Request": "true",
-    "HX-Current-URL": f"{self.base_url}/search",
-    "HX-Target": "results"
-}
-```
-
-**Results:** 0 chapters → **1170 chapters** for One Piece!
-
-**Lesson:** Always check DevTools Network tab for actual headers used.
-
-### URL Detection System
-
-Users can paste manga URLs to jump directly to manga:
-
-```python
-url_patterns = [
-    r'https?://mangadex\.org/title/([a-f0-9-]+)',
-    r'https?://.*weebcentral\.com/.*/manga/([a-z0-9-]+)',
-    r'https?://.*manganato\.com/manga-([a-z0-9]+)',
-    # ... 15 more patterns
-]
-
-def extract_id_from_url(self, url: str) -> Optional[str]:
-    for pattern in self.url_patterns:
-        match = re.search(pattern, url, re.I)
-        if match and match.groups():
-            return match.group(1)
-    return None
-```
-
-**Supported Sources:**
-MangaDex, WeebCentral, MangaNato, MangaFire, MangaSee, MangaHere, MangaKakalot, MangaFreak, MangaKatana, MangaPark, MangaBuddy, MangaReader, AsuraScans, FlameScans, TCBScans, ReaperScans, Comick, ZeroScans
+3. **playwright-stealth** (Heavy JS sites)
+   ```python
+   from playwright.sync_api import sync_playwright
+   # Used for MangaFire V2
+   ```
 
 ---
 
 ## Development Workflows
 
-### Setup & Installation
+### Starting Development Server
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/bookers1897/Manga-Negus.git
-cd Manga-Negus
+# Activate virtual environment
+cd /home/kingwavy/projects/Manga-Negus
+source .venv/bin/activate
 
-# 2. Create virtual environment (recommended for Arch/externally-managed Python)
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Set up PostgreSQL
-sudo systemctl start postgresql
-sudo -u postgres psql -c "CREATE DATABASE manganegus;"
-sudo -u postgres psql -c "CREATE USER your_user WITH PASSWORD 'your_password';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE manganegus TO your_user;"
-
-# 5. Configure environment
-cp .env.example .env
-# Edit .env and set DATABASE_URL
-
-# 6. Initialize database
-alembic upgrade head
-
-# 7. Run development server
+# Start Flask development server
 python run.py
-# or: flask run
 
-# Navigate to http://127.0.0.1:5000
-```
-
-### Environment Variables (.env)
-
-```bash
-# Database connection
-DATABASE_URL=postgresql://user:password@localhost/manganegus
-
-# Flask configuration
-FLASK_ENV=development
-SECRET_KEY=your-secret-key-here
-
-# Optional: API keys for specific sources
-MANGADEX_API_KEY=your-key-here
-```
-
-### Database Migrations
-
-```bash
-# Create new migration
-alembic revision -m "Description of changes"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback migration
-alembic downgrade -1
-
-# View migration history
-alembic history
+# Server runs on: http://127.0.0.1:5000
+# Redesign UI: http://127.0.0.1:5000/redesign
 ```
 
 ### Testing Sources
 
 ```bash
-# Test a specific source
-python -c "from sources.mangadex import MangaDexConnector; print(MangaDexConnector().search('naruto'))"
+source .venv/bin/activate
 
-# Test WeebCentral Lua adapter
-python -c "from sources.weebcentral_lua import WeebCentralLuaAdapter; print(WeebCentralLuaAdapter().search('one piece'))"
+# Test specific source
+python -c "
+from sources import get_source_manager
+sm = get_source_manager()
+results = sm.get_source('mangadex').search('naruto')
+print(f'Found {len(results)} results')
+"
 
 # List all sources
-python -c "from sources import get_source_manager; [print(s) for s in get_source_manager().list_sources()]"
-
-# Test source health
-curl http://127.0.0.1:5000/api/sources/health
+python -c "
+from sources import get_source_manager
+sm = get_source_manager()
+print('\n'.join(s.name for s in sm.list_sources()))
+"
 ```
 
-### Adding a New Python Connector
+### Adding a New Source
 
-**1. Create connector file:**
-```bash
-touch sources/newsource.py
-```
-
-**2. Implement BaseConnector:**
+1. Create `sources/newsource.py`:
 ```python
 from .base import BaseConnector, MangaResult, ChapterResult, PageResult
 
@@ -868,28 +580,12 @@ class NewSourceConnector(BaseConnector):
     # URL detection patterns
     url_patterns = [r'https?://newsource\.com/manga/([a-z0-9-]+)']
 
-    # Rate limiting
     rate_limit = 1.5
     rate_limit_burst = 3
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
-        url = f"{self.base_url}/search?q={query}&page={page}"
-        html = self._request_html(url)
-        soup = BeautifulSoup(html, 'html.parser')
-
-        results = []
-        for item in soup.select('.manga-item'):
-            try:
-                results.append(MangaResult(
-                    id=item['data-id'],
-                    title=item.select_one('.title').text.strip(),
-                    source=self.id,
-                    cover_url=item.select_one('img')['src']
-                ))
-            except Exception as e:
-                self.log(f"Parse error: {e}")
-
-        return results
+        # Implement search
+        pass
 
     def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
         # Implement chapter fetching
@@ -900,378 +596,575 @@ class NewSourceConnector(BaseConnector):
         pass
 ```
 
-**3. Auto-discovery:**
-No registration needed! `SourceManager` automatically discovers all `BaseConnector` subclasses.
+2. **Auto-discovery:** SourceManager automatically finds it - no registration needed!
 
-**4. Add to priority order (optional):**
-```python
-# sources/__init__.py
-priority_order = [
-    "newsource",  # Add here
-    "mangadex",
-    # ...
-]
-```
-
-### Git Workflow
+### Database Migrations
 
 ```bash
-# Make changes
-git add file1.py file2.js
+source .venv/bin/activate
 
-# Commit with descriptive message
-git commit -m "Fix library display race condition
+# Create new migration
+alembic revision -m "Add new field to manga table"
 
-- Added document.readyState check in main.js
-- Fixed PostgreSQL VARCHAR type casting in extensions.py
-- Cleaned up debug logging
+# Edit the generated file in alembic/versions/
 
-🤖 Generated with Claude Code
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+# Apply migration
+alembic upgrade head
 
-# Push to GitHub
-git push origin main
+# Rollback one version
+alembic downgrade -1
+```
+
+### Frontend Development
+
+**Redesign UI (v3.1):**
+```bash
+# Edit files
+templates/index-redesign.html
+static/css/redesign.css
+static/js/redesign.js
+
+# Flask auto-reloads on file changes in debug mode
+# Just refresh browser to see changes
+```
+
+**Browser Console:**
+- Open DevTools (F12)
+- Check console for `[DEBUG]` logs showing DOM initialization, API calls, etc.
+- Use `console.log('[DEBUG] ...')` for tracing issues
+
+---
+
+## Cleanup & File Reorganization
+
+### Current State (Messy)
+
+The project currently has **duplicate frontend files** due to the redesign process:
+
+**Old UI (v3.0):**
+- `templates/index.html` (704 lines - original)
+- `static/css/styles.css` (original styles)
+- `static/js/*.js` (10 separate modules - main.js, api.js, state.js, etc.)
+
+**New UI (v3.1):**
+- `templates/index-redesign.html` (332 lines - modern)
+- `static/css/redesign.css` (779 lines - glassmorphism)
+- `static/js/redesign.js` (1,200+ lines - unified module)
+
+**Problem:**
+- Confusing to have both `index.html` and `index-redesign.html`
+- `redesign.css` and `redesign.js` should be the default `styles.css` and `main.js`
+- Two different codebases doing the same thing
+- Hard for AI assistants to know which files to edit
+
+### Cleanup Plan
+
+**Step 1: Backup Old Files**
+```bash
+# Create backup directory
+mkdir -p static/legacy_v3.0
+
+# Move old frontend files
+mv templates/index.html static/legacy_v3.0/
+mv static/css/styles.css static/legacy_v3.0/
+mv static/js/main.js static/legacy_v3.0/
+mv static/js/ui.js static/legacy_v3.0/
+# (keep api.js, state.js, utils.js - still useful)
+```
+
+**Step 2: Rename Redesign Files to Primary Names**
+```bash
+# Rename template
+mv templates/index-redesign.html templates/index.html
+
+# Rename CSS
+mv static/css/redesign.css static/css/styles.css
+
+# Rename JavaScript
+mv static/js/redesign.js static/js/main.js
+```
+
+**Step 3: Update Route in main_api.py**
+```python
+# Change from:
+@main_bp.route('/redesign')
+def redesign():
+    return render_template('index-redesign.html')
+
+# To:
+@main_bp.route('/')
+def index():
+    return render_template('index.html')
+
+# Remove old /redesign route
+```
+
+**Step 4: Update HTML References**
+```html
+<!-- In templates/index.html -->
+<!-- Change from: -->
+<link rel="stylesheet" href="/static/css/redesign.css">
+<script type="module" src="/static/js/redesign.js"></script>
+
+<!-- To: -->
+<link rel="stylesheet" href="/static/css/styles.css">
+<script type="module" src="/static/js/main.js"></script>
+```
+
+**Step 5: Clean Up Unused Files**
+```bash
+# Remove documentation files that are outdated
+rm -rf claude_md_backup/  # After confirming new CLAUDE.md is good
+rm *.txt  # Old debugging notes
+rm *_gemini_solution.md  # Old AI solution attempts
+rm *.png  # Screenshots (move to docs/ folder if needed)
+```
+
+**Step 6: Organize Documentation**
+```bash
+# Create docs directory
+mkdir -p docs
+
+# Move documentation
+mv DEBUGGING_SESSION.md docs/
+mv DATABASE_SETUP.md docs/
+mv QUICK_START.md docs/
+mv architectural_review*.md docs/
+mv refactor_report*.md docs/
+mv BREAKTHROUGH_NOTES.md docs/
+
+# Keep in root:
+# - CLAUDE.md (this file)
+# - README.md
+# - SETUP_GUIDE.md (if exists)
+```
+
+**Step 7: Git Cleanup**
+```bash
+# Remove untracked files from git
+git clean -n  # Preview what will be deleted
+git clean -f  # Actually delete untracked files
+git clean -fd # Delete untracked files and directories
+
+# Add new structure to git
+git add templates/index.html
+git add static/css/styles.css
+git add static/js/main.js
+git commit -m "Reorganize: Redesign files now primary, old files backed up"
+```
+
+### After Cleanup Structure
+
+```
+Manga-Negus/
+├── .venv/                 # Virtual environment
+├── manganegus_app/        # Flask app
+├── sources/               # Source connectors
+├── templates/
+│   └── index.html         # Primary UI (was index-redesign.html)
+├── static/
+│   ├── css/
+│   │   └── styles.css     # Primary styles (was redesign.css)
+│   ├── js/
+│   │   ├── main.js        # Primary app (was redesign.js)
+│   │   ├── api.js         # Shared API module
+│   │   ├── state.js       # Shared state module
+│   │   └── utils.js       # Shared utilities
+│   ├── legacy_v3.0/       # Backup of old UI
+│   └── downloads/
+├── docs/                  # Documentation files
+├── alembic/               # Database migrations
+├── CLAUDE.md              # This file
+└── README.md              # User-facing documentation
+```
+
+### Benefits of Cleanup
+
+1. **Clarity:** One UI, one set of files, no confusion
+2. **Maintainability:** AI assistants know exactly which files to edit
+3. **Performance:** No unused code loaded
+4. **Git History:** Clean commits without duplicate files
+5. **Onboarding:** New contributors understand structure immediately
+
+---
+
+## Recent Bug Fixes
+
+### Session 2026-01-08: Critical DOM Initialization Bug
+
+**Problem 1: Sources Not Loading in Sidebar**
+
+**Root Cause:** DOM elements were being selected BEFORE the DOM was ready:
+```javascript
+// BEFORE (BROKEN):
+const els = {
+    sourceList: document.getElementById('source-list'), // Returns null!
+    sidebar: document.getElementById('sidebar'),         // Returns null!
+    // ... all elements were null
+};
+```
+
+**Why This Failed:**
+- Script loads and executes `const els = {...}` immediately
+- DOM elements don't exist yet (HTML not parsed)
+- All `document.getElementById()` calls return `null`
+- Later when `renderSources()` runs, `els.sourceList` is still `null`
+- Sources fail to render silently
+
+**Solution:**
+```javascript
+// Initialize as empty object
+let els = {};
+
+// New function to populate elements AFTER DOM ready
+function initElements() {
+    els = {
+        sourceList: document.getElementById('source-list'),
+        sidebar: document.getElementById('sidebar'),
+        // ... now all elements exist and work
+    };
+}
+
+// Call in init() as first step
+async function init() {
+    initElements();  // MUST be first!
+    // ... rest of initialization
+}
+```
+
+**Impact:** Fixed sources loading, sidebar toggle, console modal, all DOM interactions
+
+---
+
+**Problem 2: Sidebar Not Collapsing**
+
+**Root Cause:** Same DOM initialization issue - `els.sidebar`, `els.overlay`, `els.menuBtn` were all `null`
+
+**Solution:** Fixed by `initElements()` function above
+
+**Verification:**
+```javascript
+// Added debug logging
+console.log('[DEBUG] toggleSidebar - isOpen:', isOpen);
+console.log('[DEBUG] Sidebar opened - classes:', els.sidebar.className);
 ```
 
 ---
 
-## Recent Changes & Bug Fixes
+**Problem 3: Console Button Did Nothing**
 
-### v3.0.3 (Jan 7, 2026)
+**Root Cause:** Console panel was using wrong HTML structure (simple div instead of modal)
 
-**Critical Fixes:**
+**Solution:**
+```html
+<!-- BEFORE: -->
+<div id="console-panel" class="toast" style="display: none;">...</div>
 
-✅ **Library Display Bug (ES6 Module Race Condition)**
-- **Problem:** Library page not displaying, event listeners not attached
-- **Root Cause:** `DOMContentLoaded` event fires before ES6 module loads (modules have `defer` attribute)
-- **Fix:** Added `document.readyState` check in `main.js:169-179`
-- **Files:** `static/js/main.js`
+<!-- AFTER: -->
+<div id="console-modal" class="modal-overlay">
+    <div class="modal-panel" style="max-width: 700px;">
+        <button class="modal-close" id="console-close">
+            <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title">Console Logs</h2>
+        <div id="console-content">...</div>
+    </div>
+</div>
+```
 
-✅ **PostgreSQL Type Casting**
-- **Problem:** `operator does not exist: character varying = integer`
-- **Root Cause:** `source_manga_id` is VARCHAR but Jikan returns integers
-- **Fix:** Added `str(manga_id)` conversion in all database queries
-- **Files:** `manganegus_app/extensions.py` (4 methods updated)
+**JavaScript Update:**
+```javascript
+// BEFORE:
+els.consolePanel.style.display = isVisible ? 'none' : 'block';
 
-✅ **ReadingStatus Import Error**
-- **Problem:** `cannot import name 'ReadingStatus' from manganegus_app.models`
-- **Root Cause:** No `ReadingStatus` enum class exists (uses inline strings)
-- **Fix:** Removed import, use string validation instead
-- **Files:** `manganegus_app/extensions.py`
+// AFTER:
+els.consoleModal.classList.add('active');  // Shows modal with blur
+```
 
-**Features:**
-- Library page now displays correctly with portrait cards (160px width)
-- "Already Added" state persists across navigation
-- MAL/Jikan images load directly without proxy
-- Cleaned up debug logging from `library.js` and `ui.js`
+---
 
-### v3.0.2 (Jan 2, 2026)
+**Problem 4: No Search Button**
 
-**Backend Refactoring:**
-- ✅ Moved to `manganegus_app/` package structure
-- ✅ Flask blueprints for route organization
-- ✅ Removed 195 lines of redundant code
-- ✅ Fixed Flask static folder path
+**Solution:** Added search button with arrow icon next to search input
+```html
+<button id="search-btn" class="icon-btn" style="margin-left: 4px;">
+    <i data-lucide="arrow-right" width="20"></i>
+</button>
+```
 
-**Frontend Modularization:**
-- ✅ Split 704-line monolithic `index.html` into 10 ES6 modules (1,553 lines)
-- ✅ XSS prevention with safe DOM methods
-- ✅ Event-driven architecture (CustomEvents)
-- ✅ All 31 sources working
+```javascript
+els.searchBtn.addEventListener('click', () => {
+    performSearch();
+});
+```
 
-### v3.0.1 (Dec 31, 2025)
+---
 
-**Critical Bug Fixes:**
-1. ✅ NameError in `/api/detect_url` (import issue)
-2. ✅ Defunct ComicK removed (20-30s timeout fix)
-3. ✅ Duplicate templates directory removed
-4. ✅ Circular import fix (13 scrapers) via callback pattern
-5. ✅ Open image proxy vulnerability (domain whitelist)
-6. ✅ Downloader session fix (Cloudflare sources)
-7. ✅ Inefficient fallback logic (empty vs. None)
+### Previous Session: Library API Integration
 
-**New Features:**
-- URL detection system (18 sources)
-- LibGen connector (95TB+ comics)
-- Anna's Archive connector (shadow library)
-- ComicX connector
+**Problem:** Library using wrong endpoints and payload structure
+
+**Fixes:**
+- Changed `/api/save` to `/api/library/save`
+- Fixed payload: use `id` not `manga_id`
+- Fixed response parsing: dict → array conversion
+- Fixed key format: `"source:manga_id"`
+
+---
+
+### v3.0 Bug Fixes (December 2025)
+
+**Tier 1: Critical**
+1. NameError in `/api/detect_url` - Missing import
+2. Defunct ComicK in priority order - 20-30s timeout on every search
+3. Duplicate templates directory
+
+**Tier 2: Major**
+4. Circular imports in 13 scrapers - Callback pattern via `source_log()`
+5. Open image proxy vulnerability - Domain whitelist
+6. Downloader using wrong session - Cloudflare sources failed
+7. Inefficient fallback logic - Empty searches triggered full cascade
 
 ---
 
 ## Troubleshooting
 
-### Library Page Not Loading
+### Common Issues
 
-**Symptom:** Blank library page, no manga cards
-**Diagnosis:**
-```javascript
-// Check browser console (F12)
-// Should see:
-// 🎯 showView() called with: library
-// 📚 Dispatching loadLibrary event
-// If missing, event listeners not attached
+**Issue: "ModuleNotFoundError: No module named 'dotenv'"**
+```bash
+# Solution: Activate virtual environment first
+source .venv/bin/activate
+pip install python-dotenv
 ```
 
-**Solution:** Ensure `main.js` has `document.readyState` check (v3.0.3 fix)
-
-### Database Connection Errors
-
-**Symptom:** `psycopg2.OperationalError: could not connect`
-**Solution:**
+**Issue: Sources not loading / Sidebar empty**
 ```bash
-# 1. Check PostgreSQL is running
-sudo systemctl status postgresql
+# Check browser console (F12)
+# Should see: [DEBUG] Elements initialized
+#             [DEBUG] Sources loaded: 34
+#             [DEBUG] Rendering 34 sources...
 
-# 2. Verify database exists
-sudo -u postgres psql -l | grep manganegus
+# If not, check:
+1. Server running? (python run.py)
+2. /api/sources returns data? (curl http://localhost:5000/api/sources)
+3. JavaScript errors in console?
+```
 
-# 3. Test connection
-sudo -u postgres psql manganegus -c "SELECT 1;"
+**Issue: Sidebar won't close**
+```bash
+# Fixed in v3.1 - check browser console for:
+# [DEBUG] toggleSidebar - isOpen: true
+# [DEBUG] closeSidebar called
+# [DEBUG] Sidebar closed - classes: sidebar
 
-# 4. Check .env file
+# If missing, elements not initialized - reload page
+```
+
+**Issue: PostgreSQL connection failed**
+```bash
+# Check .env file exists:
 cat .env | grep DATABASE_URL
+
+# Test connection:
+source .venv/bin/activate
+python -c "
+from sqlalchemy import create_engine
+from manganegus_app.models import Base
+import os
+from dotenv import load_dotenv
+load_dotenv()
+engine = create_engine(os.getenv('DATABASE_URL'))
+print('Connection successful!')
+"
 ```
 
-### Source Returning Empty Results (HTTP 200)
-
-**Symptom:** Source responds with 200 OK but no manga found
-**Diagnosis:**
-1. Check if site uses HTMX (look for `hx-*` attributes in HTML)
-2. Inspect DevTools Network tab for actual headers
-3. Check for Cloudflare challenge page
-
-**Solution:**
-```python
-# Add HTMX headers
-headers = {
-    "HX-Request": "true",
-    "HX-Current-URL": f"{self.base_url}/search"
-}
-
-# Use curl_cffi for Cloudflare
-from curl_cffi import requests
-resp = requests.get(url, headers=headers, impersonate="chrome120")
-```
-
-### Rate Limiting (HTTP 429)
-
-**Symptom:** Source returns "Too Many Requests"
-**Solution:**
-```python
-# Adjust rate limit in connector
-rate_limit = 0.5  # Slow down to 0.5 req/s
-rate_limit_burst = 2  # Reduce burst capacity
-```
-
-### CBZ Downloads Failing
-
-**Symptom:** Download starts but CBZ file not created
-**Diagnosis:**
+**Issue: Flask server won't start**
 ```bash
-# Check logs in console panel
-# Look for errors like:
-# ❌ Failed to download page: timeout
-# ❌ Failed to create CBZ: permission denied
+# 1. Check if already running
+ps aux | grep python | grep run.py
 
-# Check disk space
-df -h
+# 2. Kill existing process
+pkill -f "python.*run.py"
 
-# Check static/downloads/ permissions
-ls -la static/downloads/
+# 3. Activate venv and start fresh
+source .venv/bin/activate
+python run.py
+
+# 4. Check logs
+tail -f /tmp/manganegus-server.log
 ```
 
-**Solution:**
+**Issue: Rate limiting / IP banned**
 ```bash
-# Create downloads directory if missing
-mkdir -p static/downloads/
-chmod 755 static/downloads/
+# Sources have automatic rate limiting
+# If you hit limits, wait or adjust rate_limit in source connector:
 
-# Increase timeout for slow sources
-request_timeout = 30  # in connector
+# sources/mangadex.py
+class MangaDexConnector(BaseConnector):
+    rate_limit = 1.0  # Slower = safer (was 2.0)
 ```
 
-### "Already Added" Button Not Updating
+**Issue: Manga images not loading**
+```bash
+# Use image proxy to bypass CORS:
+# /api/image-proxy?url=<image_url>
 
-**Symptom:** After adding to library, button still shows "+ Add"
-**Solution:** Ensure `state.libraryData` is cached when loading library:
-
-```javascript
-// library.js
-export async function loadLibrary() {
-    const lib = await api.getLibrary();
-    state.libraryData = lib;  // CRITICAL: Cache for button states
-    // ... render cards
-}
+# Check if domain is whitelisted in main_api.py:
+ALLOWED_DOMAINS = [
+    'mangadex.org',
+    'weebcentral.com',
+    # ... add your domain
+]
 ```
 
 ---
 
 ## Design Philosophy
 
-### Why Vanilla JavaScript?
+### Code Style
 
-**Decision:** Use vanilla JS instead of React/Vue/Angular
+**Python:**
+- Comprehensive docstrings (Google style)
+- Type hints for function parameters
+- `except Exception as e:` with logging (never bare `except:`)
+- Thread-safe logging via `source_log()`
+- PEP 8 compliant
 
-**Reasons:**
-1. **No Build Step:** Edit and refresh, instant feedback
-2. **Smaller Bundle:** No framework runtime (~100KB+ saved)
-3. **Better Performance:** No virtual DOM overhead
-4. **iOS Code App Compatible:** No build tooling required
-5. **Educational:** Pure web standards, easier to understand
-6. **Maintainability:** Less dependency churn
+**JavaScript:**
+- camelCase for functions/variables
+- Async/await pattern (no callbacks)
+- Check API responses before use
+- Use `textContent` for untrusted data (XSS prevention)
+- Single module when possible (v3.1 approach)
 
-**When React Would Make Sense:**
-- Large team collaboration
-- Complex nested component hierarchies
-- Need React ecosystem (Next.js, etc.)
-- Shared component library across multiple apps
+**CSS:**
+- BEM-inspired naming
+- CSS variables for theming
+- Mobile-first responsive design
+- Smooth transitions with cubic-bezier
 
-**For MangaNegus:**
-- ✅ Solo developer
-- ✅ Simple component hierarchy (views → cards)
-- ✅ State management handled by simple object
-- ✅ Event-driven communication works great
+### Security Principles
 
-**Conclusion:** Vanilla JS is the right choice for this project.
+1. **CSRF Protection:** All POST requests require CSRF token
+2. **XSS Prevention:** Never use `innerHTML` with user data, use `textContent`
+3. **SQL Injection:** SQLAlchemy ORM prevents injection
+4. **Open Proxy:** Image proxy has domain whitelist
+5. **Rate Limiting:** Prevent IP bans and DoS attacks
+6. **Input Validation:** All API endpoints validate required fields
 
-### Why PostgreSQL Over JSON?
+### Performance Optimization
 
-**Migration:** v3.0+ moved from `library.json` to PostgreSQL
-
-**Benefits:**
-1. **Data Integrity:** Foreign key constraints, transactions
-2. **Query Performance:** Indexed searches, complex filters
-3. **Concurrent Access:** Multiple users (future-proofing)
-4. **Relationships:** Join manga and library data efficiently
-5. **Migrations:** Schema changes with Alembic
-
-**JSON Fallback:**
-- Extensions.py still includes `library.json` fallback
-- If PostgreSQL connection fails, uses JSON
-- Graceful degradation
-
-### Glassmorphism Design
-
-**Aesthetic:** iOS-inspired liquid glass with blur effects
-
-**Key Principles:**
-1. **Blur + Transparency:** `backdrop-filter: blur(40px)` + `rgba()`
-2. **Subtle Borders:** `0.5px solid rgba(255, 255, 255, 0.12)`
-3. **Ambient Glow:** Animated radial gradients in background
-4. **Red Accent:** `#ff453a` for interactive elements
-5. **Dark Theme:** Dark glass panels on near-black background
-
-**Implementation:**
-```css
-.glass-panel {
-    background: rgba(28, 28, 30, 0.72);
-    backdrop-filter: blur(40px) saturate(180%);
-    -webkit-backdrop-filter: blur(40px) saturate(180%);
-    border: 0.5px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-}
-```
-
-**Mobile-First:** Optimized for iOS Safari, touch-friendly
+1. **Lazy Loading:** Images load as needed
+2. **Pagination:** Chapters load 100 at a time
+3. **Token Bucket:** Rate limiting prevents throttling
+4. **Session Reuse:** HTTP sessions persist across requests
+5. **Background Downloads:** Threading for CBZ generation
+6. **Auto-discovery:** No manual source registration
 
 ---
 
 ## Quick Reference
 
-### File Locations
+### File Locations (After Cleanup)
 
-| Purpose | Path |
-|---------|------|
-| Main entry | `run.py` |
-| App factory | `manganegus_app/__init__.py` |
-| Database models | `manganegus_app/models.py` |
-| Library manager | `manganegus_app/extensions.py` |
+| Purpose | Location |
+|---------|----------|
+| Server entry | `run.py` |
+| Flask app | `manganegus_app/__init__.py` |
+| Primary UI | `templates/index.html` |
+| Primary CSS | `static/css/styles.css` |
+| Primary JS | `static/js/main.js` |
 | API routes | `manganegus_app/routes/*.py` |
-| Frontend SPA | `templates/index.html` |
-| JavaScript modules | `static/js/*.js` |
-| Stylesheets | `static/css/styles.css` |
-| Source connectors | `sources/*.py` |
-| Downloads | `static/downloads/*.cbz` |
-| Database migrations | `alembic/versions/*.py` |
+| Sources | `sources/*.py` |
+| Database models | `manganegus_app/models.py` |
+| Migrations | `alembic/versions/*.py` |
+| Virtual env | `.venv/` |
+| Documentation | `CLAUDE.md` (this file) |
 
 ### Key Functions
 
 | Function | Location | Purpose |
 |----------|----------|---------|
-| `create_app()` | `manganegus_app/__init__.py:15` | Flask app factory |
-| `get_source_manager()` | `sources/__init__.py:200` | Get SourceManager singleton |
-| `search_all()` | `sources/__init__.py:150` | Multi-source search |
-| `add_to_library()` | `manganegus_app/extensions.py:95` | Add manga to library |
-| `get_library()` | `manganegus_app/extensions.py:180` | Get user's library |
-| `download_worker()` | `manganegus_app/extensions.py:400` | Background CBZ download |
-| `showView()` | `static/js/ui.js:11` | Switch between views |
-| `loadLibrary()` | `static/js/library.js:10` | Load library cards |
-| `search()` | `static/js/search.js:80` | Search manga |
-| `showMangaDetails()` | `static/js/chapters.js:30` | Show manga details |
+| `create_app()` | manganegus_app/__init__.py | Flask app factory |
+| `initElements()` | static/js/main.js | Initialize DOM elements |
+| `renderSources()` | static/js/main.js | Display sources in sidebar |
+| `toggleSidebar()` | static/js/main.js | Open/close sidebar |
+| `performSearch()` | static/js/main.js | Execute search query |
+| `loadPopular()` | static/js/main.js | Fetch Jikan popular manga |
+| `addToLibrary()` | static/js/main.js | Save manga to PostgreSQL |
+| `get_source_manager()` | sources/__init__.py | Get SourceManager singleton |
 
-### Environment
+### Environment Variables
 
 | Key | Value |
 |-----|-------|
-| Python | 3.8+ |
-| Flask | 3.0.0 |
-| PostgreSQL | 12+ |
-| Database | `manganegus` |
-| Platform | iOS Code App (Safari) |
-| Sources | 31+ (Python + Lua) |
-| Bypass | curl_cffi, cloudscraper |
+| DATABASE_URL | `postgresql://user:pass@localhost/manganegus` |
+| FLASK_ENV | `development` |
+| FLASK_DEBUG | `1` |
+
+### Server Commands
+
+```bash
+# Start server
+source .venv/bin/activate && python run.py
+
+# Run in background
+nohup python run.py > /tmp/server.log 2>&1 &
+
+# Stop server
+pkill -f "python.*run.py"
+
+# Check logs
+tail -f /tmp/manganegus-server.log
+
+# Database migrations
+alembic upgrade head
+
+# Test source
+python -c "from sources import get_source_manager; print(get_source_manager().list_sources())"
+```
 
 ---
 
-## Support & Resources
+**Last Updated:** 2026-01-08
+**Version:** 3.1.0 (Redesign Edition)
+**Author:** [@bookers1897](https://github.com/bookers1897)
+**For:** AI Assistants (Claude Code, Codex, etc.)
 
-**Official:**
-- Repository: [github.com/bookers1897/Manga-Negus](https://github.com/bookers1897/Manga-Negus)
-- Author: [@bookers1897](https://github.com/bookers1897)
-- License: MIT
-
-**External Documentation:**
-- [MangaDex API](https://api.mangadex.org/docs/)
-- [Flask Documentation](https://flask.palletsprojects.com/)
-- [SQLAlchemy ORM](https://docs.sqlalchemy.org/)
-- [Alembic Migrations](https://alembic.sqlalchemy.org/)
-- [HTMX](https://htmx.org/)
-- [curl_cffi](https://github.com/yifeikong/curl_cffi)
-- [lupa (Lua)](https://github.com/scoder/lupa)
-- [FMD Lua Modules](https://github.com/dazedcat19/FMD)
-
-**Debugging:**
-1. Browser console (F12)
-2. Flask server console
-3. Built-in console panel (bottom drawer)
-4. Network tab (DevTools)
-5. PostgreSQL logs: `sudo journalctl -u postgresql`
-
-**Common Fixes:**
-- Empty results (200 OK) → Check for HTMX endpoints
-- 403 Forbidden → Use `curl_cffi` with `impersonate="chrome120"`
-- Rate limiting → Adjust `rate_limit` in connector
-- Lua errors → Ensure `.venv` activated, lupa installed
-- Library not loading → Check `document.readyState` in main.js
-- Database errors → Convert `manga_id` to string in queries
+**Backup Location:** `claude_md_backup/CLAUDE_v3.0.3_backup.md`
 
 ---
 
-**Last Updated:** 2026-01-07
-**Version:** 3.0.3 (Library Display Fix + PostgreSQL Integration)
-**For:** AI Assistants (Claude, GPT-4, etc.)
+## Changes Summary (v3.0.3 → v3.1.0)
 
-**Critical Knowledge for AI Assistants:**
+**Added:**
+- Environment Setup section with virtual environment location
+- Frontend Redesign (v3.1) detailed documentation
+- Cleanup & File Reorganization section with step-by-step instructions
+- Recent Bug Fixes section documenting DOM initialization issue
+- DOM element initialization pattern (`initElements()`)
+- Console modal implementation
+- Search button addition
+- Debug logging patterns
 
-1. **Always convert `manga_id` to string** when querying PostgreSQL
-2. **No `ReadingStatus` enum class exists** - use string validation
-3. **ES6 modules require `document.readyState` check** to avoid race conditions
-4. **Use `createElement` + `textContent`** for XSS prevention (never `innerHTML`)
-5. **HTMX sites need special headers** (`HX-Request: true`)
-6. **Cloudflare bypass with `curl_cffi`** using `impersonate="chrome120"`
-7. **Event-driven frontend** - dispatch CustomEvents for cross-module communication
-8. **Rate limiting is per-source** - adjust in individual connectors
-9. **PostgreSQL with JSON fallback** - graceful degradation
-10. **Original design at `/`** - preview routes at `/modern` and `/sidebar`
+**Updated:**
+- Project version from v3.0.3 to v3.1.0
+- Table of Contents with new sections
+- File structure showing redesign files
+- Frontend architecture explaining unified module approach
+- Technology stack (Lucide icons instead of Phosphor)
+- Source count (34 sources instead of 31)
 
-This document contains everything needed to understand, maintain, and extend MangaNegus. Happy coding! 🚀
+**Fixed:**
+- Documentation of critical DOM ready bug
+- Sidebar toggle behavior
+- Console modal functionality
+- Source rendering in sidebar
+
+**Next Steps:**
+- Execute cleanup plan (backup old files, rename redesign files)
+- Update routes to use new file names
+- Test all functionality with renamed files
+- Remove old documentation files
+- Create docs/ directory for organized documentation
