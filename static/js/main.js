@@ -427,7 +427,7 @@ async function showSourceStatus() {
         `);
 
         els.sourceStatusGrid.innerHTML = [...sourceCards, ...skippedCards].join('') || '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No sources available</p>';
-        lucide.createIcons();
+        safeCreateIcons();
     } catch (error) {
         els.sourceStatusGrid.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load sources</p>';
     }
@@ -584,7 +584,7 @@ async function searchManga(query) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -654,7 +654,7 @@ async function loadPopular(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -702,7 +702,7 @@ async function loadDiscover(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -742,7 +742,7 @@ async function loadHistory() {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -782,7 +782,7 @@ async function loadTrendingView(page = 1) {
                 </p>
             </div>
         `;
-        lucide.createIcons();
+        safeCreateIcons();
     }
 }
 
@@ -862,7 +862,7 @@ async function addToLibrary(mangaId, source, title, cover, status) {
         if (state.currentManga && state.currentManga.id === mangaId && state.currentManga.source === source) {
             els.addToLibraryBtn.innerHTML = '<i data-lucide="check" width="20"></i> In Library';
             els.addToLibraryBtn.classList.add('secondary');
-            lucide.createIcons();
+            safeCreateIcons();
         }
     } catch (error) {
         log(`❌ Failed to add to library: ${error.message}`);
@@ -928,7 +928,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         `;
     }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners to cards
     gridEl.querySelectorAll('.card').forEach((card, index) => {
@@ -1049,7 +1049,7 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
         els.addToLibraryBtn.innerHTML = '<i data-lucide="heart" width="20"></i> Add to Library';
         els.addToLibraryBtn.classList.remove('secondary');
     }
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Load chapters
     await loadChapters(1);
@@ -1138,7 +1138,7 @@ function renderChapters() {
         `;
     }).join('');
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Attach event listeners
     els.chaptersList.querySelectorAll('.chapter-item').forEach(item => {
@@ -1247,7 +1247,7 @@ function renderPagination() {
         </button>
     `;
 
-    lucide.createIcons();
+    safeCreateIcons();
 
     document.getElementById('prev-chapters-page')?.addEventListener('click', () => {
         if (state.currentPage > 1) loadChapters(state.currentPage - 1);
@@ -1330,7 +1330,7 @@ function showLibraryStatusModal(mangaId, source, title, coverUrl) {
         });
     });
 
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 // ========================================
@@ -1450,7 +1450,7 @@ async function init() {
     renderNav();
 
     // Initialize Lucide icons
-    lucide.createIcons();
+    safeCreateIcons();
 
     // Load initial content
     loadDiscover();
@@ -1493,7 +1493,7 @@ async function init() {
         state.searchQuery = '';
         els.clearSearchBtn.classList.add('hidden');
         els.searchModeIcon.setAttribute('data-lucide', isTitle ? 'search' : 'link');
-        lucide.createIcons();
+        safeCreateIcons();
 
         // Show toast to inform user
         showToast(isTitle ? 'Search Mode: Title' : 'Search Mode: URL');
@@ -1559,7 +1559,7 @@ async function init() {
     // Console
     els.consoleToggleBtn.addEventListener('click', () => {
         els.consoleModal.classList.add('active');
-        lucide.createIcons();
+        safeCreateIcons();
     });
     els.consoleClose.addEventListener('click', () => {
         els.consoleModal.classList.remove('active');
