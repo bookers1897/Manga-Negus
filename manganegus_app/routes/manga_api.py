@@ -249,8 +249,8 @@ def get_chapters():
     manga_id = data.get('id')
     source_id = data.get('source')
 
-    # If no source specified but we have a title (Jikan manga), search sources
-    if not source_id and manga_title:
+    # If no source specified or it's a Jikan pseudo-source, try to auto-detect real source
+    if (not source_id or source_id == 'jikan') and manga_title:
         log(f"🔍 Auto-detecting source for '{manga_title}'...")
 
         # Try to find this manga in our sources

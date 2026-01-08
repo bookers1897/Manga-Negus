@@ -29,20 +29,19 @@ def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
         if not hostname:
             return False, 'Missing hostname'
 
+        # Resolve hostname and block private/loopback/link-local/reserved IPs for ALL hosts
+        try:
+            import socket
+            ip_str = socket.gethostbyname(hostname)
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False, f'Access to private IP ranges not allowed'
+        except (socket.gaierror, ValueError):
+            # Resolution failed; continue to domain whitelist check
+            pass
+
         # Check domain whitelist
         if hostname not in allowed_domains:
-            # Try to resolve hostname to IP to check for private ranges
-            try:
-                import socket
-                ip_str = socket.gethostbyname(hostname)
-                ip = ipaddress.ip_address(ip_str)
-
-                # Block private/loopback/link-local addresses
-                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                    return False, f'Access to private IP ranges not allowed'
-            except (socket.gaierror, ValueError):
-                pass  # Hostname doesn't resolve, will be caught by domain check
-
             return False, f'Domain {hostname} not in whitelist'
 
         return True, ''
@@ -54,6 +53,26 @@ def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
 def index():
     """Serve main page."""
     return render_template('index.html')
+
+@main_bp.route('/modern')
+def modern_preview():
+    """Serve modern editorial design preview."""
+    return render_template('index-modern.html')
+
+@main_bp.route('/sidebar')
+def sidebar_preview():
+    """Serve sidebar navigation with original glassmorphism design."""
+    return render_template('index-sidebar.html')
+
+@main_bp.route('/redesign')
+def redesign():
+    """Serve new redesign interface (alias for /)."""
+    return render_template('index.html')
+
+@main_bp.route('/legacy')
+def legacy():
+    """Serve legacy glassmorphism UI."""
+    return render_template('legacy_v3.0/index.html')
 
 @main_bp.route('/api/proxy/image')
 def proxy_image():
