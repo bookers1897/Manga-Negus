@@ -28,6 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, DeclarativeBase
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 import uuid
+import os
 
 # Use JSON for SQLite compatibility, JSONType for PostgreSQL performance
 # SQLAlchemy will use JSONType on PostgreSQL, JSON on SQLite automatically
@@ -36,6 +37,9 @@ JSONType = JSON
 # UUID type - use String for SQLite, UUID for PostgreSQL
 def UUIDType():
     """Returns appropriate UUID column type for current database."""
+    db_url = os.environ.get('DATABASE_URL', '')
+    if db_url.startswith('postgres://') or db_url.startswith('postgresql://'):
+        return PG_UUID(as_uuid=False)
     return String(36)  # SQLite fallback - stores UUID as string
 
 
@@ -215,6 +219,40 @@ class LibraryEntry(Base):
 
     def __repr__(self):
         return f"<LibraryEntry(manga='{self.manga.title if self.manga else 'N/A'}', status='{self.status}')>"
+
+
+# =============================================================================
+# HISTORY - Recently viewed manga (lightweight and append-only)
+# =============================================================================
+
+class HistoryEntry(Base):
+    """
+    Tracks recently viewed manga so the History tab can be restored across sessions.
+    """
+    __tablename__ = 'history'
+
+    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Link to manga
+    manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
+                     nullable=False, index=True)
+
+    # Tracking
+    last_viewed_at = Column(DateTime(timezone=True), nullable=False,
+                            default=lambda: datetime.now(timezone.utc), index=True)
+    view_count = Column(Integer, default=1)
+
+    # Optional extra payload for quick rendering (cover, author, etc.)
+    payload = Column(JSONType)
+
+    manga = relationship("Manga")
+
+    __table_args__ = (
+        UniqueConstraint('manga_id', name='uq_history_manga_id'),
+    )
+
+    def __repr__(self):
+        return f"<HistoryEntry(manga='{self.manga.title if self.manga else 'N/A'}', last_viewed_at='{self.last_viewed_at}')>"
 
 
 # =============================================================================

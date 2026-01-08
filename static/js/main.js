@@ -17,12 +17,15 @@ const state = {
     selectedChapters: new Set(),
     currentPage: 1,
     totalPages: 1,
+    history: [],
     readerPages: [],
     readerCurrentPage: 0,
     isSidebarOpen: false,
     csrfToken: '',
     toastTimer: null
 };
+
+const PLACEHOLDER_COVER = '/static/images/placeholder.png';
 
 // ========================================
 // DOM Elements (will be initialized after DOM is ready)
@@ -108,6 +111,18 @@ const API = {
         const url = `/api/latest_feed?page=${page}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`;
         const data = await this.request(url);
         return Array.isArray(data) ? data : [];
+    },
+
+    async getHistory(limit = 50) {
+        const data = await this.request(`/api/history?limit=${limit}`);
+        return Array.isArray(data) ? data : [];
+    },
+
+    async addHistory(entry) {
+        return this.request('/api/history', {
+            method: 'POST',
+            body: JSON.stringify(entry)
+        });
     },
 
     async getChapters(mangaId, source, page = 1) {
@@ -435,17 +450,7 @@ function setView(viewId) {
         case 'history':
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'History';
-            els.discoverGrid.innerHTML = `
-                <div class="empty-state" style="grid-column: 1/-1;">
-                    <div class="empty-icon-box">
-                        <i data-lucide="clock" width="32" height="32"></i>
-                    </div>
-                    <p class="empty-title">No History</p>
-                    <p class="empty-text">YOUR READING HISTORY WILL APPEAR HERE</p>
-                </div>
-            `;
-            els.discoverEmpty.classList.add('hidden');
-            lucide.createIcons();
+            loadHistory();
             break;
         case 'details':
             els.detailsView.classList.remove('hidden');
@@ -557,8 +562,7 @@ async function loadPopular() {
     log('Loading popular manga from Jikan (MyAnimeList)...');
 
     try {
-        const page = Math.max(1, Math.floor(Math.random() * 5) + 1); // randomize to vary content
-        const results = await API.getPopular(page, 20);
+        const results = await API.getPopular(1, 20);
 
         if (!results || results.length === 0) {
             log('No results returned from API');
@@ -599,9 +603,12 @@ async function loadTrending() {
     log('Loading trending + latest updates...');
 
     try {
-        const page = Math.max(1, Math.floor(Math.random() * 5) + 1); // randomize page for variety
+        // Rotate page every 10 minutes to keep content fresh but predictable
+        const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+        const page = (timeBucket % 5) + 1;
         const trending = await API.getTrending(page, 12);
-        const latest = await API.getLatestFeed(state.currentSource || '', 1);
+        const latestPage = ((timeBucket + 1) % 3) + 1;
+        const latest = await API.getLatestFeed(state.currentSource || '', latestPage);
         const results = [...(trending || []), ...(latest || [])].slice(0, 20);
 
         if (!results || results.length === 0) {
@@ -621,6 +628,45 @@ async function loadTrending() {
                 </div>
                 <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
                     Failed to load trending<br/>
+                    ${escapeHtml(error.message)}
+                </p>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+}
+
+async function loadHistory() {
+    els.discoverGrid.innerHTML = `
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading history...</span>
+        </div>
+    `;
+    els.discoverEmpty.classList.add('hidden');
+    updateDiscoverSubtitle('// RECENTLY VIEWED');
+
+    try {
+        const results = await API.getHistory(50);
+        state.history = results;
+        if (!results || results.length === 0) {
+            els.discoverGrid.classList.add('hidden');
+            els.discoverEmpty.classList.remove('hidden');
+            els.discoverEmpty.querySelector('.empty-title').textContent = 'No History Yet';
+            els.discoverEmpty.querySelector('.empty-text').textContent = 'Start reading to see items here';
+            return;
+        }
+        renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
+        log(`✅ Loaded ${results.length} history items`);
+    } catch (error) {
+        log(`❌ ERROR loading history: ${error.message}`);
+        els.discoverGrid.innerHTML = `
+            <div style="grid-column: 1/-1; padding: 48px 24px; text-align: center;">
+                <div class="empty-icon-box" style="margin: 0 auto 16px;">
+                    <i data-lucide="alert-circle" width="32" height="32"></i>
+                </div>
+                <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
+                    Failed to load history<br/>
                     ${escapeHtml(error.message)}
                 </p>
             </div>
@@ -725,11 +771,11 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
     gridEl.classList.remove('hidden');
     gridEl.innerHTML = manga.map(item => {
         // For Jikan manga, use mal_id as the ID and 'jikan' as pseudo-source
-        const mangaId = item.mal_id || item.id;
+        const mangaId = item.mal_id || item.id || item.manga_id || `item-${Math.random().toString(36).slice(2)}`;
         const source = item.mal_id ? 'jikan' : (item.source || 'unknown');
 
         const inLibrary = isInLibrary(mangaId, source);
-        const coverUrl = item.cover_url || '';
+        const coverUrl = item.cover_url || item.cover || PLACEHOLDER_COVER;
 
         // Use actual data from API
         const score = item.rating?.average || item.score || (8.0 + Math.random() * 2).toFixed(1);
@@ -741,7 +787,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         return `
             <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}">
                 <div class="card-cover">
-                    ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" />` : '<i data-lucide="book-open" width="48" height="48"></i>'}
+                    ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />` : '<i data-lucide="book-open" width="48" height="48"></i>'}
                     <div class="card-overlay">
                         <button class="read-btn">Read</button>
                     </div>
@@ -815,6 +861,23 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
     state.currentChapters = [];
     state.selectedChapters.clear();
     state.currentPage = 1;
+
+    // Track history (non-blocking)
+    try {
+        await API.addHistory({
+            id: mangaId,
+            source,
+            title,
+            cover: mangaData?.cover_url || mangaData?.cover || PLACEHOLDER_COVER,
+            mal_id: mangaData?.mal_id,
+            payload: {
+                author: mangaData?.author,
+                tags: mangaData?.tags || mangaData?.genres || []
+            }
+        });
+    } catch (error) {
+        log(`⚠️ History track failed: ${error.message}`);
+    }
 
     setView('details');
 

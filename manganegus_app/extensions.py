@@ -2,6 +2,7 @@ import os
 import threading
 import json
 import time
+from datetime import datetime, timezone
 import shutil
 import zipfile
 from typing import Dict, List, Optional, Any
@@ -14,6 +15,7 @@ from .log import log
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "static", "downloads")
 LIBRARY_FILE = os.path.join(BASE_DIR, "library.json")
+HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "static", "images"), exist_ok=True)
@@ -332,6 +334,173 @@ class Library:
             log(f"🗑️ Removed: {title}")
 
 
+# =============================================================================
+# HISTORY - Track recently viewed manga
+# =============================================================================
+class History:
+    """Tracks recently viewed manga, with DB + file fallback like Library."""
+    def __init__(self, filepath: str = None):
+        self.filepath = filepath or HISTORY_FILE
+        self._lock = threading.RLock()
+        self._use_db = self._check_database_available()
+        if not self._use_db:
+            log("ℹ️ History using file-based storage (database unavailable)")
+        self._ensure_table()
+
+    def _check_database_available(self) -> bool:
+        try:
+            from .database import check_database_connection
+            return check_database_connection()
+        except Exception:
+            return False
+
+    def _ensure_table(self):
+        if not self._use_db:
+            return
+        try:
+            from .database import get_engine
+            from .models import HistoryEntry
+            HistoryEntry.__table__.create(bind=get_engine(), checkfirst=True)
+        except Exception as e:
+            log(f"⚠️ Could not verify history table, will fallback to file if needed: {e}")
+            self._use_db = False
+
+    def load(self, limit: int = 50) -> List[Dict[str, Any]]:
+        if self._use_db:
+            return self._load_from_db(limit)
+        return self._load_from_file(limit)
+
+    def _load_from_db(self, limit: int) -> List[Dict[str, Any]]:
+        try:
+            from .database import get_db_session
+            from .models import HistoryEntry
+
+            with get_db_session() as session:
+                entries = (
+                    session.query(HistoryEntry)
+                    .order_by(HistoryEntry.last_viewed_at.desc())
+                    .limit(limit)
+                    .all()
+                )
+
+                result = []
+                for entry in entries:
+                    manga = entry.manga
+                    result.append({
+                        "id": manga.source_manga_id if manga else None,
+                        "source": manga.source_id if manga else None,
+                        "title": manga.title if manga else None,
+                        "cover": manga.cover_image,
+                        "cover_url": manga.cover_image,
+                        "mal_id": manga.mal_id if manga else None,
+                        "viewed_at": entry.last_viewed_at.isoformat() if entry.last_viewed_at else None,
+                        "view_count": entry.view_count or 1,
+                        "payload": entry.payload or {}
+                    })
+                return result
+        except Exception as e:
+            log(f"❌ History DB error, falling back to file: {e}")
+            self._use_db = False
+            return self._load_from_file(limit)
+
+    def _load_from_file(self, limit: int) -> List[Dict[str, Any]]:
+        with self._lock:
+            if not self.filepath or not os.path.exists(self.filepath):
+                return []
+            try:
+                with open(self.filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return []
+        sorted_items = sorted(data.values(), key=lambda x: x.get('viewed_at') or '', reverse=True)
+        return sorted_items[:limit]
+
+    def add(self, manga_id: str, title: str, source: str, cover: Optional[str] = None, mal_id: Optional[int] = None, payload: Optional[Dict[str, Any]] = None) -> str:
+        if self._use_db:
+            return self._add_to_db(manga_id, title, source, cover, mal_id, payload or {})
+        return self._add_to_file(manga_id, title, source, cover, payload or {})
+
+    def _add_to_db(self, manga_id: str, title: str, source: str, cover: Optional[str], mal_id: Optional[int], payload: Dict[str, Any]) -> str:
+        try:
+            from .database import get_db_session
+            from .models import HistoryEntry, Manga
+            import uuid
+
+            key = f"{source}:{manga_id}"
+            with get_db_session() as session:
+                manga = session.query(Manga).filter_by(
+                    source_id=source,
+                    source_manga_id=str(manga_id)
+                ).first()
+
+                now = datetime.now(timezone.utc)
+
+                if not manga:
+                    manga = Manga(
+                        id=str(uuid.uuid4()),
+                        source_id=source,
+                        source_manga_id=str(manga_id),
+                        title=title,
+                        cover_image=cover,
+                        mal_id=mal_id,
+                        last_scraped_at=now,
+                        created_at=now,
+                        updated_at=now
+                    )
+                    session.add(manga)
+                    session.flush()
+
+                entry = session.query(HistoryEntry).filter_by(manga_id=manga.id).first()
+                if entry:
+                    entry.last_viewed_at = now
+                    entry.view_count = (entry.view_count or 0) + 1
+                    entry.payload = payload or entry.payload
+                else:
+                    entry = HistoryEntry(
+                        id=str(uuid.uuid4()),
+                        manga_id=manga.id,
+                        last_viewed_at=now,
+                        view_count=1,
+                        payload=payload
+                    )
+                    session.add(entry)
+
+                session.commit()
+                log(f"🕑 Tracked history: {title}")
+                return key
+        except Exception as e:
+            log(f"❌ History DB error, falling back to file: {e}")
+            self._use_db = False
+            return self._add_to_file(manga_id, title, source, cover, payload)
+
+    def _add_to_file(self, manga_id: str, title: str, source: str, cover: Optional[str], payload: Dict[str, Any]) -> str:
+        key = f"{source}:{manga_id}"
+        with self._lock:
+            data = {}
+            if self.filepath and os.path.exists(self.filepath):
+                try:
+                    with open(self.filepath, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    data = {}
+            entry = data.get(key, {})
+            entry.update({
+                "id": manga_id,
+                "title": title,
+                "source": source,
+                "cover": cover or entry.get('cover'),
+                "viewed_at": datetime.now(timezone.utc).isoformat(),
+                "view_count": entry.get('view_count', 0) + 1,
+                "payload": payload or entry.get('payload', {})
+            })
+            data[key] = entry
+            if self.filepath:
+                with open(self.filepath, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
+        log(f"🕑 Tracked history (file): {title}")
+        return key
+
+
 class Downloader:
     """Background chapter downloader with CBZ packaging."""
     def __init__(self, download_dir: str):
@@ -533,4 +702,5 @@ class Downloader:
 
 # Instantiate the singletons
 library = Library(LIBRARY_FILE)
+history = History(HISTORY_FILE)
 downloader = Downloader(DOWNLOAD_DIR)
