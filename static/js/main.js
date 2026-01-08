@@ -18,6 +18,12 @@ const state = {
     currentPage: 1,
     totalPages: 1,
     history: [],
+    viewPages: {
+        discover: 1,
+        popular: 1,
+        trending: 1,
+        history: 1,
+    },
     readerPages: [],
     readerCurrentPage: 0,
     isSidebarOpen: false,
@@ -97,12 +103,12 @@ const API = {
         return data;
     },
 
-    async getPopular(page = 1, limit = 20) {
+    async getPopular(page = 1, limit = 24) {
         const data = await this.request(`/api/popular?page=${page}&limit=${limit}`);
         return Array.isArray(data) ? data : [];
     },
 
-    async getTrending(page = 1, limit = 20) {
+    async getTrending(page = 1, limit = 24) {
         const data = await this.request(`/api/trending?page=${page}&limit=${limit}`);
         return Array.isArray(data) ? data : [];
     },
@@ -269,6 +275,7 @@ function setSidebar(isOpen) {
 function renderNav() {
     const navItems = [
         { id: 'discover', label: 'Discover', icon: 'compass' },
+        { id: 'trending', label: 'Trending', icon: 'trending-up' },
         { id: 'popular', label: 'Popular', icon: 'flame' },
         { id: 'library', label: 'Library', icon: 'library', count: state.library.length },
         { id: 'history', label: 'History', icon: 'clock' }
@@ -425,6 +432,7 @@ async function showSourceStatus() {
 // ========================================
 function setView(viewId) {
     state.activeView = viewId;
+    hidePagination();
 
     // Hide all views
     els.discoverView.classList.add('hidden');
@@ -436,12 +444,20 @@ function setView(viewId) {
         case 'discover':
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'Discover';
-            if (!state.searchQuery) loadTrending();
+            state.viewPages.discover = 1;
+            if (!state.searchQuery) loadDiscover(1);
+            break;
+        case 'trending':
+            els.discoverView.classList.remove('hidden');
+            els.discoverTitle.textContent = 'Trending';
+            state.viewPages.trending = 1;
+            loadTrendingView(1);
             break;
         case 'popular':
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'Popular';
-            loadPopular();
+            state.viewPages.popular = 1;
+            loadPopular(1);
             break;
         case 'library':
             els.libraryView.classList.remove('hidden');
@@ -450,6 +466,7 @@ function setView(viewId) {
         case 'history':
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'History';
+            state.viewPages.history = 1;
             loadHistory();
             break;
         case 'details':
@@ -468,13 +485,55 @@ function updateDiscoverSubtitle(text) {
     }
 }
 
+function renderPagination(view, currentPage, totalPages = 20) {
+    if (!els.discoverPagination) return;
+    els.discoverPagination.classList.remove('hidden');
+    els.discoverPagination.innerHTML = `
+        <button id="${view}-prev" ${currentPage <= 1 ? 'disabled' : ''}>Prev</button>
+        <span class="page-indicator">Page ${currentPage} / ${totalPages}</span>
+        <button id="${view}-next" ${currentPage >= totalPages ? 'disabled' : ''}>Next</button>
+    `;
+
+    const prevBtn = document.getElementById(`${view}-prev`);
+    const nextBtn = document.getElementById(`${view}-next`);
+    prevBtn?.addEventListener('click', () => handlePageChange(view, currentPage - 1));
+    nextBtn?.addEventListener('click', () => handlePageChange(view, currentPage + 1));
+}
+
+function hidePagination() {
+    if (els.discoverPagination) {
+        els.discoverPagination.classList.add('hidden');
+        els.discoverPagination.innerHTML = '';
+    }
+}
+
+function handlePageChange(view, page) {
+    if (page < 1) return;
+    switch (view) {
+        case 'discover':
+            loadDiscover(page);
+            break;
+        case 'popular':
+            loadPopular(page);
+            break;
+        case 'trending':
+            loadTrendingView(page);
+            break;
+        case 'history':
+            loadHistory(page);
+            break;
+        default:
+            break;
+    }
+}
+
 // ========================================
 // Search Functionality
 // ========================================
 async function performSearch() {
     const query = state.searchQuery.trim();
     if (!query) {
-        loadTrending();
+        loadDiscover(state.viewPages.discover || 1);
         return;
     }
 
@@ -486,6 +545,7 @@ async function performSearch() {
 }
 
 async function searchManga(query) {
+    hidePagination();
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -549,7 +609,7 @@ async function detectUrl(url) {
     }
 }
 
-async function loadPopular() {
+async function loadPopular(page = 1) {
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -557,12 +617,13 @@ async function loadPopular() {
         </div>
     `;
     els.discoverEmpty.classList.add('hidden');
-    updateDiscoverSubtitle('// MOST POPULAR');
+    updateDiscoverSubtitle(`// MOST POPULAR // PAGE ${page}`);
 
     log('Loading popular manga from Jikan (MyAnimeList)...');
 
     try {
-        const results = await API.getPopular(1, 20);
+        state.viewPages.popular = page;
+        const results = await API.getPopular(page, 24);
 
         if (!results || results.length === 0) {
             log('No results returned from API');
@@ -571,8 +632,9 @@ async function loadPopular() {
             return;
         }
 
-        log(`✅ Loaded ${results.length} popular manga`);
+        log(`✅ Loaded ${results.length} popular manga (page ${page})`);
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
+        renderPagination('popular', page);
     } catch (error) {
         log(`❌ ERROR loading popular: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -590,7 +652,7 @@ async function loadPopular() {
     }
 }
 
-async function loadTrending() {
+async function loadDiscover(page = 1) {
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -598,18 +660,19 @@ async function loadTrending() {
         </div>
     `;
     els.discoverEmpty.classList.add('hidden');
-    updateDiscoverSubtitle('// TRENDING NOW');
-
-    log('Loading trending + latest updates...');
+    log('Loading discover feed (trending + latest updates)...');
 
     try {
-        // Rotate page every 10 minutes to keep content fresh but predictable
+        // Rotate page every 10 minutes to keep content fresh but predictable unless user paginates manually
         const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
-        const page = (timeBucket % 5) + 1;
-        const trending = await API.getTrending(page, 12);
-        const latestPage = ((timeBucket + 1) % 3) + 1;
-        const latest = await API.getLatestFeed(state.currentSource || '', latestPage);
-        const results = [...(trending || []), ...(latest || [])].slice(0, 20);
+        const autoPage = (timeBucket % 5) + 1;
+        const chosenPage = page || autoPage;
+        state.viewPages.discover = chosenPage;
+        updateDiscoverSubtitle(`// TRENDING + LATEST // PAGE ${chosenPage}`);
+
+        const trending = await API.getTrending(chosenPage, 20);
+        const latest = await API.getLatestFeed(state.currentSource || '', chosenPage);
+        const results = [...(trending || []), ...(latest || [])].slice(0, 40);
 
         if (!results || results.length === 0) {
             els.discoverGrid.classList.add('hidden');
@@ -619,6 +682,7 @@ async function loadTrending() {
 
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
         log(`✅ Loaded ${results.length} trending/latest manga`);
+        renderPagination('discover', chosenPage);
     } catch (error) {
         log(`❌ ERROR loading trending: ${error.message}`);
         els.discoverGrid.innerHTML = `
@@ -637,6 +701,7 @@ async function loadTrending() {
 }
 
 async function loadHistory() {
+    hidePagination();
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -675,10 +740,51 @@ async function loadHistory() {
     }
 }
 
+async function loadTrendingView(page = 1) {
+    els.discoverGrid.innerHTML = `
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading trending...</span>
+        </div>
+    `;
+    els.discoverEmpty.classList.add('hidden');
+    updateDiscoverSubtitle(`// TRENDING // PAGE ${page}`);
+    state.viewPages.trending = page;
+
+    log(`Loading trending page ${page}...`);
+
+    try {
+        const results = await API.getTrending(page, 24);
+        if (!results || results.length === 0) {
+            els.discoverGrid.classList.add('hidden');
+            els.discoverEmpty.classList.remove('hidden');
+            return;
+        }
+        renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
+        renderPagination('trending', page);
+        log(`✅ Loaded ${results.length} trending manga (page ${page})`);
+    } catch (error) {
+        log(`❌ ERROR loading trending: ${error.message}`);
+        els.discoverGrid.innerHTML = `
+            <div style="grid-column: 1/-1; padding: 48px 24px; text-align: center;">
+                <div class="empty-icon-box" style="margin: 0 auto 16px;">
+                    <i data-lucide="alert-circle" width="32" height="32"></i>
+                </div>
+                <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
+                    Failed to load trending<br/>
+                    ${escapeHtml(error.message)}
+                </p>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+}
+
 // ========================================
 // Library Management
 // ========================================
 async function loadLibrary() {
+    hidePagination();
     els.libraryGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -705,6 +811,7 @@ async function loadLibrary() {
         } else {
             // Convert library format to manga format for rendering
             const mangaItems = filteredLibrary.map(item => ({
+                key: item.key,
                 id: item.manga_id,
                 mal_id: item.mal_id,
                 source: item.source,
@@ -773,6 +880,8 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         // For Jikan manga, use mal_id as the ID and 'jikan' as pseudo-source
         const mangaId = item.mal_id || item.id || item.manga_id || `item-${Math.random().toString(36).slice(2)}`;
         const source = item.mal_id ? 'jikan' : (item.source || 'unknown');
+        const isLibraryView = state.activeView === 'library';
+        const libraryKey = item.key || (source && mangaId ? `${source}:${mangaId}` : '');
 
         const inLibrary = isInLibrary(mangaId, source);
         const coverUrl = item.cover_url || item.cover || PLACEHOLDER_COVER;
@@ -785,7 +894,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         const views = item.rating?.count ? `${(item.rating.count / 1000).toFixed(0)}k` : `${Math.floor(Math.random() * 5000)}k`;
 
         return `
-            <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}">
+            <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}" data-library-key="${escapeHtml(libraryKey)}">
                 <div class="card-cover">
                     ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />` : '<i data-lucide="book-open" width="48" height="48"></i>'}
                     <div class="card-overlay">
@@ -796,6 +905,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
                         <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
                             <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
                         </button>
+                        ${isLibraryView ? `<button class="remove-btn" data-action="remove" title="Remove from library"><i data-lucide="trash" width="14"></i></button>` : ''}
                     </div>
                 </div>
                 <div class="card-info">
@@ -841,6 +951,22 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
                     showToast('Already in library');
                 } else {
                     showLibraryStatusModal(mangaId, source, title, coverUrl);
+                }
+            });
+        }
+
+        const removeBtn = card.querySelector('.remove-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
+                try {
+                    await removeFromLibrary(key);
+                    showToast('Removed from library');
+                    await loadLibrary();
+                } catch (err) {
+                    log(`❌ Remove failed: ${err.message}`);
+                    showToast('Failed to remove');
                 }
             });
         }
@@ -1236,6 +1362,7 @@ function initElements() {
         discoverEmpty: document.getElementById('discover-empty'),
         discoverTitle: document.getElementById('discover-title'),
         discoverSubtitle: document.getElementById('discover-subtitle'),
+        discoverPagination: document.getElementById('discover-pagination'),
 
         // Library
         libraryGrid: document.getElementById('library-grid'),
@@ -1320,7 +1447,7 @@ async function init() {
     lucide.createIcons();
 
     // Load initial content
-    loadTrending();
+    loadDiscover();
 
     // Event Listeners
 
@@ -1343,7 +1470,7 @@ async function init() {
         state.searchQuery = '';
         els.searchInput.value = '';
         els.clearSearchBtn.classList.add('hidden');
-        loadTrending();
+        loadDiscover(state.viewPages.discover || 1);
     });
 
     els.searchBtn.addEventListener('click', () => {

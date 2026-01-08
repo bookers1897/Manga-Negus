@@ -180,10 +180,10 @@ input {
   cursor: pointer;
 }
 .brand-logo {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
   background: var(--red-primary);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -195,6 +195,17 @@ input {
 }
 .brand-logo span {
   transform: skewX(10deg);
+}
+.brand-logo.brand-logo-image {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  padding: 0;
+}
+.brand-logo.brand-logo-image img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
 }
 .brand-text {
   display: none;
@@ -481,7 +492,7 @@ h1 {
 .manga-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
+  gap: 18px;
   max-width: 1600px;
   margin: 0 auto;
 }
@@ -505,6 +516,11 @@ h1 {
     grid-template-columns: repeat(6, 1fr);
   }
 }
+@media (min-width: 1800px) {
+  .manga-grid {
+    grid-template-columns: repeat(7, 1fr);
+  }
+}
 
 /* --- CARDS --- */
 .card {
@@ -526,8 +542,22 @@ h1 {
   box-shadow: var(--shadow-card);
 }
 
+.remove-btn {
+  background: rgba(0,0,0,0.6);
+  border: 1px solid var(--border-glass);
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.remove-btn:hover {
+  background: rgba(255, 65, 65, 0.8);
+  border-color: rgba(255, 65, 65, 0.6);
+}
+
 .card-cover {
-  height: 256px;
+  height: 210px;
   background: #171717;
   position: relative;
   display: flex;
@@ -546,6 +576,34 @@ h1 {
 }
 .card:hover .card-cover svg {
   color: var(--red-primary);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 24px 0 12px;
+}
+.pagination button {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  cursor: pointer;
+  transition: 0.2s;
+}
+.pagination button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pagination .page-indicator {
+  color: var(--text-muted);
+  font-size: 14px;
 }
 
 .card-overlay {
