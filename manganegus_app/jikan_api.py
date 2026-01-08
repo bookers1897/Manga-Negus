@@ -111,7 +111,7 @@ class JikanAPI:
             print(f"Jikan top manga error: {e}")
             return []
 
-    def get_seasonal_manga(self, limit: int = 20) -> List[Dict]:
+    def get_seasonal_manga(self, limit: int = 20, page: int = 1) -> List[Dict]:
         """
         Get currently airing/publishing seasonal manga.
 
@@ -121,9 +121,12 @@ class JikanAPI:
         self._rate_limit()
 
         try:
+            params = {'page': page}
+
             # Get current season
             resp = self.session.get(
                 f"{self.BASE_URL}/seasons/now",
+                params=params,
                 timeout=10
             )
 

@@ -206,14 +206,18 @@ def get_trending():
     """Get trending/seasonal manga from Jikan."""
     try:
         limit = int(request.args.get('limit', 20))
+        page = int(request.args.get('page', 1))
         if limit < 1 or limit > 25:
             return jsonify({'error': 'Limit must be between 1 and 25'}), 400
+        if page < 1 or page > 1000:
+            return jsonify({'error': 'Page must be between 1 and 1000'}), 400
     except ValueError:
-        return jsonify({'error': 'Invalid limit'}), 400
+        return jsonify({'error': 'Invalid parameters'}), 400
 
-    log(f"🔥 Loading trending manga from Jikan...")
+    log(f"🔥 Loading trending manga from Jikan (page {page})...")
     jikan = get_jikan_client()
-    results = jikan.get_seasonal_manga(limit=limit)
+    # Seasonal feed sometimes returns limited items; fall back to top list for variety
+    results = jikan.get_seasonal_manga(limit=limit, page=page) or jikan.get_top_manga(limit=limit, page=page)
 
     return jsonify(results)
 
@@ -228,6 +232,24 @@ def get_latest():
             return jsonify({'error': 'Page must be between 1 and 1000'}), 400
     except ValueError:
         return jsonify({'error': 'Invalid page number'}), 400
+    results = manager.get_latest(source_id, page)
+    return jsonify([r.to_dict() for r in results])
+
+@manga_bp.route('/latest_feed')
+def get_latest_feed():
+    """
+    Discover feed: latest updates from sources with pagination.
+    Mirrors /latest but kept separate to avoid breaking existing clients.
+    """
+    manager = get_source_manager()
+    source_id = request.args.get('source_id')
+    try:
+        page = int(request.args.get('page', 1))
+        if page < 1 or page > 1000:
+            return jsonify({'error': 'Page must be between 1 and 1000'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid page number'}), 400
+
     results = manager.get_latest(source_id, page)
     return jsonify([r.to_dict() for r in results])
 
