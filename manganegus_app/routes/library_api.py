@@ -64,13 +64,28 @@ def update_status():
 @library_bp.route('/update_progress', methods=['POST'])
 @csrf_protect
 def update_progress():
-    """Update reading progress."""
+    """Update reading progress (chapter + optional page)."""
     data = request.get_json(silent=True) or {}
     key = data.get('key')
     chapter = data.get('chapter', data.get('last_chapter'))
+    page = data.get('page', data.get('last_page'))
+    chapter_id = data.get('chapter_id')
+    total_chapters = data.get('total_chapters')
+
     if not key or chapter is None:
         return jsonify({'error': 'Missing required fields: key and chapter'}), 400
-    library.update_progress(key, str(chapter))
+
+    try:
+        page = int(page) if page is not None else None
+    except (ValueError, TypeError):
+        page = None
+
+    try:
+        total_chapters = int(total_chapters) if total_chapters is not None else None
+    except (ValueError, TypeError):
+        total_chapters = None
+
+    library.update_progress(key, str(chapter), page=page, chapter_id=chapter_id, total_chapters=total_chapters)
     return jsonify({'status': 'ok'})
 
 @library_bp.route('/delete', methods=['POST'])

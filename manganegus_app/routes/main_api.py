@@ -82,6 +82,7 @@ def proxy_image():
     Usage: /api/proxy/image?url=https://uploads.mangadex.org/covers/...
     """
     url = request.args.get('url', '')
+    referer = request.args.get('referer', '')
     if not url:
         return jsonify({'error': 'Missing url parameter'}), 400
 
@@ -96,6 +97,8 @@ def proxy_image():
         'temp.compsci88.com',
         'planeptune.us',
         'www.planeptune.us',
+        'weebcentral.com',
+        'www.weebcentral.com',
 
         # MangaNato / MangaKakalot
         'cover.nep.li',
@@ -144,7 +147,7 @@ def proxy_image():
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': url,
+            'Referer': referer or url,
         }
         resp = requests.get(url, headers=headers, timeout=10, stream=True)
         if resp.status_code != 200:
