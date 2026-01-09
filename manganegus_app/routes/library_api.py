@@ -23,10 +23,20 @@ def save_to_library():
     ])
     if error:
         return jsonify({'error': error}), 400
+
+    manga_id = data['id']
+    source = data['source']
+
+    # Strip source prefix from manga_id if present (prevents double-prefix bug)
+    prefix = f"{source}:"
+    if manga_id.startswith(prefix):
+        manga_id = manga_id[len(prefix):]
+        log(f"⚠️ Stripped prefix from manga_id: {data['id']} -> {manga_id}")
+
     key = library.add(
-        manga_id=data['id'],
+        manga_id=manga_id,
         title=data['title'],
-        source=data['source'],
+        source=source,
         status=data.get('status', 'reading'),
         cover=data.get('cover')
     )

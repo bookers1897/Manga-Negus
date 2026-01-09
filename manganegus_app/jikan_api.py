@@ -275,6 +275,107 @@ class JikanAPI:
 
         return enriched
 
+    def get_hidden_gems(self, limit: int = 20, page: int = 1) -> List[Dict]:
+        """
+        Get "hidden gems" - lesser-known but high-quality manga.
+
+        Criteria:
+        - Score between 7.0 and 8.5 (good but not mega-popular)
+        - Popularity rank > 500 (not mainstream)
+        - Randomized results for variety
+
+        Args:
+            limit: Maximum number of results
+            page: Page number for variety
+
+        Returns:
+            List of manga that are quality but lesser-known
+        """
+        self._rate_limit()
+
+        try:
+            import random
+
+            # Use search with filters for lesser-known manga
+            # Jikan's search can filter by score, but not popularity rank
+            # So we'll get a larger set and filter client-side
+            params = {
+                'limit': 25,  # Get max to filter from
+                'page': page,
+                'type': 'manga',
+                'min_score': 7.0,
+                'max_score': 8.5,
+                'order_by': 'score',
+                'sort': 'desc'
+            }
+
+            resp = self.session.get(
+                f"{self.BASE_URL}/manga",
+                params=params,
+                timeout=10
+            )
+
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            results = []
+
+            for item in data.get('data', []):
+                # Filter for lesser-known (popularity > 500)
+                if item.get('popularity', 0) > 500:
+                    results.append(self._parse_manga(item))
+
+            # Randomize for variety (different results each time)
+            random.shuffle(results)
+
+            return results[:limit]
+
+        except Exception as e:
+            print(f"Jikan hidden gems error: {e}")
+            return []
+
+    def get_blended_popular(self, limit: int = 20, page: int = 1) -> List[Dict]:
+        """
+        Get a blend of trending (seasonal) and all-time popular manga.
+
+        Mix ratio: 60% top popular, 40% trending seasonal
+
+        Args:
+            limit: Total number of results
+            page: Page number
+
+        Returns:
+            Blended list of popular manga
+        """
+        try:
+            # Calculate split (60% popular, 40% trending)
+            popular_count = int(limit * 0.6)
+            trending_count = limit - popular_count
+
+            # Get both feeds
+            popular = self.get_top_manga(limit=popular_count, page=page)
+            trending = self.get_seasonal_manga(limit=trending_count, page=page)
+
+            # Merge and interleave for variety
+            result = []
+            max_len = max(len(popular), len(trending))
+
+            for i in range(max_len):
+                # Add from popular first (60% weight)
+                if i < len(popular):
+                    result.append(popular[i])
+                # Then add from trending (40% weight)
+                if i < len(trending):
+                    result.append(trending[i])
+
+            return result[:limit]
+
+        except Exception as e:
+            print(f"Jikan blended popular error: {e}")
+            # Fallback to just top manga
+            return self.get_top_manga(limit=limit, page=page)
+
 
 # Singleton instance
 _jikan_client = None

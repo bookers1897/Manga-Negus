@@ -5,7 +5,7 @@ from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.search.smart_search import SmartSearch
 from manganegus_app.jikan_api import get_jikan_client
-from .validators import validate_fields
+from .validators import validate_fields, validate_pagination, validate_source_id, sanitize_string
 
 manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 
@@ -71,11 +71,17 @@ def _run_async(coro):
 def search():
     """Search for manga using Jikan (MyAnimeList) API."""
     data = request.get_json(silent=True) or {}
-    query = data.get('query', '').strip()
-    limit = data.get('limit', 15)
+    query = sanitize_string(data.get('query', ''), max_length=200).strip()
+
+    # Validate pagination
+    _, limit, _ = validate_pagination(None, data.get('limit', 15))
+    limit = min(limit, 25)  # Cap search limit
 
     if not query:
         return jsonify([])
+
+    if len(query) < 2:
+        return jsonify({'error': 'Query too short (min 2 characters)'}), 400
 
     log(f"🔍 Searching Jikan for '{query}'...")
     jikan = get_jikan_client()
@@ -182,9 +188,9 @@ def detect_url():
         log(f"⚠️ Could not fetch manga details for URL detection: {e}")
     return jsonify(result)
 
-@manga_bp.route('/popular')
-def get_popular():
-    """Get popular manga directly from Jikan (MyAnimeList)."""
+@manga_bp.route('/discover')
+def get_discover():
+    """Get hidden gems - lesser-known but high-quality manga for discovery."""
     try:
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 20))
@@ -195,9 +201,28 @@ def get_popular():
     except ValueError:
         return jsonify({'error': 'Invalid parameters'}), 400
 
-    log(f"📚 Loading top manga from Jikan (page {page})...")
+    log(f"💎 Loading hidden gems from Jikan (page {page})...")
     jikan = get_jikan_client()
-    results = jikan.get_top_manga(limit=limit, page=page)
+    results = jikan.get_hidden_gems(limit=limit, page=page)
+
+    return jsonify(results)
+
+@manga_bp.route('/popular')
+def get_popular():
+    """Get popular manga - blended mix of trending and all-time top."""
+    try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 20))
+        if page < 1 or page > 1000:
+            return jsonify({'error': 'Page must be between 1 and 1000'}), 400
+        if limit < 1 or limit > 25:
+            return jsonify({'error': 'Limit must be between 1 and 25'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid parameters'}), 400
+
+    log(f"📚 Loading blended popular manga from Jikan (page {page})...")
+    jikan = get_jikan_client()
+    results = jikan.get_blended_popular(limit=limit, page=page)
 
     return jsonify(results)
 
@@ -315,19 +340,33 @@ def get_chapter_pages():
     """Get page images for a chapter."""
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
+    log(f"📖 [READER API] Request data: {data}")
+
     error = validate_fields(data, [
         ('chapter_id', str, 500),
         ('source', str, 100)
     ])
     if error:
+        log(f"❌ [READER API] Validation error: {error}")
         return jsonify({'error': error}), 400
+
     chapter_id = data['chapter_id']
     source_id = data['source']
+    log(f"📖 [READER API] Fetching pages for chapter_id={chapter_id}, source={source_id}")
+
     pages = manager.get_pages(chapter_id, source_id)
+    log(f"📖 [READER API] Got {len(pages) if pages else 0} pages from manager")
+
     if not pages:
+        log(f"❌ [READER API] No pages returned from source {source_id}")
         return jsonify({'error': 'Failed to fetch pages'}), 500
+
+    page_urls = [p.url for p in pages]
+    log(f"✅ [READER API] Returning {len(page_urls)} page URLs")
+    log(f"📖 [READER API] First page URL sample: {page_urls[0] if page_urls else 'N/A'}")
+
     return jsonify({
-        'pages': [p.url for p in pages],
+        'pages': page_urls,
         'pages_data': [p.to_dict() for p in pages]
     })
 

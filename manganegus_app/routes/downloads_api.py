@@ -1,4 +1,6 @@
-from flask import Blueprint, jsonify, request, send_from_directory
+import os
+from flask import Blueprint, jsonify, request, send_from_directory, abort
+from werkzeug.utils import secure_filename
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.extensions import downloader, DOWNLOAD_DIR
@@ -53,5 +55,27 @@ def get_downloaded_chapters():
 
 @downloads_bp.route('/downloads/<path:filename>')
 def serve_download(filename: str):
-    """Serve downloaded CBZ files."""
-    return send_from_directory(DOWNLOAD_DIR, filename)
+    """Serve downloaded CBZ files with path traversal protection."""
+    # Normalize the path to prevent traversal attacks
+    safe_filename = os.path.normpath(filename)
+
+    # Block any path that tries to escape the download directory
+    if safe_filename.startswith('..') or safe_filename.startswith('/'):
+        log(f"⚠️ Path traversal attempt blocked: {filename}")
+        abort(403)
+
+    # Construct full path and verify it's within DOWNLOAD_DIR
+    full_path = os.path.join(DOWNLOAD_DIR, safe_filename)
+    real_path = os.path.realpath(full_path)
+    real_download_dir = os.path.realpath(DOWNLOAD_DIR)
+
+    if not real_path.startswith(real_download_dir + os.sep):
+        log(f"⚠️ Path escape attempt blocked: {filename} -> {real_path}")
+        abort(403)
+
+    # Only allow CBZ and ZIP files
+    if not safe_filename.lower().endswith(('.cbz', '.zip')):
+        log(f"⚠️ Invalid file type requested: {filename}")
+        abort(403)
+
+    return send_from_directory(DOWNLOAD_DIR, safe_filename)
