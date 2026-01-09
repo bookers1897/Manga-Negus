@@ -87,19 +87,52 @@ def proxy_image():
 
     # Validate URL is from allowed domains (SSRF protection)
     allowed_domains = [
+        # MangaDex
         'uploads.mangadex.org',
         'mangadex.org',
+
+        # WeebCentral V2 CDNs
+        'official.lowee.us',
+        'temp.compsci88.com',
+        'planeptune.us',
+        'www.planeptune.us',
+
+        # MangaNato / MangaKakalot
         'cover.nep.li',
         'avt.mkklcdnv6temp.com',
         'mangakakalot.com',
         'chapmanganato.com',
+        'v1.mkklcdnv6tempv5.com',
+        'v2.mkklcdnv6tempv5.com',
+
+        # MangaSee / Manga4Life
+        'official-ongoing-1.ivalice.us',
+        'official-ongoing-2.ivalice.us',
+        'official-complete-1.ivalice.us',
+        'official-complete-2.ivalice.us',
+        'temp.compsci88.com',
+
+        # MangaFire
+        'mangafire.to',
+        'cdn.mangafire.to',
+
+        # AsuraScans
+        'asurascans.com',
+        'cdn.asurascans.com',
+
+        # Other sources
         'fanfox.net',
         'mangahere.cc',
-        'mangafire.to',
         's1.mbcdnv1.xyz',
         's1.mbcdnv2.xyz',
         's1.mbcdnv3.xyz',
-        'temp.compsci88.com',  # WeebCentral V2
+        's1.mbcdnv4.xyz',
+        's1.mbcdnv5.xyz',
+
+        # Common manga CDNs
+        'manga4life.com',
+        'official-ongoing.ivalice.us',
+        'official-complete.ivalice.us',
     ]
 
     # SECURITY: Validate URL to prevent SSRF attacks

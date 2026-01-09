@@ -6,6 +6,7 @@
 // ========================================
 const state = {
     activeView: 'discover',
+    previousView: 'discover', // Track previous view for back button
     activeFilter: 'all',
     searchMode: 'title', // 'title' or 'url'
     searchQuery: '',
@@ -28,7 +29,10 @@ const state = {
     readerCurrentPage: 0,
     isSidebarOpen: false,
     csrfToken: '',
-    toastTimer: null
+    toastTimer: null,
+    // AbortControllers for cancelling in-flight requests (race condition prevention)
+    chaptersAbortController: null,
+    searchAbortController: null
 };
 
 const PLACEHOLDER_COVER = '/static/images/placeholder.png';
@@ -53,10 +57,16 @@ const API = {
                 headers['X-CSRF-Token'] = state.csrfToken;
             }
 
-            const response = await fetch(endpoint, {
+            // Support AbortController signal for request cancellation
+            const fetchOptions = {
                 ...options,
                 headers
-            });
+            };
+            if (options.signal) {
+                fetchOptions.signal = options.signal;
+            }
+
+            const response = await fetch(endpoint, fetchOptions);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -65,6 +75,10 @@ const API = {
             const data = await response.json();
             return data;
         } catch (error) {
+            // Don't log or show toast for aborted requests
+            if (error.name === 'AbortError') {
+                throw error;
+            }
             console.error(`API Error (${endpoint}):`, error);
             showToast(`Error: ${error.message}`);
             throw error;
@@ -113,6 +127,11 @@ const API = {
         return Array.isArray(data) ? data : [];
     },
 
+    async getDiscover(page = 1, limit = 20) {
+        const data = await this.request(`/api/discover?page=${page}&limit=${limit}`);
+        return Array.isArray(data) ? data : [];
+    },
+
     async getLatestFeed(sourceId = '', page = 1) {
         const url = `/api/latest_feed?page=${page}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`;
         const data = await this.request(url);
@@ -140,11 +159,15 @@ const API = {
     },
 
     async getChapterPages(chapterId, source) {
+        console.log('[API DEBUG] getChapterPages called', { chapter_id: chapterId, source });
         const data = await this.request('/api/chapter_pages', {
             method: 'POST',
             body: JSON.stringify({ chapter_id: chapterId, source })
         });
-        return data.pages || [];
+        console.log('[API DEBUG] chapter_pages response:', data);
+        const pages = data.pages || [];
+        console.log('[API DEBUG] Extracted pages:', pages);
+        return pages;
     },
 
     async getLibrary() {
@@ -302,14 +325,7 @@ function renderNav() {
         }).join('');
 
     safeCreateIcons();
-
-    // Attach event listeners
-    document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const view = btn.dataset.view;
-            setView(view);
-        });
-    });
+    // Event delegation handled by setupEventDelegation() - no per-button listeners needed
 }
 
 function renderSources() {
@@ -366,20 +382,7 @@ function renderSources() {
     `;
 
     safeCreateIcons();
-
-    // Attach event listeners
-    document.querySelectorAll('.source-btn[data-source]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const sourceId = btn.dataset.source;
-            setSource(sourceId);
-        });
-    });
-
-    // Show all sources button
-    const showAllBtn = document.getElementById('show-all-sources-btn');
-    if (showAllBtn) {
-        showAllBtn.addEventListener('click', showSourceStatus);
-    }
+    // Event delegation handled by setupEventDelegation() - no per-button listeners needed
 
     log(`✅ Rendered ${sourcesToDisplay.length} sources in sidebar`);
 }
@@ -437,6 +440,10 @@ async function showSourceStatus() {
 // View Management
 // ========================================
 function setView(viewId) {
+    // Track previous view (but not if we're going to details view)
+    if (viewId !== 'details' && state.activeView !== 'details') {
+        state.previousView = state.activeView;
+    }
     state.activeView = viewId;
     hidePagination();
 
@@ -662,23 +669,21 @@ async function loadDiscover(page = 1) {
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
-            <span class="loading-text">Loading trending...</span>
+            <span class="loading-text">Loading hidden gems...</span>
         </div>
     `;
     els.discoverEmpty.classList.add('hidden');
-    log('Loading discover feed (trending + latest updates)...');
+    log('Loading discover feed (hidden gems - lesser-known quality manga)...');
 
     try {
-        // Rotate page every 10 minutes to keep content fresh but predictable unless user paginates manually
+        // Rotate page every 10 minutes for variety, unless user paginates manually
         const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
         const autoPage = (timeBucket % 5) + 1;
         const chosenPage = page || autoPage;
         state.viewPages.discover = chosenPage;
-        updateDiscoverSubtitle(`// TRENDING + LATEST // PAGE ${chosenPage}`);
+        updateDiscoverSubtitle(`// HIDDEN GEMS // PAGE ${chosenPage}`);
 
-        const trending = await API.getTrending(chosenPage, 20);
-        const latest = await API.getLatestFeed(state.currentSource || '', chosenPage);
-        const results = [...(trending || []), ...(latest || [])].slice(0, 40);
+        const results = await API.getDiscover(chosenPage, 20);
 
         if (!results || results.length === 0) {
             els.discoverGrid.classList.add('hidden');
@@ -687,17 +692,17 @@ async function loadDiscover(page = 1) {
         }
 
         renderMangaGrid(results, els.discoverGrid, els.discoverEmpty);
-        log(`✅ Loaded ${results.length} trending/latest manga`);
+        log(`✅ Loaded ${results.length} hidden gems`);
         renderDiscoverPagination('discover', chosenPage);
     } catch (error) {
-        log(`❌ ERROR loading trending: ${error.message}`);
+        log(`❌ ERROR loading discover: ${error.message}`);
         els.discoverGrid.innerHTML = `
             <div style="grid-column: 1/-1; padding: 48px 24px; text-align: center;">
                 <div class="empty-icon-box" style="margin: 0 auto 16px;">
                     <i data-lucide="alert-circle" width="32" height="32"></i>
                 </div>
                 <p style="color: var(--text-muted); font-size: 14px; font-family: monospace;">
-                    Failed to load trending<br/>
+                    Failed to load discover feed<br/>
                     ${escapeHtml(error.message)}
                 </p>
             </div>
@@ -929,60 +934,20 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
     }).join('');
 
     safeCreateIcons();
-
-    // Attach event listeners to cards
-    gridEl.querySelectorAll('.card').forEach((card, index) => {
-        const mangaId = card.dataset.mangaId;
-        const source = card.dataset.source;
-        const title = card.querySelector('.card-title').textContent;
-        const coverImg = card.querySelector('.card-cover img');
-        const coverUrl = coverImg ? coverImg.src : '';
-
-        // Get original manga data
-        const mangaData = manga[index];
-
-        // Open details on card click
-        card.addEventListener('click', (e) => {
-            if (!e.target.closest('.bookmark-btn')) {
-                openMangaDetails(mangaId, source, title, mangaData);
-            }
-        });
-
-        // Bookmark button
-        const bookmarkBtn = card.querySelector('.bookmark-btn');
-        if (bookmarkBtn) {
-            bookmarkBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (isInLibrary(mangaId, source)) {
-                    showToast('Already in library');
-                } else {
-                    showLibraryStatusModal(mangaId, source, title, coverUrl);
-                }
-            });
-        }
-
-        const removeBtn = card.querySelector('.remove-btn');
-        if (removeBtn) {
-            removeBtn.addEventListener('click', async (e) => {
-                e.stopPropagation();
-                const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
-                try {
-                    await removeFromLibrary(key);
-                    showToast('Removed from library');
-                    await loadLibrary();
-                } catch (err) {
-                    log(`❌ Remove failed: ${err.message}`);
-                    showToast('Failed to remove');
-                }
-            });
-        }
-    });
+    // Store manga data for event delegation access
+    gridEl._mangaData = manga;
+    // Event delegation handled by setupEventDelegation() - no per-card listeners needed
 }
 
 // ========================================
 // Manga Details
 // ========================================
 async function openMangaDetails(mangaId, source, title, mangaData = null) {
+    // Save current view before switching to details (for back button)
+    if (state.activeView !== 'details') {
+        state.previousView = state.activeView;
+    }
+
     state.currentManga = {
         id: mangaId,
         source,
@@ -1058,6 +1023,13 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
 async function loadChapters(page = 1) {
     state.currentPage = page;
 
+    // Cancel any previous in-flight chapters request (race condition prevention)
+    if (state.chaptersAbortController) {
+        state.chaptersAbortController.abort();
+    }
+    state.chaptersAbortController = new AbortController();
+    const signal = state.chaptersAbortController.signal;
+
     els.chaptersList.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -1087,7 +1059,8 @@ async function loadChapters(page = 1) {
 
         const response = await API.request('/api/chapters', {
             method: 'POST',
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal
         });
 
         // Update current manga with resolved source/id from backend (important for downloads/library)
@@ -1107,6 +1080,10 @@ async function loadChapters(page = 1) {
 
         log(`✅ Loaded ${state.currentChapters.length} chapters`);
     } catch (error) {
+        // Silently ignore aborted requests
+        if (error.name === 'AbortError') {
+            return;
+        }
         log(`❌ Chapters loading error: ${error.message}`);
         els.chaptersList.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load chapters</p>';
     }
@@ -1121,7 +1098,7 @@ function renderChapters() {
     els.chaptersList.innerHTML = state.currentChapters.map(chapter => {
         const isSelected = state.selectedChapters.has(chapter.id);
         return `
-            <div class="chapter-item ${isSelected ? 'selected' : ''}" data-chapter-id="${escapeHtml(chapter.id)}">
+            <div class="chapter-item ${isSelected ? 'selected' : ''}" data-chapter-id="${escapeHtml(chapter.id)}" data-chapter-title="${escapeHtml(chapter.title)}">
                 <div class="chapter-info">
                     <div class="chapter-checkbox"></div>
                     <span class="chapter-name">${escapeHtml(chapter.title)}</span>
@@ -1139,37 +1116,7 @@ function renderChapters() {
     }).join('');
 
     safeCreateIcons();
-
-    // Attach event listeners
-    els.chaptersList.querySelectorAll('.chapter-item').forEach(item => {
-        const chapterId = item.dataset.chapterId;
-        const chapter = state.currentChapters.find(c => c.id === chapterId);
-
-        // Toggle selection on item click (not on action buttons)
-        item.addEventListener('click', (e) => {
-            if (!e.target.closest('.chapter-actions')) {
-                toggleChapterSelection(chapterId);
-            }
-        });
-
-        // Read button
-        const readBtn = item.querySelector('[data-action="read"]');
-        if (readBtn) {
-            readBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                openReader(chapterId, chapter.title);
-            });
-        }
-
-        // Download button
-        const downloadBtn = item.querySelector('[data-action="download"]');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                downloadChapter(chapterId, chapter.title);
-            });
-        }
-    });
+    // Event delegation handled by setupChapterEventDelegation() - no per-item listeners needed
 }
 
 function toggleChapterSelection(chapterId) {
@@ -1262,6 +1209,8 @@ function renderPagination() {
 // Reader
 // ========================================
 async function openReader(chapterId, chapterTitle) {
+    console.log('[READER DEBUG] openReader called', { chapterId, chapterTitle, source: state.currentManga?.source });
+
     els.readerTitle.textContent = chapterTitle;
     els.readerContent.innerHTML = `
         <div class="loading-state">
@@ -1272,31 +1221,48 @@ async function openReader(chapterId, chapterTitle) {
     els.readerContainer.classList.add('active');
     state.readerCurrentPage = 0;
 
-    log(`Opening reader: ${chapterTitle}`);
+    log(`📖 Opening reader: ${chapterTitle}`);
+    console.log('[READER DEBUG] Current manga:', state.currentManga);
 
     try {
+        console.log('[READER DEBUG] Calling API.getChapterPages...');
         const pages = await API.getChapterPages(chapterId, state.currentManga.source);
+        console.log('[READER DEBUG] Pages received:', pages, 'Type:', typeof pages, 'IsArray:', Array.isArray(pages));
+
         state.readerPages = pages;
 
         if (pages.length === 0) {
+            console.error('[READER DEBUG] No pages returned!');
             els.readerContent.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No pages available</p>';
             return;
         }
 
+        console.log('[READER DEBUG] Rendering', pages.length, 'pages');
         renderReaderPages();
         updateReaderControls();
-        log(`Loaded ${pages.length} pages`);
+        log(`✅ Loaded ${pages.length} pages`);
     } catch (error) {
-        els.readerContent.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load pages</p>';
-        log(`Reader error: ${error.message}`);
+        console.error('[READER DEBUG] Error:', error);
+        els.readerContent.innerHTML = `<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load pages<br/>${escapeHtml(error.message)}</p>`;
+        log(`❌ Reader error: ${error.message}`);
     }
 }
 
 function renderReaderPages() {
-    els.readerContent.innerHTML = state.readerPages.map((page, index) => {
-        const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(page.url)}`;
+    console.log('[READER DEBUG] renderReaderPages called, state.readerPages:', state.readerPages);
+
+    const html = state.readerPages.map((page, index) => {
+        // Handle both string URLs and object with url property
+        const pageUrl = typeof page === 'string' ? page : page.url;
+        console.log(`[READER DEBUG] Page ${index + 1}:`, { page, pageUrl });
+
+        const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(pageUrl)}`;
         return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page" loading="lazy" />`;
     }).join('');
+
+    console.log('[READER DEBUG] Generated HTML length:', html.length);
+    els.readerContent.innerHTML = html;
+    console.log('[READER DEBUG] Rendered', state.readerPages.length, 'page elements');
 }
 
 function updateReaderControls() {
@@ -1304,6 +1270,15 @@ function updateReaderControls() {
     els.readerPageIndicator.textContent = `${state.readerCurrentPage + 1} / ${total}`;
     els.prevPageBtn.disabled = state.readerCurrentPage === 0;
     els.nextPageBtn.disabled = state.readerCurrentPage >= total - 1;
+
+    // Scroll to current page
+    const pages = els.readerContent.querySelectorAll('.reader-page');
+    if (pages[state.readerCurrentPage]) {
+        pages[state.readerCurrentPage].scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        });
+    }
 }
 
 function closeReader() {
@@ -1422,9 +1397,126 @@ function initElements() {
 // ========================================
 // Initialization
 // ========================================
+// ========================================
+// Event Delegation Setup (prevents memory leaks)
+// ========================================
+function setupEventDelegation() {
+    // Navigation click delegation
+    els.navList.addEventListener('click', (e) => {
+        const navBtn = e.target.closest('.nav-item[data-view]');
+        if (navBtn) {
+            const view = navBtn.dataset.view;
+            setView(view);
+        }
+    });
+
+    // Source list click delegation
+    els.sourceList.addEventListener('click', (e) => {
+        const sourceBtn = e.target.closest('.source-btn[data-source]');
+        if (sourceBtn) {
+            const sourceId = sourceBtn.dataset.source;
+            setSource(sourceId);
+            return;
+        }
+        const showAllBtn = e.target.closest('#show-all-sources-btn');
+        if (showAllBtn) {
+            showSourceStatus();
+        }
+    });
+
+    // Manga grid click delegation helper
+    function handleGridClick(gridEl, e) {
+        const card = e.target.closest('.card');
+        if (!card) return;
+
+        const mangaId = card.dataset.mangaId;
+        const source = card.dataset.source;
+        const titleEl = card.querySelector('.card-title');
+        const title = titleEl ? titleEl.textContent : '';
+        const coverImg = card.querySelector('.card-cover img');
+        const coverUrl = coverImg ? coverImg.src : '';
+
+        // Get manga data from stored array
+        const allCards = Array.from(gridEl.querySelectorAll('.card'));
+        const index = allCards.indexOf(card);
+        const mangaData = gridEl._mangaData ? gridEl._mangaData[index] : null;
+
+        // Handle remove button
+        const removeBtn = e.target.closest('.remove-btn');
+        if (removeBtn) {
+            e.stopPropagation();
+            const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
+            removeFromLibrary(key)
+                .then(() => {
+                    showToast('Removed from library');
+                    return loadLibrary();
+                })
+                .catch(err => {
+                    log(`❌ Remove failed: ${err.message}`);
+                    showToast('Failed to remove');
+                });
+            return;
+        }
+
+        // Handle bookmark button
+        const bookmarkBtn = e.target.closest('.bookmark-btn');
+        if (bookmarkBtn) {
+            e.stopPropagation();
+            if (isInLibrary(mangaId, source)) {
+                showToast('Already in library');
+            } else {
+                showLibraryStatusModal(mangaId, source, title, coverUrl);
+            }
+            return;
+        }
+
+        // Handle card click (open details)
+        openMangaDetails(mangaId, source, title, mangaData);
+    }
+
+    // Discover grid delegation
+    els.discoverGrid.addEventListener('click', (e) => handleGridClick(els.discoverGrid, e));
+
+    // Library grid delegation
+    els.libraryGrid.addEventListener('click', (e) => handleGridClick(els.libraryGrid, e));
+
+    // Chapter list delegation
+    els.chaptersList.addEventListener('click', (e) => {
+        const chapterItem = e.target.closest('.chapter-item');
+        if (!chapterItem) return;
+
+        const chapterId = chapterItem.dataset.chapterId;
+        const chapterTitle = chapterItem.dataset.chapterTitle;
+
+        // Handle read button
+        const readBtn = e.target.closest('[data-action="read"]');
+        if (readBtn) {
+            e.stopPropagation();
+            openReader(chapterId, chapterTitle);
+            return;
+        }
+
+        // Handle download button
+        const downloadBtn = e.target.closest('[data-action="download"]');
+        if (downloadBtn) {
+            e.stopPropagation();
+            downloadChapter(chapterId, chapterTitle);
+            return;
+        }
+
+        // Handle checkbox/item click (toggle selection)
+        if (!e.target.closest('.chapter-actions')) {
+            toggleChapterSelection(chapterId);
+        }
+    });
+}
+
 async function init() {
     // Initialize DOM elements first
     initElements();
+
+    // Setup event delegation (once, prevents memory leaks)
+    setupEventDelegation();
 
     log('Initializing MangaNegus...');
     console.log('[DEBUG] Init started');
@@ -1522,8 +1614,8 @@ async function init() {
 
     // Details View
     els.backBtn.addEventListener('click', () => {
-        const previousView = state.library.length > 0 ? 'library' : 'discover';
-        setView(previousView);
+        // Go back to the view we came from (discover, trending, popular, library, history)
+        setView(state.previousView || 'discover');
     });
 
     els.addToLibraryBtn.addEventListener('click', () => {
@@ -1578,9 +1670,40 @@ async function init() {
     log('Initialization complete');
 }
 
-// Start application when DOM is ready
+// Global unhandled promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('[UNHANDLED REJECTION]', event.reason);
+    log(`❌ Unhandled error: ${event.reason?.message || event.reason}`);
+    // Prevent the default handling (which may crash)
+    event.preventDefault();
+});
+
+// Global error handler
+window.addEventListener('error', (event) => {
+    console.error('[GLOBAL ERROR]', event.error);
+    log(`❌ Global error: ${event.error?.message || event.message}`);
+});
+
+// Start application when DOM is ready with proper error handling
+async function safeInit() {
+    try {
+        await init();
+    } catch (error) {
+        console.error('[INIT FAILED]', error);
+        log(`❌ Initialization failed: ${error.message}`);
+        // Show user-friendly error
+        const body = document.body;
+        if (body) {
+            const errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a1a;color:#fff;padding:2rem;border-radius:8px;z-index:9999;text-align:center;';
+            errorDiv.innerHTML = `<h2>Initialization Error</h2><p>${error.message}</p><button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1rem;cursor:pointer;">Reload</button>`;
+            body.appendChild(errorDiv);
+        }
+    }
+}
+
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', safeInit);
 } else {
-    init();
+    safeInit();
 }
