@@ -2825,8 +2825,12 @@ const titles = [
     'マンガキング'  // Japanese: Manga Kingu
 ];
 
+// Module-level tracking to prevent memory leaks
+let titleCycleInterval = null;
+let titleCyclingStarted = false;
+
 function updateTitle() {
-    if (!els.appTitle) return;
+    if (!els.appTitle) return;  // Early return BEFORE timeout
 
     els.appTitle.style.opacity = '0';
 
@@ -2842,13 +2846,33 @@ function cycleTitle() {
 }
 
 function startTitleCycling() {
-    if (!els.appTitle) return;
+    if (!els.appTitle || titleCyclingStarted) return;
+    titleCyclingStarted = true;
+
+    // Clear any existing interval to prevent memory leaks
+    if (titleCycleInterval) {
+        clearInterval(titleCycleInterval);
+    }
 
     // Auto-cycle every 30 seconds
-    setInterval(cycleTitle, 30000);
+    titleCycleInterval = setInterval(cycleTitle, 30000);
 
     // Manual cycle on click
     els.appTitle.addEventListener('click', cycleTitle);
+
+    // Add accessibility for screen readers
+    els.appTitle.setAttribute('aria-live', 'polite');
+    els.appTitle.setAttribute('role', 'button');
+    els.appTitle.setAttribute('tabindex', '0');
+    els.appTitle.setAttribute('aria-label', 'Cycle application title');
+
+    // Keyboard support (Enter or Space to cycle)
+    els.appTitle.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            cycleTitle();
+        }
+    });
 }
 
 async function init() {
