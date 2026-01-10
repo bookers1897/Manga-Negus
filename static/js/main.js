@@ -1549,6 +1549,11 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
 
         return `
             <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}" data-library-key="${escapeHtml(libraryKey)}">
+                ${state.selectionMode && isLibraryView ? `
+                    <div class="card-selection-overlay">
+                        <input type="checkbox" class="card-checkbox" ${state.selectedCards.has(libraryKey) ? 'checked' : ''} />
+                    </div>
+                ` : ''}
                 <div class="card-cover">
                     ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />` : '<i data-lucide="book-open" width="48" height="48"></i>'}
                     <div class="card-overlay">
@@ -2742,6 +2747,19 @@ function setupEventDelegation() {
         const card = e.target.closest('.card');
         if (!card) return;
 
+        // Handle selection mode
+        if (state.selectionMode && gridEl === els.libraryGrid) {
+            const checkbox = e.target.closest('.card-checkbox');
+            const clickedCard = e.target.closest('.card') && !e.target.closest('.card-menu-btn');
+
+            if (checkbox || clickedCard) {
+                e.stopPropagation();
+                const key = card.dataset.libraryKey;
+                toggleCardSelection(key);
+                return;
+            }
+        }
+
         const mangaId = card.dataset.mangaId;
         const source = card.dataset.source;
         const titleEl = card.querySelector('.card-title');
@@ -3095,9 +3113,101 @@ async function removeFromLibraryWithConfirm(key, title) {
     }
 }
 
-// Placeholder for selection mode (Task 7)
+// ==================== Multi-Select Mode ====================
+
 function enterSelectionMode() {
-    showToast('Selection mode - Coming in Task 7!');
+    state.selectionMode = true;
+    state.selectedCards.clear();
+
+    // Add selection-mode class to body
+    document.body.classList.add('selection-mode');
+
+    // Re-render library with checkboxes
+    renderLibraryFromState();
+
+    // Show action bar
+    els.selectionActionBar.classList.remove('hidden');
+    updateSelectionCount();
+
+    log('📋 Entered selection mode');
+}
+
+function exitSelectionMode() {
+    state.selectionMode = false;
+    state.selectedCards.clear();
+
+    // Remove selection-mode class
+    document.body.classList.remove('selection-mode');
+
+    // Hide action bar
+    els.selectionActionBar.classList.add('hidden');
+
+    // Re-render library without checkboxes
+    renderLibraryFromState();
+
+    log('✅ Exited selection mode');
+}
+
+function toggleCardSelection(key) {
+    if (state.selectedCards.has(key)) {
+        state.selectedCards.delete(key);
+    } else {
+        state.selectedCards.add(key);
+    }
+
+    updateSelectionCount();
+    updateCheckboxStates();
+}
+
+function updateSelectionCount() {
+    const count = state.selectedCards.size;
+    els.selectionCount.textContent = `${count} selected`;
+
+    // Enable/disable action buttons
+    const hasSelection = count > 0;
+    els.btnDeleteSelected.disabled = !hasSelection;
+    els.btnDownloadSelected.disabled = !hasSelection;
+}
+
+function updateCheckboxStates() {
+    document.querySelectorAll('.card-checkbox').forEach(checkbox => {
+        const key = checkbox.closest('.card').dataset.libraryKey;
+        checkbox.checked = state.selectedCards.has(key);
+    });
+}
+
+async function deleteSelected() {
+    const keys = Array.from(state.selectedCards);
+    const count = keys.length;
+
+    if (count === 0) {
+        showToast('No items selected');
+        return;
+    }
+
+    const confirmed = confirm(`Remove ${count} manga from library?`);
+    if (!confirmed) return;
+
+    try {
+        log(`🗑️ Deleting ${count} items...`);
+
+        // Delete all in parallel
+        await Promise.all(keys.map(key => API.removeFromLibrary(key)));
+
+        showToast(`Removed ${count} manga from library`);
+        exitSelectionMode();
+        await loadLibrary();
+
+        log(`✅ Deleted ${count} items`);
+    } catch (error) {
+        log(`❌ Bulk delete failed: ${error.message}`);
+        showToast('Some deletions failed');
+    }
+}
+
+async function downloadSelected() {
+    showToast('Bulk download - Coming soon!');
+    // TODO: Implement bulk passive queue in Task 8
 }
 
 // Placeholder for passive download queue (Task 8)
@@ -3282,6 +3392,11 @@ async function init() {
             loadLibrary();
         });
     });
+
+    // Selection mode handlers
+    els.btnDeleteSelected.addEventListener('click', deleteSelected);
+    els.btnDownloadSelected.addEventListener('click', downloadSelected);
+    els.btnCancelSelection.addEventListener('click', exitSelectionMode);
 
     // Details View
     els.backBtn.addEventListener('click', () => {
