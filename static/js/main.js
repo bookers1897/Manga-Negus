@@ -1556,10 +1556,14 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
                     </div>
                     <div class="card-badges">
                         <span class="badge-score"><i data-lucide="flame"></i> ${escapeHtml(String(score))}</span>
-                        <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
-                            <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
+                        ${!isLibraryView ? `
+                            <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
+                                <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
+                            </button>
+                        ` : ''}
+                        <button class="card-menu-btn" data-action="menu">
+                            <i data-lucide="more-vertical" width="16"></i>
                         </button>
-                        ${isLibraryView ? `<button class="remove-btn" data-action="remove" title="Remove from library"><i data-lucide="trash" width="14"></i></button>` : ''}
                     </div>
                 </div>
                 <div class="card-info">
@@ -2746,6 +2750,27 @@ function setupEventDelegation() {
         const index = allCards.indexOf(card);
         const mangaData = gridEl._mangaData ? gridEl._mangaData[index] : null;
 
+        // Handle menu button
+        const menuBtn = e.target.closest('.card-menu-btn');
+        if (menuBtn) {
+            e.stopPropagation();
+
+            const context = gridEl === els.libraryGrid ? 'library' : 'discovery';
+            const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
+            const titleText = title;
+            const coverUrlText = coverUrl;
+
+            // Create or find existing menu
+            let menu = card.querySelector('.card-menu-dropdown');
+            if (!menu) {
+                menu = createCardMenu(context, mangaId, source, key, titleText, coverUrlText);
+                card.appendChild(menu);
+            }
+
+            openCardMenu(menuBtn, menu);
+            return;
+        }
+
         // Handle remove button
         const removeBtn = e.target.closest('.remove-btn');
         if (removeBtn) {
@@ -2874,6 +2899,156 @@ function startTitleCycling() {
         }
     });
 }
+
+// ==================== Card Menu System ====================
+
+function createCardMenu(context, mangaId, source, key, title, coverUrl) {
+    const menu = document.createElement('div');
+    menu.className = 'card-menu-dropdown';
+    menu.style.display = 'none';
+
+    const items = context === 'library' ? [
+        { action: 'status', icon: 'bookmark', label: 'Change Status' },
+        { action: 'mark-read', icon: 'check-circle', label: 'Mark All Read' },
+        { action: 'select-mode', icon: 'check-square', label: 'Select Multiple' },
+        { action: 'remove', icon: 'trash', label: 'Remove', danger: true }
+    ] : [
+        { action: 'add-library', icon: 'heart', label: 'Add to Library' },
+        { action: 'queue-download', icon: 'download', label: 'Queue Download' }
+    ];
+
+    menu.innerHTML = items.map(item => `
+        <button class="menu-item ${item.danger ? 'danger' : ''}" data-action="${item.action}">
+            <i data-lucide="${item.icon}"></i>
+            ${item.label}
+        </button>
+    `).join('');
+
+    // Store data for event handlers
+    menu.dataset.mangaId = mangaId;
+    menu.dataset.source = source;
+    menu.dataset.key = key || '';
+    menu.dataset.title = title || '';
+    menu.dataset.coverUrl = coverUrl || '';
+
+    return menu;
+}
+
+function openCardMenu(button, menu) {
+    closeAllMenus();
+
+    // Position menu
+    const rect = button.getBoundingClientRect();
+    const menuHeight = 180; // Approximate
+
+    // Check if menu would go off bottom of screen
+    const flipUp = (rect.bottom + menuHeight) > window.innerHeight;
+
+    if (flipUp) {
+        menu.classList.add('flip-up');
+    } else {
+        menu.classList.remove('flip-up');
+    }
+
+    menu.style.display = 'block';
+    state.activeMenu = menu;
+
+    // Re-render icons
+    safeCreateIcons();
+
+    // Add menu item click handlers
+    menu.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = item.dataset.action;
+            handleMenuAction(action, menu);
+        });
+    });
+}
+
+function closeAllMenus() {
+    if (state.activeMenu) {
+        state.activeMenu.style.display = 'none';
+        state.activeMenu = null;
+    }
+    document.querySelectorAll('.card-menu-dropdown').forEach(menu => {
+        menu.style.display = 'none';
+    });
+}
+
+async function handleMenuAction(action, menu) {
+    const mangaId = menu.dataset.mangaId;
+    const source = menu.dataset.source;
+    const key = menu.dataset.key;
+    const title = menu.dataset.title;
+    const coverUrl = menu.dataset.coverUrl;
+
+    closeAllMenus();
+
+    switch (action) {
+        case 'remove':
+            await removeFromLibraryWithConfirm(key, title);
+            break;
+
+        case 'status':
+            showLibraryStatusModal(mangaId, source, title, coverUrl, key);
+            break;
+
+        case 'mark-read':
+            showToast('Mark all read - Coming soon!');
+            break;
+
+        case 'select-mode':
+            enterSelectionMode();
+            break;
+
+        case 'add-library':
+            if (isInLibrary(mangaId, source)) {
+                showToast('Already in library');
+            } else {
+                showLibraryStatusModal(mangaId, source, title, coverUrl);
+            }
+            break;
+
+        case 'queue-download':
+            await queueDownloadPassive(mangaId, source, title);
+            break;
+
+        default:
+            log(`Unknown menu action: ${action}`);
+    }
+}
+
+async function removeFromLibraryWithConfirm(key, title) {
+    const confirmed = confirm(`Remove "${title}" from library?`);
+    if (!confirmed) return;
+
+    try {
+        await API.removeFromLibrary(key);
+        showToast('Removed from library');
+        await loadLibrary();
+    } catch (error) {
+        log(`❌ Remove failed: ${error.message}`);
+        showToast('Failed to remove');
+    }
+}
+
+// Placeholder for selection mode (Task 7)
+function enterSelectionMode() {
+    showToast('Selection mode - Coming in Task 7!');
+}
+
+// Placeholder for passive download queue (Task 8)
+async function queueDownloadPassive(mangaId, source, title) {
+    showToast(`Queue download: ${title} - Coming in Task 8!`);
+}
+
+// Click outside to close menus
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.card-menu-btn') && !e.target.closest('.card-menu-dropdown')) {
+        closeAllMenus();
+    }
+});
 
 async function init() {
     // Initialize DOM elements first
