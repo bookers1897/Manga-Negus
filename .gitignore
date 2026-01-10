@@ -62,5 +62,64 @@ temp/
 # Secret key (auto-generated)
 .secret_key
 
+# Environment variables
+.env
+
+# Database files (user-generated)
+manganegus.db
+*.db
+
+# Test and debug scripts
+run_dev.py
+run_test.py
+test_*.py
+manage_db.py
+
+# AI assistant files
 .gemini/
+.claude/
+.serena/
+claude_md_backup/
+codex_code/
 gha-creds-*.json
+
+# Debug documentation (keep only README.md and CLAUDE.md)
+*_gemini_solution.md
+*_report*.md
+*_review*.md
+*_SESSION*.md
+DEBUGGING_*.md
+DATABASE_SETUP.md
+QUICK_START.md
+SETUP_GUIDE.md
+DUAL_SERVER_SETUP.md
+CODEX_RESPONSE.md
+ANNAS_ARCHIVE_INTEGRATION.md
+codex.md
+
+# Root-level debug files only (keep templates/*.html, static/images/*.png)
+/*.txt
+/*.png
+/*.html
+
+# Scripts
+start_dual_servers.sh
+stop_servers.sh
+
+# Debug/test files in root
+source_health_report.json
+health_check_output.txt
+
+# AI document directories
+Claude_Codex_Gemini_Documents/
+
+# GitHub workflows (require special OAuth scope)
+.github/
+
+# Static test files
+static/test_*.html
+static/css/modern-styles.css
+static/css/sidebar-glass.css
+
+# Alembic (keep alembic/ and alembic.ini, ignore user migration files)
+alembic/versions/*.pyc
