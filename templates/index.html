@@ -77,6 +77,7 @@
                 <i data-lucide="download"></i>
                 <span class="nav-text">Downloads</span>
                 <span id="queue-badge" class="queue-badge hidden">0</span>
+                <span id="paused-badge" class="hidden">0</span>
             </button>
             <button class="nav-item" id="console-toggle-btn">
                 <i data-lucide="terminal"></i>
@@ -241,6 +242,22 @@
                 </div>
             </div>
         </section>
+
+        <!-- Selection Action Bar (appears in multi-select mode) -->
+        <div id="selection-action-bar" class="selection-action-bar hidden">
+            <span id="selection-count" class="selection-count">0 selected</span>
+            <button id="btn-delete-selected" class="btn-delete-selected">
+                <i data-lucide="trash" width="18"></i>
+                Delete Selected
+            </button>
+            <button id="btn-download-selected" class="btn-download-selected">
+                <i data-lucide="download" width="18"></i>
+                Queue Selected
+            </button>
+            <button id="btn-cancel-selection" class="btn-cancel-selection">
+                Cancel
+            </button>
+        </div>
     </main>
 
     <!-- Reader Container -->
