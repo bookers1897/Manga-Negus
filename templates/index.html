@@ -74,10 +74,10 @@
 
         <div style="border-top: 1px solid var(--border-glass); padding-top: 16px">
             <button class="nav-item" id="download-queue-btn">
-                <i data-lucide="download"></i>
+                <i data-lucide="download" aria-hidden="true"></i>
                 <span class="nav-text">Downloads</span>
                 <span id="queue-badge" class="queue-badge hidden">0</span>
-                <span id="paused-badge" class="hidden">0</span>
+                <span id="paused-badge" class="paused-badge hidden">0</span>
             </button>
             <button class="nav-item" id="console-toggle-btn">
                 <i data-lucide="terminal"></i>
@@ -246,15 +246,15 @@
         <!-- Selection Action Bar (appears in multi-select mode) -->
         <div id="selection-action-bar" class="selection-action-bar hidden">
             <span id="selection-count" class="selection-count">0 selected</span>
-            <button id="btn-delete-selected" class="btn-delete-selected">
-                <i data-lucide="trash" width="18"></i>
+            <button id="btn-delete-selected" class="btn-delete-selected" type="button">
+                <i data-lucide="trash" width="18" aria-hidden="true"></i>
                 Delete Selected
             </button>
-            <button id="btn-download-selected" class="btn-download-selected">
-                <i data-lucide="download" width="18"></i>
+            <button id="btn-download-selected" class="btn-download-selected" type="button">
+                <i data-lucide="download" width="18" aria-hidden="true"></i>
                 Queue Selected
             </button>
-            <button id="btn-cancel-selection" class="btn-cancel-selection">
+            <button id="btn-cancel-selection" class="btn-cancel-selection" type="button">
                 Cancel
             </button>
         </div>
