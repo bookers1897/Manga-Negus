@@ -59,7 +59,12 @@ const state = {
     queuePollInterval: null,
     // AbortControllers for cancelling in-flight requests (race condition prevention)
     chaptersAbortController: null,
-    searchAbortController: null
+    searchAbortController: null,
+    // Selection Mode
+    selectionMode: false,
+    selectedCards: new Set(),
+    currentTitleIndex: 0,
+    activeMenu: null  // Track open menu
 };
 
 const PLACEHOLDER_COVER = '/static/images/placeholder.png';
@@ -2677,7 +2682,16 @@ function initElements() {
 
         // Theme
         themeToggleBtn: document.getElementById('theme-toggle-btn'),
-        themeIcon: document.getElementById('theme-icon')
+        themeIcon: document.getElementById('theme-icon'),
+
+        // Selection Mode
+        pausedBadge: document.getElementById('paused-badge'),
+        selectionActionBar: document.getElementById('selection-action-bar'),
+        selectionCount: document.getElementById('selection-count'),
+        btnDeleteSelected: document.getElementById('btn-delete-selected'),
+        btnDownloadSelected: document.getElementById('btn-download-selected'),
+        btnCancelSelection: document.getElementById('btn-cancel-selection'),
+        appTitle: document.querySelector('.app-title')
     };
 
     console.log('[DEBUG] Elements initialized');
