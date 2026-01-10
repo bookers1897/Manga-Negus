@@ -2777,6 +2777,11 @@ function setupEventDelegation() {
         if (menuBtn) {
             e.stopPropagation();
 
+            // Block menu in selection mode
+            if (state.selectionMode && gridEl === els.libraryGrid) {
+                return; // Prevent menu from opening in selection mode
+            }
+
             const context = gridEl === els.libraryGrid ? 'library' : 'discovery';
             const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
             const titleText = title;
@@ -3185,7 +3190,8 @@ async function deleteSelected() {
         return;
     }
 
-    const confirmed = confirm(`Remove ${count} manga from library?`);
+    // TODO: Replace with custom modal for better UX (showConfirmModal)
+    const confirmed = confirm(`Remove ${count} manga from your library?`);
     if (!confirmed) return;
 
     try {

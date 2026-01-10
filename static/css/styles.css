@@ -1895,6 +1895,22 @@ h1 {
     outline-offset: 2px;
 }
 
+/* Disabled button styles for multi-select mode */
+.btn-delete-selected:disabled,
+.btn-download-selected:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(220, 38, 38, 0.3);
+    pointer-events: none;
+}
+
+.btn-cancel-selection:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.05);
+    pointer-events: none;
+}
+
 /* Paused Queue Badge */
 #downloads-btn {
     position: relative;
