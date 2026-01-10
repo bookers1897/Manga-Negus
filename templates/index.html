@@ -48,6 +48,9 @@
         </div>
 
         <div class="header-actions">
+            <button class="icon-btn" id="theme-toggle-btn" title="Change theme">
+                <i data-lucide="sun" id="theme-icon"></i>
+            </button>
             <button class="icon-btn"><i data-lucide="filter"></i></button>
             <div class="divider-v"></div>
             <button class="login-btn">LOGIN</button>
@@ -70,6 +73,11 @@
         </div>
 
         <div style="border-top: 1px solid var(--border-glass); padding-top: 16px">
+            <button class="nav-item" id="download-queue-btn">
+                <i data-lucide="download"></i>
+                <span class="nav-text">Downloads</span>
+                <span id="queue-badge" class="queue-badge hidden">0</span>
+            </button>
             <button class="nav-item" id="console-toggle-btn">
                 <i data-lucide="terminal"></i>
                 <span class="nav-text">Console</span>
@@ -247,6 +255,18 @@
                 <button class="control-btn" id="reader-mode-btn" title="Toggle reader mode">
                     <span id="reader-mode-label">Strip</span>
                 </button>
+                <div class="reader-settings-dropdown">
+                    <button class="control-btn" id="reader-settings-btn" title="Reader settings">
+                        <i data-lucide="settings" width="14"></i>
+                        <span id="reader-fit-label">Fit Width</span>
+                    </button>
+                    <div class="reader-settings-menu" id="reader-settings-menu">
+                        <button data-fit="fit-width">Fit Width</button>
+                        <button data-fit="fit-height">Fit Height</button>
+                        <button data-fit="fit-screen">Fit Screen</button>
+                        <button data-fit="fit-original">Original Size</button>
+                    </div>
+                </div>
                 <button class="icon-btn" id="prev-page-btn">
                     <i data-lucide="chevron-left"></i>
                 </button>
@@ -324,6 +344,39 @@
             <p class="modal-subtitle">Application debug output</p>
             <div id="console-content" style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; color: var(--text-muted); max-height: 450px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 16px; border-radius: 12px; margin-top: 16px;">
                 <!-- Console logs injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Queue Modal -->
+    <div id="download-queue-modal" class="modal-overlay">
+        <div class="modal-panel" style="max-width: 600px; max-height: 80vh;">
+            <button class="modal-close" id="close-queue-modal">
+                <i data-lucide="x" width="16"></i>
+            </button>
+            <h2 class="modal-title">Download Queue</h2>
+            <p class="modal-subtitle" id="queue-subtitle">Manage your downloads</p>
+
+            <div class="queue-controls" style="display: flex; gap: 8px; margin: 16px 0;">
+                <button class="control-btn" id="queue-pause-all">
+                    <i data-lucide="pause" width="14"></i>
+                    Pause All
+                </button>
+                <button class="control-btn" id="queue-resume-all">
+                    <i data-lucide="play" width="14"></i>
+                    Resume All
+                </button>
+                <button class="control-btn" id="queue-clear-completed">
+                    <i data-lucide="trash-2" width="14"></i>
+                    Clear Done
+                </button>
+            </div>
+
+            <div id="queue-list" class="queue-list" style="max-height: 400px; overflow-y: auto;">
+                <div class="empty-state">
+                    <p class="empty-title">No Downloads</p>
+                    <p class="empty-text">Download queue is empty</p>
+                </div>
             </div>
         </div>
     </div>

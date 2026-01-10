@@ -35,6 +35,8 @@ const state = {
     readerPages: [],
     readerCurrentPage: 0,
     readerMode: 'strip', // 'strip' or 'paged'
+    readerFitMode: 'fit-width', // 'fit-width', 'fit-height', 'fit-screen', 'fit-original'
+    theme: 'dark', // 'dark', 'light', 'oled', 'sepia'
     readerObserver: null,
     readerImmersive: false,
     readerScrollRaf: null,
@@ -51,6 +53,10 @@ const state = {
     isSidebarOpen: false,
     csrfToken: '',
     toastTimer: null,
+    // Download Queue
+    downloadQueue: [],
+    queuePaused: false,
+    queuePollInterval: null,
     // AbortControllers for cancelling in-flight requests (race condition prevention)
     chaptersAbortController: null,
     searchAbortController: null
@@ -256,16 +262,80 @@ const API = {
         return data;
     },
 
-    async downloadChapter(mangaId, chapterId, source, title, chapterTitle) {
+    async downloadChapter(mangaId, chapterId, source, title, chapterTitle, chapterNumber = '0') {
+        // Backend expects chapters as a list
+        const chapters = [{
+            id: chapterId,
+            chapter: chapterNumber,
+            title: chapterTitle
+        }];
         const data = await this.request('/api/download', {
             method: 'POST',
             body: JSON.stringify({
-                manga_id: mangaId,
-                chapter_id: chapterId,
-                source,
+                chapters,
                 title,
-                chapter_title: chapterTitle
+                source,
+                manga_id: mangaId
             })
+        });
+        return data;
+    },
+
+    async downloadChapters(mangaId, chapters, source, title) {
+        const data = await this.request('/api/download', {
+            method: 'POST',
+            body: JSON.stringify({
+                chapters,
+                title,
+                source,
+                manga_id: mangaId
+            })
+        });
+        return data;
+    },
+
+    // Download Queue API
+    async getDownloadQueue() {
+        const data = await this.request('/api/download/queue');
+        return data;
+    },
+
+    async pauseDownloads(jobId = null) {
+        const data = await this.request('/api/download/pause', {
+            method: 'POST',
+            body: JSON.stringify({ job_id: jobId })
+        });
+        return data;
+    },
+
+    async resumeDownloads(jobId = null) {
+        const data = await this.request('/api/download/resume', {
+            method: 'POST',
+            body: JSON.stringify({ job_id: jobId })
+        });
+        return data;
+    },
+
+    async cancelDownload(jobId) {
+        const data = await this.request('/api/download/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ job_id: jobId })
+        });
+        return data;
+    },
+
+    async clearCompletedDownloads() {
+        const data = await this.request('/api/download/clear', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        return data;
+    },
+
+    async removeFromQueue(jobId) {
+        const data = await this.request('/api/download/remove', {
+            method: 'POST',
+            body: JSON.stringify({ job_id: jobId })
         });
         return data;
     }
@@ -302,6 +372,229 @@ function log(message) {
     els.consoleContent.appendChild(line);
     els.consoleContent.scrollTop = els.consoleContent.scrollHeight;
 }
+
+// ========================================
+// Download Queue Management
+// ========================================
+async function fetchDownloadQueue() {
+    try {
+        const data = await API.getDownloadQueue();
+        state.downloadQueue = data.queue || [];
+        state.queuePaused = data.paused || false;
+        updateQueueBadge();
+        return data;
+    } catch (error) {
+        console.error('[Queue] Failed to fetch queue:', error);
+        return { queue: [], paused: false };
+    }
+}
+
+function updateQueueBadge() {
+    const activeCount = state.downloadQueue.filter(
+        item => ['queued', 'downloading', 'paused'].includes(item.status)
+    ).length;
+
+    if (activeCount > 0) {
+        els.queueBadge.textContent = activeCount;
+        els.queueBadge.classList.remove('hidden');
+    } else {
+        els.queueBadge.classList.add('hidden');
+    }
+}
+
+function renderDownloadQueue() {
+    if (!state.downloadQueue || state.downloadQueue.length === 0) {
+        els.queueList.innerHTML = `
+            <div class="empty-state">
+                <p class="empty-title">No Downloads</p>
+                <p class="empty-text">Download queue is empty</p>
+            </div>
+        `;
+        els.queueSubtitle.textContent = 'No active downloads';
+        return;
+    }
+
+    const activeCount = state.downloadQueue.filter(
+        item => ['queued', 'downloading', 'paused'].includes(item.status)
+    ).length;
+    els.queueSubtitle.textContent = `${activeCount} active, ${state.downloadQueue.length} total`;
+
+    const html = state.downloadQueue.map(item => {
+        const progress = item.chapters_total > 0
+            ? Math.round((item.chapters_done / item.chapters_total) * 100)
+            : 0;
+
+        const pageProgress = item.total_pages > 0
+            ? `Page ${item.current_page}/${item.total_pages}`
+            : '';
+
+        let actions = '';
+        if (item.status === 'downloading') {
+            actions = `
+                <button class="control-btn" onclick="pauseQueueItem('${item.job_id}')">
+                    <i data-lucide="pause" width="12"></i> Pause
+                </button>
+                <button class="control-btn" onclick="cancelQueueItem('${item.job_id}')">
+                    <i data-lucide="x" width="12"></i> Cancel
+                </button>
+            `;
+        } else if (item.status === 'paused') {
+            actions = `
+                <button class="control-btn primary" onclick="resumeQueueItem('${item.job_id}')">
+                    <i data-lucide="play" width="12"></i> Resume
+                </button>
+                <button class="control-btn" onclick="cancelQueueItem('${item.job_id}')">
+                    <i data-lucide="x" width="12"></i> Cancel
+                </button>
+            `;
+        } else if (item.status === 'queued') {
+            actions = `
+                <button class="control-btn" onclick="removeQueueItem('${item.job_id}')">
+                    <i data-lucide="trash-2" width="12"></i> Remove
+                </button>
+            `;
+        } else {
+            actions = `
+                <button class="control-btn" onclick="removeQueueItem('${item.job_id}')">
+                    <i data-lucide="trash-2" width="12"></i> Remove
+                </button>
+            `;
+        }
+
+        return `
+            <div class="queue-item ${item.status}">
+                <div class="queue-item-header">
+                    <span class="queue-item-title">${escapeHtml(item.title)}</span>
+                    <span class="queue-item-status ${item.status}">${item.status}</span>
+                </div>
+                <div class="queue-item-progress">
+                    <div class="queue-progress-bar">
+                        <div class="queue-progress-fill" style="width: ${progress}%"></div>
+                    </div>
+                    <span class="queue-progress-text">
+                        Chapter ${item.chapters_done}/${item.chapters_total} (${progress}%)
+                        ${pageProgress ? ' - ' + pageProgress : ''}
+                    </span>
+                </div>
+                <div class="queue-item-actions">${actions}</div>
+            </div>
+        `;
+    }).join('');
+
+    els.queueList.innerHTML = html;
+    safeCreateIcons();
+}
+
+async function pauseQueueItem(jobId) {
+    try {
+        await API.pauseDownloads(jobId);
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast('Download paused');
+    } catch (error) {
+        showToast('Failed to pause download');
+    }
+}
+
+async function resumeQueueItem(jobId) {
+    try {
+        await API.resumeDownloads(jobId);
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast('Download resumed');
+    } catch (error) {
+        showToast('Failed to resume download');
+    }
+}
+
+async function cancelQueueItem(jobId) {
+    try {
+        await API.cancelDownload(jobId);
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast('Download cancelled');
+    } catch (error) {
+        showToast('Failed to cancel download');
+    }
+}
+
+async function removeQueueItem(jobId) {
+    try {
+        await API.removeFromQueue(jobId);
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+    } catch (error) {
+        showToast('Failed to remove from queue');
+    }
+}
+
+async function pauseAllDownloads() {
+    try {
+        await API.pauseDownloads();
+        state.queuePaused = true;
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast('All downloads paused');
+    } catch (error) {
+        showToast('Failed to pause downloads');
+    }
+}
+
+async function resumeAllDownloads() {
+    try {
+        await API.resumeDownloads();
+        state.queuePaused = false;
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast('Downloads resumed');
+    } catch (error) {
+        showToast('Failed to resume downloads');
+    }
+}
+
+async function clearCompletedDownloads() {
+    try {
+        const data = await API.clearCompletedDownloads();
+        await fetchDownloadQueue();
+        renderDownloadQueue();
+        showToast(`Cleared ${data.removed || 0} completed downloads`);
+    } catch (error) {
+        showToast('Failed to clear completed');
+    }
+}
+
+function openDownloadQueue() {
+    fetchDownloadQueue().then(() => {
+        renderDownloadQueue();
+        els.downloadQueueModal.classList.add('active');
+
+        // Start polling for updates
+        if (state.queuePollInterval) clearInterval(state.queuePollInterval);
+        state.queuePollInterval = setInterval(async () => {
+            const hasActive = state.downloadQueue.some(
+                item => item.status === 'downloading'
+            );
+            if (hasActive) {
+                await fetchDownloadQueue();
+                renderDownloadQueue();
+            }
+        }, 2000);
+    });
+}
+
+function closeDownloadQueue() {
+    els.downloadQueueModal.classList.remove('active');
+    if (state.queuePollInterval) {
+        clearInterval(state.queuePollInterval);
+        state.queuePollInterval = null;
+    }
+}
+
+// Make queue functions globally accessible for onclick handlers
+window.pauseQueueItem = pauseQueueItem;
+window.resumeQueueItem = resumeQueueItem;
+window.cancelQueueItem = cancelQueueItem;
+window.removeQueueItem = removeQueueItem;
 
 // ========================================
 // Sidebar & Navigation
@@ -1489,8 +1782,9 @@ function renderChapters() {
 
     els.chaptersList.innerHTML = state.currentChapters.map(chapter => {
         const isSelected = state.selectedChapters.has(chapter.id);
+        const chapterNum = chapter.chapter || '0';
         return `
-            <div class="chapter-item ${isSelected ? 'selected' : ''}" data-chapter-id="${escapeHtml(chapter.id)}" data-chapter-title="${escapeHtml(chapter.title)}">
+            <div class="chapter-item ${isSelected ? 'selected' : ''}" data-chapter-id="${escapeHtml(chapter.id)}" data-chapter-title="${escapeHtml(chapter.title)}" data-chapter-number="${escapeHtml(String(chapterNum))}">
                 <div class="chapter-info">
                     <div class="chapter-checkbox"></div>
                     <span class="chapter-name">${escapeHtml(chapter.title)}</span>
@@ -1540,15 +1834,36 @@ async function downloadSelectedChapters() {
 
     showToast(`Downloading ${state.selectedChapters.size} chapter(s)...`);
 
+    // Collect all selected chapters for batch download
+    const chaptersToDownload = [];
     for (const chapterId of state.selectedChapters) {
         const chapter = state.currentChapters.find(c => c.id === chapterId);
         if (chapter) {
-            await downloadChapter(chapterId, chapter.title);
+            chaptersToDownload.push({
+                id: chapter.id,
+                chapter: chapter.chapter || '0',
+                title: chapter.title
+            });
+        }
+    }
+
+    if (chaptersToDownload.length > 0) {
+        try {
+            await API.downloadChapters(
+                state.currentManga.id,
+                chaptersToDownload,
+                state.currentManga.source,
+                state.currentManga.title
+            );
+            showToast(`Added ${chaptersToDownload.length} chapter(s) to queue`);
+            fetchDownloadQueue();
+        } catch (error) {
+            showToast(`Download failed: ${error.message}`);
         }
     }
 }
 
-async function downloadChapter(chapterId, chapterTitle) {
+async function downloadChapter(chapterId, chapterTitle, chapterNumber = '0') {
     log(`Downloading: ${chapterTitle}...`);
     showToast(`Downloading: ${chapterTitle}`);
 
@@ -1558,12 +1873,16 @@ async function downloadChapter(chapterId, chapterTitle) {
             chapterId,
             state.currentManga.source,
             state.currentManga.title,
-            chapterTitle
+            chapterTitle,
+            chapterNumber
         );
-        log(`Download complete: ${chapterTitle}`);
-        showToast('Download complete');
+        log(`Download queued: ${chapterTitle}`);
+        showToast('Added to download queue');
+        // Update queue badge
+        fetchDownloadQueue();
     } catch (error) {
         log(`Download failed: ${error.message}`);
+        showToast(`Download failed: ${error.message}`);
     }
 }
 
@@ -1805,6 +2124,184 @@ function toggleReaderMode() {
 function toggleReaderImmersive() {
     state.readerImmersive = !state.readerImmersive;
     els.readerContainer.classList.toggle('immersive', state.readerImmersive);
+}
+
+// ========================================
+// Reader Fit Mode
+// ========================================
+
+const FIT_MODE_LABELS = {
+    'fit-width': 'Fit Width',
+    'fit-height': 'Fit Height',
+    'fit-screen': 'Fit Screen',
+    'fit-original': 'Original'
+};
+
+function setReaderFitMode(mode) {
+    state.readerFitMode = mode;
+    localStorage.setItem('manganegus.readerFitMode', mode);
+    applyReaderFitMode();
+
+    // Update button label
+    if (els.readerFitLabel) {
+        els.readerFitLabel.textContent = FIT_MODE_LABELS[mode] || 'Fit Width';
+    }
+
+    // Update active state in menu
+    if (els.readerSettingsMenu) {
+        els.readerSettingsMenu.querySelectorAll('[data-fit]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.fit === mode);
+        });
+    }
+
+    showToast(`Fit Mode: ${FIT_MODE_LABELS[mode] || mode}`);
+}
+
+function applyReaderFitMode() {
+    const modes = ['fit-width', 'fit-height', 'fit-screen', 'fit-original'];
+    modes.forEach(m => els.readerContainer.classList.remove(m));
+    els.readerContainer.classList.add(state.readerFitMode);
+}
+
+// ========================================
+// Theme Management
+// ========================================
+
+const THEMES = ['dark', 'light', 'oled', 'sepia'];
+const THEME_ICONS = {
+    'dark': 'moon',
+    'light': 'sun',
+    'oled': 'moon',
+    'sepia': 'coffee'
+};
+const THEME_LABELS = {
+    'dark': 'Dark',
+    'light': 'Light',
+    'oled': 'OLED Black',
+    'sepia': 'Sepia'
+};
+
+function setTheme(theme) {
+    if (!THEMES.includes(theme)) theme = 'dark';
+    state.theme = theme;
+    localStorage.setItem('manganegus.theme', theme);
+    applyTheme();
+    showToast(`Theme: ${THEME_LABELS[theme]}`);
+}
+
+function applyTheme() {
+    // Remove existing theme
+    document.documentElement.removeAttribute('data-theme');
+
+    // Apply new theme (dark is default, so no attribute needed)
+    if (state.theme !== 'dark') {
+        document.documentElement.setAttribute('data-theme', state.theme);
+    }
+
+    // Update theme icon
+    updateThemeIcon();
+}
+
+function updateThemeIcon() {
+    if (!els.themeIcon) return;
+
+    const iconName = THEME_ICONS[state.theme] || 'moon';
+    els.themeIcon.setAttribute('data-lucide', iconName);
+    safeCreateIcons();
+}
+
+function cycleTheme() {
+    const currentIndex = THEMES.indexOf(state.theme);
+    const nextIndex = (currentIndex + 1) % THEMES.length;
+    setTheme(THEMES[nextIndex]);
+}
+
+// ========================================
+// Keyboard Navigation
+// ========================================
+
+function handleKeyboardNavigation(event) {
+    // Only handle when reader is open
+    if (!els.readerContainer.classList.contains('active')) return;
+
+    // Don't handle if user is typing in an input
+    if (event.target.matches('input, textarea, select')) return;
+
+    switch (event.key) {
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+            event.preventDefault();
+            setReaderPage(state.readerCurrentPage - 1);
+            break;
+
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+        case ' ': // Space
+            event.preventDefault();
+            if (state.readerCurrentPage >= state.readerPages.length - 1) {
+                advanceToNextChapter();
+            } else {
+                setReaderPage(state.readerCurrentPage + 1);
+            }
+            break;
+
+        case 'ArrowUp':
+            event.preventDefault();
+            if (state.readerMode === 'strip') {
+                els.readerContent.scrollBy({ top: -200, behavior: 'smooth' });
+            } else {
+                setReaderPage(state.readerCurrentPage - 1);
+            }
+            break;
+
+        case 'ArrowDown':
+            event.preventDefault();
+            if (state.readerMode === 'strip') {
+                els.readerContent.scrollBy({ top: 200, behavior: 'smooth' });
+            } else {
+                setReaderPage(state.readerCurrentPage + 1);
+            }
+            break;
+
+        case 'Escape':
+            event.preventDefault();
+            closeReader();
+            break;
+
+        case 'f':
+        case 'F':
+            event.preventDefault();
+            toggleReaderImmersive();
+            break;
+
+        case 'm':
+        case 'M':
+            event.preventDefault();
+            toggleReaderMode();
+            break;
+
+        case 'Home':
+            event.preventDefault();
+            setReaderPage(0);
+            break;
+
+        case 'End':
+            event.preventDefault();
+            setReaderPage(state.readerPages.length - 1);
+            break;
+
+        // Number keys 1-9 for percentage jump
+        case '1': case '2': case '3': case '4': case '5':
+        case '6': case '7': case '8': case '9':
+            event.preventDefault();
+            const percent = parseInt(event.key) * 10;
+            const targetPage = Math.floor((percent / 100) * state.readerPages.length);
+            setReaderPage(Math.min(targetPage, state.readerPages.length - 1));
+            showToast(`Jumped to ${percent}%`);
+            break;
+    }
 }
 
 async function resolveNextChapterForPrefetch() {
@@ -2148,6 +2645,9 @@ function initElements() {
         nextPageBtn: document.getElementById('next-page-btn'),
         readerModeBtn: document.getElementById('reader-mode-btn'),
         readerModeLabel: document.getElementById('reader-mode-label'),
+        readerSettingsBtn: document.getElementById('reader-settings-btn'),
+        readerSettingsMenu: document.getElementById('reader-settings-menu'),
+        readerFitLabel: document.getElementById('reader-fit-label'),
 
         // Modals
         libraryStatusModal: document.getElementById('library-status-modal'),
@@ -2162,7 +2662,22 @@ function initElements() {
         consoleModal: document.getElementById('console-modal'),
         consoleToggleBtn: document.getElementById('console-toggle-btn'),
         consoleClose: document.getElementById('console-close'),
-        consoleContent: document.getElementById('console-content')
+        consoleContent: document.getElementById('console-content'),
+
+        // Download Queue
+        downloadQueueBtn: document.getElementById('download-queue-btn'),
+        queueBadge: document.getElementById('queue-badge'),
+        downloadQueueModal: document.getElementById('download-queue-modal'),
+        closeQueueModal: document.getElementById('close-queue-modal'),
+        queueList: document.getElementById('queue-list'),
+        queueSubtitle: document.getElementById('queue-subtitle'),
+        queuePauseAllBtn: document.getElementById('queue-pause-all'),
+        queueResumeAllBtn: document.getElementById('queue-resume-all'),
+        queueClearCompletedBtn: document.getElementById('queue-clear-completed'),
+
+        // Theme
+        themeToggleBtn: document.getElementById('theme-toggle-btn'),
+        themeIcon: document.getElementById('theme-icon')
     };
 
     console.log('[DEBUG] Elements initialized');
@@ -2276,7 +2791,8 @@ function setupEventDelegation() {
         const downloadBtn = e.target.closest('[data-action="download"]');
         if (downloadBtn) {
             e.stopPropagation();
-            downloadChapter(chapterId, chapterTitle);
+            const chapterNumber = chapterItem.dataset.chapterNumber || '0';
+            downloadChapter(chapterId, chapterTitle, chapterNumber);
             return;
         }
 
@@ -2303,6 +2819,24 @@ async function init() {
         state.readerMode = savedReaderMode;
     }
     applyReaderMode();
+
+    // Load saved fit mode
+    const savedFitMode = localStorage.getItem('manganegus.readerFitMode');
+    if (savedFitMode && ['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(savedFitMode)) {
+        state.readerFitMode = savedFitMode;
+    }
+    applyReaderFitMode();
+    // Update fit label
+    if (els.readerFitLabel) {
+        els.readerFitLabel.textContent = FIT_MODE_LABELS[state.readerFitMode] || 'Fit Width';
+    }
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem('manganegus.theme');
+    if (savedTheme && THEMES.includes(savedTheme)) {
+        state.theme = savedTheme;
+    }
+    applyTheme();
 
     log('Initializing MangaNegus...');
     console.log('[DEBUG] Init started');
@@ -2479,6 +3013,38 @@ async function init() {
     els.readerContent.addEventListener('click', handleReaderTap);
     els.readerContent.addEventListener('scroll', handleReaderScroll, { passive: true });
 
+    // Reader settings dropdown
+    if (els.readerSettingsBtn && els.readerSettingsMenu) {
+        els.readerSettingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            els.readerSettingsMenu.classList.toggle('active');
+        });
+
+        // Fit mode buttons
+        els.readerSettingsMenu.querySelectorAll('[data-fit]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fitMode = btn.dataset.fit;
+                setReaderFitMode(fitMode);
+                els.readerSettingsMenu.classList.remove('active');
+            });
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.reader-settings-dropdown')) {
+                els.readerSettingsMenu.classList.remove('active');
+            }
+        });
+    }
+
+    // Keyboard navigation for reader
+    document.addEventListener('keydown', handleKeyboardNavigation);
+
+    // Theme toggle
+    if (els.themeToggleBtn) {
+        els.themeToggleBtn.addEventListener('click', cycleTheme);
+    }
+
     // Console
     els.consoleToggleBtn.addEventListener('click', () => {
         els.consoleModal.classList.add('active');
@@ -2492,6 +3058,33 @@ async function init() {
             els.consoleModal.classList.remove('active');
         }
     });
+
+    // Download Queue
+    if (els.downloadQueueBtn) {
+        els.downloadQueueBtn.addEventListener('click', openDownloadQueue);
+    }
+    if (els.closeQueueModal) {
+        els.closeQueueModal.addEventListener('click', closeDownloadQueue);
+    }
+    if (els.downloadQueueModal) {
+        els.downloadQueueModal.addEventListener('click', (e) => {
+            if (e.target === els.downloadQueueModal) {
+                closeDownloadQueue();
+            }
+        });
+    }
+    if (els.queuePauseAllBtn) {
+        els.queuePauseAllBtn.addEventListener('click', pauseAllDownloads);
+    }
+    if (els.queueResumeAllBtn) {
+        els.queueResumeAllBtn.addEventListener('click', resumeAllDownloads);
+    }
+    if (els.queueClearCompletedBtn) {
+        els.queueClearCompletedBtn.addEventListener('click', clearCompletedDownloads);
+    }
+
+    // Fetch initial queue status for badge
+    fetchDownloadQueue();
 
     // Window resize
     window.addEventListener('resize', () => {

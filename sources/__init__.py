@@ -103,17 +103,17 @@ class SourceManager:
         self._active_source_id: Optional[str] = None
         
         # Priority order for fallback (updated Jan 2026)
-        # MangaDex first for fast searches (0.65s avg)
-        # weebcentral-v2 moved down - requires: pip install curl_cffi
+        # WeebCentral V2 first - best chapter coverage (1170+ for popular manga)
+        # MangaFreak added as reliable fallback
         self._priority_order = [
             "weebcentral-v2",   # HTMX breakthrough - 1170 chapters (needs curl_cffi)
+            "mangafreak",       # Reliable backup with good chapter coverage
+            "mangadex",         # Official API - fast and reliable
             "mangasee-v2",      # V2: Cloudflare bypass
             "manganato-v2",     # V2: Cloudflare bypass
-            "mangadex",         # Official API - fast and reliable (default for search)
             "mangafire",        # Cloudflare bypass - solid backup
-            "annas-archive",    # Shadow library aggregator - complete volumes
-            "libgen",           # Library Genesis direct - 95TB+ comics
             "comicx"            # Recent addition
+            # Removed: annas-archive, libgen (never worked reliably)
         ]
         
         self._skipped_sources: list[dict[str, str]] = []
@@ -386,10 +386,10 @@ class SourceManager:
             try:
                 result = operation(source)
 
-                # THE FIX: Only check for None, not empty list
-                # An empty list [] means "successfully searched, but no results found"
-                # None means "technical failure" (network error, etc.)
-                if result is not None:
+                # Check if result has actual data
+                # For lists (search results, chapters), try next source if empty
+                # For None, it's a technical failure, try next source
+                if result is not None and result:
                     return result
 
             except Exception as e:
