@@ -31,6 +31,7 @@
 
   --shadow-card: 0 8px 30px rgba(220, 38, 38, 0.15);
   --shadow-glow: 0 0 20px rgba(220, 38, 38, 0.1);
+  --accent-light: rgba(220, 38, 38, 0.1);
 
   --ease-elastic: cubic-bezier(0.33, 1, 0.68, 1);
   --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -234,7 +235,7 @@ input {
   color: white;
 }
 .menu-btn.active {
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--accent-light);
   color: var(--red-primary);
 }
 
@@ -478,7 +479,7 @@ input {
   color: #d4d4d4;
 }
 .nav-item.active {
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--accent-light);
   color: white;
 }
 .nav-item.active svg {
@@ -525,7 +526,7 @@ input {
   color: white;
 }
 .source-btn.active {
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--accent-light);
   color: white;
 }
 .status-dot {
@@ -1187,7 +1188,7 @@ h1 {
   border-color: var(--red-border);
 }
 .chapter-item.selected {
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--accent-light);
   border-color: var(--red-border);
 }
 .chapter-info {
@@ -1692,6 +1693,12 @@ h1 {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.card-menu-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* Card Menu Dropdown */
 .card-menu-dropdown {
     position: absolute;
@@ -1748,12 +1755,18 @@ h1 {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.menu-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
 .menu-item.danger {
-    color: var(--danger);
+    color: var(--accent);
 }
 
 .menu-item.danger:hover {
-    background: rgba(220, 38, 38, 0.1);
+    background: var(--accent-light);
 }
 
 .menu-item svg {
@@ -1777,7 +1790,12 @@ h1 {
     width: 20px;
     height: 20px;
     cursor: pointer;
-    accent-color: var(--primary);
+    accent-color: var(--accent);
+}
+
+.card-checkbox:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .selection-mode .card {
@@ -1836,21 +1854,31 @@ h1 {
 }
 
 .btn-delete-selected {
-    background: var(--danger);
+    background: var(--accent);
     color: white;
 }
 
 .btn-delete-selected:hover {
-    background: #b91c1c;
+    background: var(--accent-hover);
+}
+
+.btn-delete-selected:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .btn-download-selected {
-    background: var(--primary);
+    background: var(--accent);
     color: white;
 }
 
 .btn-download-selected:hover {
-    background: #b91c1c;
+    background: var(--accent-hover);
+}
+
+.btn-download-selected:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
 .btn-cancel-selection {
@@ -1862,6 +1890,11 @@ h1 {
     background: rgba(255, 255, 255, 0.15);
 }
 
+.btn-cancel-selection:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* Paused Queue Badge */
 #downloads-btn {
     position: relative;
@@ -1871,7 +1904,7 @@ h1 {
     position: absolute;
     top: -4px;
     right: -4px;
-    background: var(--danger);
+    background: var(--accent);
     color: white;
     border-radius: 10px;
     padding: 2px 6px;
@@ -1905,7 +1938,7 @@ h1 {
 
 .btn-start-all {
     padding: 6px 12px;
-    background: var(--primary);
+    background: var(--accent);
     color: white;
     border: none;
     border-radius: 6px;
@@ -1915,7 +1948,7 @@ h1 {
 }
 
 .btn-start-all:hover {
-    background: #b91c1c;
+    background: var(--accent-hover);
 }
 
 /* Title Cycling Animation */
