@@ -69,6 +69,10 @@ class Library:
                         "status": entry.status.value if hasattr(entry.status, 'value') else str(entry.status),
                         "cover": manga.cover_image,
                         "last_chapter": entry.last_chapter_read,
+                        "last_chapter_id": entry.last_chapter_id,
+                        "last_page": entry.last_page_read,
+                        "total_chapters": manga.chapters,
+                        "last_read_at": entry.last_read_at.isoformat() if entry.last_read_at else None,
                         "added_at": entry.added_at.strftime("%Y-%m-%d %H:%M:%S") if entry.added_at else None
                     }
 
@@ -232,14 +236,14 @@ class Library:
                     with open(self.filepath, 'w', encoding='utf-8') as f:
                         json.dump(db, f, indent=4, ensure_ascii=False)
 
-    def update_progress(self, key: str, chapter: str) -> None:
+    def update_progress(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
         """Update reading progress."""
         if self._use_db:
-            self._update_progress_db(key, chapter)
+            self._update_progress_db(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
         else:
-            self._update_progress_file(key, chapter)
+            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
 
-    def _update_progress_db(self, key: str, chapter: str) -> None:
+    def _update_progress_db(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
         """Update progress in database."""
         try:
             from .database import get_db_session
@@ -264,24 +268,39 @@ class Library:
 
                     if library_entry:
                         library_entry.last_chapter_read = str(chapter)
+                        if chapter_id:
+                            library_entry.last_chapter_id = str(chapter_id)
+                        if page is not None:
+                            library_entry.last_page_read = int(page)
                         library_entry.last_read_at = datetime.now(timezone.utc)
                         library_entry.updated_at = datetime.now(timezone.utc)
+
+                        if total_chapters is not None:
+                            manga.chapters = int(total_chapters)
+
                         session.commit()
-                        log(f"📖 Progress saved: Chapter {chapter}")
+                        log(f"📖 Progress saved: Chapter {chapter} (page {page})")
         except Exception as e:
             log(f"❌ Database error: {e}")
-            self._update_progress_file(key, chapter)
+            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
 
-    def _update_progress_file(self, key: str, chapter: str) -> None:
+    def _update_progress_file(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
         """Update progress in file."""
         db = self._load_from_file()
         if key in db:
             db[key]['last_chapter'] = str(chapter)
+            if chapter_id:
+                db[key]['last_chapter_id'] = str(chapter_id)
+            if page is not None:
+                db[key]['last_page'] = int(page)
+            if total_chapters is not None:
+                db[key]['total_chapters'] = int(total_chapters)
+            db[key]['last_read_at'] = datetime.now(timezone.utc).isoformat()
             with self._lock:
                 if self.filepath:
                     with open(self.filepath, 'w', encoding='utf-8') as f:
                         json.dump(db, f, indent=4, ensure_ascii=False)
-            log(f"📖 Progress saved: Chapter {chapter}")
+            log(f"📖 Progress saved: Chapter {chapter} (page {page})")
 
     def remove(self, key: str) -> None:
         """Remove manga from library."""

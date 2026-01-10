@@ -44,6 +44,7 @@
                     <i data-lucide="arrow-right" width="20"></i>
                 </button>
             </div>
+            <div id="search-suggestions" class="search-suggestions hidden"></div>
         </div>
 
         <div class="header-actions">
@@ -99,6 +100,18 @@
                         // LATEST UPDATES
                     </div>
                 </div>
+            </div>
+
+            <div id="continue-reading" class="continue-reading hidden">
+                <div class="continue-info">
+                    <img id="continue-cover" src="" alt="Continue Reading Cover" />
+                    <div>
+                        <div class="continue-label">Continue Reading</div>
+                        <div id="continue-title" class="continue-title"></div>
+                        <div id="continue-progress" class="continue-progress"></div>
+                    </div>
+                </div>
+                <button id="continue-btn" class="control-btn primary">Resume</button>
             </div>
 
             <div id="discover-grid" class="manga-grid">
@@ -231,6 +244,9 @@
             </button>
             <span class="reader-title" id="reader-title">Chapter</span>
             <div class="reader-controls">
+                <button class="control-btn" id="reader-mode-btn" title="Toggle reader mode">
+                    <span id="reader-mode-label">Strip</span>
+                </button>
                 <button class="icon-btn" id="prev-page-btn">
                     <i data-lucide="chevron-left"></i>
                 </button>

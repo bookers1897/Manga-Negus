@@ -10,14 +10,21 @@ const state = {
     activeFilter: 'all',
     searchMode: 'title', // 'title' or 'url'
     searchQuery: '',
+    searchHistory: [],
+    liveSuggestions: [],
+    suggestionTimer: null,
     currentSource: '',
     sources: [],
     library: [],
     currentManga: null,
+    currentLibraryKey: null,
+    lastRead: null,
     currentChapters: [],
     selectedChapters: new Set(),
     currentPage: 1,
     totalPages: 1,
+    totalChaptersCount: 0,
+    currentChaptersOffset: 0,
     history: [],
     viewPages: {
         discover: 1,
@@ -27,6 +34,20 @@ const state = {
     },
     readerPages: [],
     readerCurrentPage: 0,
+    readerMode: 'strip', // 'strip' or 'paged'
+    readerObserver: null,
+    readerImmersive: false,
+    readerScrollRaf: null,
+    progressSaveTimer: null,
+    prefetchedChapterId: null,
+    prefetchedChapterTitle: null,
+    prefetchedPages: null,
+    prefetchInFlight: false,
+    currentChapterId: null,
+    currentChapterTitle: '',
+    currentChapterNumber: null,
+    currentChapterIndex: -1,
+    continueEntry: null,
     isSidebarOpen: false,
     csrfToken: '',
     toastTimer: null,
@@ -48,22 +69,23 @@ let els = {};
 const API = {
     async request(endpoint, options = {}) {
         try {
+            const { silent, ...requestOptions } = options;
             const headers = {
                 'Content-Type': 'application/json',
-                ...options.headers
+                ...requestOptions.headers
             };
 
-            if (options.method === 'POST' && state.csrfToken) {
+            if (requestOptions.method === 'POST' && state.csrfToken) {
                 headers['X-CSRF-Token'] = state.csrfToken;
             }
 
             // Support AbortController signal for request cancellation
             const fetchOptions = {
-                ...options,
+                ...requestOptions,
                 headers
             };
-            if (options.signal) {
-                fetchOptions.signal = options.signal;
+            if (requestOptions.signal) {
+                fetchOptions.signal = requestOptions.signal;
             }
 
             const response = await fetch(endpoint, fetchOptions);
@@ -80,7 +102,9 @@ const API = {
                 throw error;
             }
             console.error(`API Error (${endpoint}):`, error);
-            showToast(`Error: ${error.message}`);
+            if (!options.silent) {
+                showToast(`Error: ${error.message}`);
+            }
             throw error;
         }
     },
@@ -93,7 +117,7 @@ const API = {
 
     async getSources() {
         const data = await this.request('/api/sources');
-        return data.sources || [];
+        return Array.isArray(data) ? data : (data.sources || []);
     },
 
     async getSourceHealth() {
@@ -101,10 +125,21 @@ const API = {
         return data || {};
     },
 
-    async search(query, limit = 15) {
+    async search(query, limit = 15, signal = undefined) {
         const data = await this.request('/api/search', {
             method: 'POST',
-            body: JSON.stringify({ query, limit })
+            body: JSON.stringify({ query, limit }),
+            signal
+        });
+        return data || [];
+    },
+
+    async searchSuggestions(query, limit = 6, signal = undefined) {
+        const data = await this.request('/api/search', {
+            method: 'POST',
+            body: JSON.stringify({ query, limit }),
+            signal,
+            silent: true
         });
         return data || [];
     },
@@ -197,6 +232,18 @@ const API = {
         const data = await this.request('/api/library/update_status', {
             method: 'POST',
             body: JSON.stringify({ key, status })
+        });
+        return data;
+    },
+
+    async updateProgress(key, chapter, page = null, chapterId = null, totalChapters = null) {
+        const payload = { key, chapter };
+        if (page !== null) payload.page = page;
+        if (chapterId) payload.chapter_id = chapterId;
+        if (totalChapters !== null) payload.total_chapters = totalChapters;
+        const data = await this.request('/api/library/update_progress', {
+            method: 'POST',
+            body: JSON.stringify(payload)
         });
         return data;
     },
@@ -498,6 +545,151 @@ function updateDiscoverSubtitle(text) {
     }
 }
 
+// ========================================
+// Search Suggestions + History
+// ========================================
+function loadSearchHistory() {
+    try {
+        const raw = localStorage.getItem('manganegus.searchHistory');
+        state.searchHistory = raw ? JSON.parse(raw) : [];
+    } catch {
+        state.searchHistory = [];
+    }
+}
+
+function loadLastRead() {
+    try {
+        const raw = localStorage.getItem('manganegus.lastRead');
+        state.lastRead = raw ? JSON.parse(raw) : null;
+    } catch {
+        state.lastRead = null;
+    }
+}
+
+function saveLastRead(entry) {
+    state.lastRead = entry;
+    try {
+        localStorage.setItem('manganegus.lastRead', JSON.stringify(entry));
+    } catch {
+        // Ignore storage failures
+    }
+}
+
+function clearLiveSuggestions() {
+    state.liveSuggestions = [];
+    if (state.searchAbortController) {
+        state.searchAbortController.abort();
+        state.searchAbortController = null;
+    }
+}
+
+function saveSearchHistory(query) {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    const existing = state.searchHistory.filter(item => item.toLowerCase() !== trimmed.toLowerCase());
+    state.searchHistory = [trimmed, ...existing].slice(0, 8);
+    localStorage.setItem('manganegus.searchHistory', JSON.stringify(state.searchHistory));
+}
+
+function renderSearchSuggestions(query) {
+    if (!els.searchSuggestions) return;
+    if (state.searchMode === 'url') {
+        hideSearchSuggestions();
+        return;
+    }
+    const needle = (query || '').toLowerCase();
+    const historyMatches = needle
+        ? state.searchHistory.filter(item => item.toLowerCase().includes(needle))
+        : state.searchHistory;
+    const liveMatches = (state.liveSuggestions || []).map(item => ({
+        title: item.title || item.name || '',
+        payload: item
+    })).filter(item => item.title);
+
+    if (historyMatches.length === 0 && liveMatches.length === 0) {
+        els.searchSuggestions.classList.add('hidden');
+        els.searchSuggestions.innerHTML = '';
+        return;
+    }
+
+    const used = new Set(historyMatches.map(item => item.toLowerCase()));
+    const liveUnique = liveMatches.filter(item => !used.has(item.title.toLowerCase())).slice(0, 6);
+
+    let html = '';
+    if (liveUnique.length > 0) {
+        html += `<div class="search-suggestion-header">Suggestions</div>`;
+        html += liveUnique.map(item => `
+        <div class="search-suggestion-item" data-value="${escapeHtml(item.title)}">
+            <span class="label">${escapeHtml(item.title)}</span>
+            <span class="hint">Live</span>
+        </div>
+        `).join('');
+    }
+
+    if (historyMatches.length > 0) {
+        html += `<div class="search-suggestion-header">Recent</div>`;
+        html += historyMatches.map(item => `
+        <div class="search-suggestion-item" data-value="${escapeHtml(item)}">
+            <span class="label">${escapeHtml(item)}</span>
+            <span class="hint">Recent</span>
+        </div>
+        `).join('');
+        html += `
+            <div class="search-suggestion-item" data-action="clear">
+                <span class="label">Clear search history</span>
+            </div>
+        `;
+    }
+
+    els.searchSuggestions.innerHTML = html;
+    els.searchSuggestions.classList.remove('hidden');
+}
+
+function hideSearchSuggestions() {
+    if (els.searchSuggestions) {
+        els.searchSuggestions.classList.add('hidden');
+    }
+}
+
+function scheduleLiveSuggestions(query) {
+    if (state.suggestionTimer) {
+        clearTimeout(state.suggestionTimer);
+        state.suggestionTimer = null;
+    }
+
+    const trimmed = (query || '').trim();
+    if (!trimmed || trimmed.length < 2 || state.searchMode !== 'title') {
+        clearLiveSuggestions();
+        renderSearchSuggestions(query);
+        return;
+    }
+
+    state.suggestionTimer = setTimeout(() => {
+        state.suggestionTimer = null;
+        fetchLiveSuggestions(trimmed);
+    }, 250);
+}
+
+async function fetchLiveSuggestions(query) {
+    if (state.searchAbortController) {
+        state.searchAbortController.abort();
+    }
+    state.searchAbortController = new AbortController();
+    try {
+        const results = await API.searchSuggestions(query, 6, state.searchAbortController.signal);
+        if (query !== state.searchQuery) {
+            return;
+        }
+        state.liveSuggestions = Array.isArray(results) ? results.slice(0, 6) : [];
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            log(`Search suggestions failed: ${error.message}`);
+        }
+        state.liveSuggestions = [];
+    }
+    renderSearchSuggestions(query);
+}
+
 function renderDiscoverPagination(view, currentPage, totalPages = 20) {
     if (!els.discoverPagination) return;
     els.discoverPagination.classList.remove('hidden');
@@ -570,6 +762,9 @@ async function searchManga(query) {
     log(`🔍 Searching Jikan for: ${query}`);
 
     try {
+        saveSearchHistory(query);
+        hideSearchSuggestions();
+        clearLiveSuggestions();
         const results = await API.search(query);
         if (results.length === 0) {
             els.discoverGrid.classList.add('hidden');
@@ -794,6 +989,164 @@ async function loadTrendingView(page = 1) {
 // ========================================
 // Library Management
 // ========================================
+function renderContinueReading() {
+    if (!els.continueReading) return;
+
+    const libraryCandidates = state.library.filter(entry => entry.last_chapter_id || entry.last_read_at);
+    const libraryLatest = libraryCandidates.length
+        ? libraryCandidates.sort((a, b) => {
+            const aTime = a.last_read_at ? Date.parse(a.last_read_at) : 0;
+            const bTime = b.last_read_at ? Date.parse(b.last_read_at) : 0;
+            return bTime - aTime;
+        })[0]
+        : null;
+
+    const localLatest = state.lastRead && state.lastRead.last_read_at ? state.lastRead : null;
+
+    let mostRecent = libraryLatest;
+    if (localLatest && (!libraryLatest || Date.parse(localLatest.last_read_at) > Date.parse(libraryLatest.last_read_at || 0))) {
+        mostRecent = localLatest;
+    }
+
+    if (!mostRecent || !mostRecent.last_chapter_id) {
+        els.continueReading.classList.add('hidden');
+        state.continueEntry = null;
+        return;
+    }
+
+    state.continueEntry = mostRecent;
+    const coverUrl = mostRecent.cover || PLACEHOLDER_COVER;
+    if (els.continueCover.dataset.src !== coverUrl) {
+        els.continueCover.src = coverUrl;
+        els.continueCover.dataset.src = coverUrl;
+    }
+    els.continueCover.onerror = () => {
+        if (els.continueCover.dataset.src !== PLACEHOLDER_COVER) {
+            els.continueCover.src = PLACEHOLDER_COVER;
+            els.continueCover.dataset.src = PLACEHOLDER_COVER;
+        }
+    };
+    els.continueTitle.textContent = mostRecent.title || 'Continue Reading';
+
+    const progressBits = [];
+    if (mostRecent.last_chapter) {
+        const chapterLabel = String(mostRecent.last_chapter);
+        progressBits.push(
+            chapterLabel.toLowerCase().includes('chapter') ? chapterLabel : `Ch ${chapterLabel}`
+        );
+    }
+    if (mostRecent.last_page != null) {
+        progressBits.push(`Page ${mostRecent.last_page}`);
+    }
+    if (mostRecent.total_chapters) {
+        progressBits.push(`${mostRecent.total_chapters} total`);
+    }
+    els.continueProgress.textContent = progressBits.join(' | ');
+    els.continueReading.classList.remove('hidden');
+}
+
+async function resumeContinueReading() {
+    const entry = state.continueEntry;
+    if (!entry) return;
+    if (!entry.last_chapter_id) {
+        showToast('No recent chapter saved');
+        return;
+    }
+
+    state.currentManga = {
+        id: entry.manga_id || entry.id,
+        source: entry.source,
+        title: entry.title,
+        mal_id: entry.mal_id,
+        cover: entry.cover,
+        data: null
+    };
+    state.currentLibraryKey = entry.key || null;
+    state.currentChapters = [];
+    state.currentChaptersOffset = 0;
+    state.totalChaptersCount = entry.total_chapters || state.totalChaptersCount;
+
+    const startPage = entry.last_page ? Math.max(0, Number(entry.last_page) - 1) : 0;
+    const rawChapter = entry.last_chapter ? String(entry.last_chapter) : '';
+    const chapterLabel = rawChapter
+        ? (rawChapter.toLowerCase().includes('chapter') ? rawChapter : `Chapter ${rawChapter}`)
+        : 'Chapter';
+    await openReader(entry.last_chapter_id, chapterLabel, startPage, entry.last_chapter, entry.total_chapters);
+}
+
+function renderLibraryFromState() {
+    const filteredLibrary = state.activeFilter === 'all'
+        ? state.library
+        : state.library.filter(item => item.status === state.activeFilter);
+
+    els.libraryCount.textContent = `// ${filteredLibrary.length} ENTRIES`;
+
+    if (filteredLibrary.length === 0) {
+        els.libraryGrid.classList.add('hidden');
+        els.libraryEmpty.classList.remove('hidden');
+        return;
+    }
+
+    // Convert library format to manga format for rendering
+    const mangaItems = filteredLibrary.map(item => ({
+        key: item.key,
+        id: item.manga_id,
+        mal_id: item.mal_id,
+        source: item.source,
+        title: item.title,
+        cover_url: item.cover,
+        author: item.author || 'Unknown',
+        genres: item.genres || [],
+        tags: item.tags || [],
+        status: item.status,
+        last_chapter: item.last_chapter,
+        last_chapter_id: item.last_chapter_id,
+        last_page: item.last_page,
+        total_chapters: item.total_chapters,
+        last_read_at: item.last_read_at
+    }));
+
+    renderMangaGrid(mangaItems, els.libraryGrid, els.libraryEmpty);
+}
+
+function findLibraryKeyForManga(mangaId, source, title, malId = null) {
+    if (!mangaId || !source) return null;
+    const directKey = getLibraryKey(mangaId, source);
+    if (state.library.some(entry => entry.key === directKey)) {
+        return directKey;
+    }
+
+    if (malId) {
+        const match = state.library.find(entry => String(entry.mal_id || '') === String(malId));
+        if (match) return match.key;
+    }
+
+    if (title) {
+        const normalized = title.trim().toLowerCase();
+        const match = state.library.find(entry => (entry.title || '').trim().toLowerCase() === normalized);
+        if (match) return match.key;
+    }
+
+    return null;
+}
+
+function resolveCurrentLibraryKey() {
+    if (state.currentLibraryKey && state.library.some(entry => entry.key === state.currentLibraryKey)) {
+        return state.currentLibraryKey;
+    }
+    if (!state.currentManga) return null;
+    const key = findLibraryKeyForManga(
+        state.currentManga.id,
+        state.currentManga.source,
+        state.currentManga.title,
+        state.currentManga.mal_id
+    );
+    if (key) {
+        state.currentLibraryKey = key;
+    }
+    return key;
+}
+
 async function loadLibrary() {
     hidePagination();
     els.libraryGrid.innerHTML = `
@@ -809,34 +1162,8 @@ async function loadLibrary() {
     try {
         const library = await API.getLibrary();
         state.library = library;
-
-        const filteredLibrary = state.activeFilter === 'all'
-            ? library
-            : library.filter(item => item.status === state.activeFilter);
-
-        els.libraryCount.textContent = `// ${filteredLibrary.length} ENTRIES`;
-
-        if (filteredLibrary.length === 0) {
-            els.libraryGrid.classList.add('hidden');
-            els.libraryEmpty.classList.remove('hidden');
-        } else {
-            // Convert library format to manga format for rendering
-            const mangaItems = filteredLibrary.map(item => ({
-                key: item.key,
-                id: item.manga_id,
-                mal_id: item.mal_id,
-                source: item.source,
-                title: item.title,
-                cover_url: item.cover,
-                author: item.author || 'Unknown',
-                genres: item.genres || [],
-                tags: item.tags || [],
-                status: item.status,
-                last_chapter: item.last_chapter
-            }));
-
-            renderMangaGrid(mangaItems, els.libraryGrid, els.libraryEmpty);
-        }
+        renderLibraryFromState();
+        renderContinueReading();
 
         renderNav(); // Update library count in nav
         log(`✅ Loaded ${library.length} library items`);
@@ -862,6 +1189,9 @@ async function addToLibrary(mangaId, source, title, cover, status) {
         log(`✅ Added to library: ${title} (${status})`);
         await loadLibrary(); // Refresh library
         renderNav();
+        if (state.currentManga && state.currentManga.id === mangaId && state.currentManga.source === source) {
+            state.currentLibraryKey = getLibraryKey(mangaId, source);
+        }
 
         // Update details view button if currently viewing this manga
         if (state.currentManga && state.currentManga.id === mangaId && state.currentManga.source === source) {
@@ -904,6 +1234,21 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
         const tag = Array.isArray(tags) ? tags[0] : tags;
         const views = item.rating?.count ? `${(item.rating.count / 1000).toFixed(0)}k` : `${Math.floor(Math.random() * 5000)}k`;
 
+        let progressHtml = '';
+        if (isLibraryView && item.total_chapters && item.last_chapter) {
+            const total = parseFloat(item.total_chapters);
+            const current = parseFloat(item.last_chapter);
+            if (!Number.isNaN(total) && total > 0 && !Number.isNaN(current)) {
+                const percent = Math.min(100, Math.max(0, (current / total) * 100));
+                progressHtml = `
+                    <div class="progress-wrap">
+                        <div class="progress-bar" style="width: ${percent.toFixed(0)}%"></div>
+                        <span class="progress-text">Ch ${escapeHtml(String(item.last_chapter))} / ${escapeHtml(String(item.total_chapters))} · ${percent.toFixed(0)}%</span>
+                    </div>
+                `;
+            }
+        }
+
         return `
             <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}" data-library-key="${escapeHtml(libraryKey)}">
                 <div class="card-cover">
@@ -928,6 +1273,7 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
                         <span class="tag">${escapeHtml(tag)}</span>
                         <span class="views">${escapeHtml(String(views))}</span>
                     </div>
+                    ${progressHtml}
                 </div>
             </div>
         `;
@@ -953,11 +1299,20 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
         source,
         title,
         mal_id: mangaData?.mal_id,
+        cover: mangaData?.cover_url || mangaData?.cover,
         data: mangaData
     };
+    state.currentLibraryKey = findLibraryKeyForManga(
+        mangaId,
+        source,
+        title,
+        mangaData?.mal_id
+    );
     state.currentChapters = [];
     state.selectedChapters.clear();
     state.currentPage = 1;
+    state.totalChaptersCount = 0;
+    state.currentChaptersOffset = 0;
 
     // Track history (non-blocking)
     try {
@@ -1020,6 +1375,48 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
     await loadChapters(1);
 }
 
+function buildChaptersPayload(page = 1) {
+    if (!state.currentManga) return null;
+    const payload = {
+        id: state.currentManga.id,
+        title: state.currentManga.title,
+        offset: (page - 1) * 100,
+        limit: 100
+    };
+
+    if (state.currentManga.mal_id) {
+        payload.mal_id = state.currentManga.mal_id;
+    } else if (state.currentManga.source) {
+        payload.source = state.currentManga.source;
+    }
+
+    return payload;
+}
+
+async function fetchChaptersPage(page = 1, { updateState = false } = {}) {
+    const payload = buildChaptersPayload(page);
+    if (!payload) return null;
+    const response = await API.request('/api/chapters', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+    });
+
+    if (response?.total) {
+        state.totalChaptersCount = response.total;
+        state.totalPages = Math.ceil((response.total || 0) / 100) || 1;
+    }
+
+    if (updateState && Array.isArray(response?.chapters)) {
+        state.currentChapters = response.chapters;
+        state.currentPage = page;
+        state.currentChaptersOffset = (page - 1) * 100;
+        renderChapters();
+        renderPagination();
+    }
+
+    return response;
+}
+
 async function loadChapters(page = 1) {
     state.currentPage = page;
 
@@ -1040,21 +1437,14 @@ async function loadChapters(page = 1) {
     log(`📖 Loading chapters (page ${page})...`);
 
     try {
-        // Build request payload based on manga type
-        const payload = {
-            id: state.currentManga.id,
-            title: state.currentManga.title,
-            offset: (page - 1) * 100,
-            limit: 100
-        };
-
-        // Add mal_id for Jikan manga or source for direct source manga
-        if (state.currentManga.mal_id) {
-            payload.mal_id = state.currentManga.mal_id;
-            log(`Using MAL ID: ${state.currentManga.mal_id}`);
-        } else if (state.currentManga.source) {
-            payload.source = state.currentManga.source;
-            log(`Using source: ${state.currentManga.source}`);
+        const payload = buildChaptersPayload(page);
+        if (!payload) {
+            throw new Error('Missing manga details for chapters');
+        }
+        if (payload.mal_id) {
+            log(`Using MAL ID: ${payload.mal_id}`);
+        } else if (payload.source) {
+            log(`Using source: ${payload.source}`);
         }
 
         const response = await API.request('/api/chapters', {
@@ -1073,6 +1463,8 @@ async function loadChapters(page = 1) {
         }
 
         state.currentChapters = response.chapters || [];
+        state.totalChaptersCount = response.total || state.currentChapters.length;
+        state.currentChaptersOffset = (page - 1) * 100;
         state.totalPages = Math.ceil((response.total || 0) / 100) || 1;
 
         renderChapters();
@@ -1205,11 +1597,340 @@ function renderPagination() {
     });
 }
 
+function inferChapterOrder(chapters = state.currentChapters) {
+    if (!chapters || chapters.length < 2) return 'desc';
+    const first = parseFloat(chapters[0]?.chapter);
+    const last = parseFloat(chapters[chapters.length - 1]?.chapter);
+    if (!Number.isNaN(first) && !Number.isNaN(last)) {
+        if (first > last) return 'desc';
+        if (first < last) return 'asc';
+    }
+    return 'desc';
+}
+
+function getChapterNumberForProgress(chapter, index) {
+    const parsed = parseFloat(chapter?.chapter);
+    if (!Number.isNaN(parsed)) {
+        return parsed;
+    }
+
+    const total = state.totalChaptersCount || state.currentChapters.length || 0;
+    if (!total) return null;
+    const absoluteIndex = (state.currentChaptersOffset || 0) + index + 1;
+    const order = inferChapterOrder();
+    if (order === 'desc') {
+        return Math.max(1, total - absoluteIndex + 1);
+    }
+    return absoluteIndex;
+}
+
+function updateLocalLibraryProgress(key, data) {
+    const entry = state.library.find(item => item.key === key);
+    if (!entry) return;
+    Object.assign(entry, data);
+    entry.last_read_at = new Date().toISOString();
+    state.currentLibraryKey = key;
+    renderContinueReading();
+
+    if (state.activeView === 'library') {
+        renderLibraryFromState();
+    }
+}
+
+function scheduleProgressSave(immediate = false) {
+    if (state.progressSaveTimer) {
+        clearTimeout(state.progressSaveTimer);
+        state.progressSaveTimer = null;
+    }
+    if (immediate) {
+        void saveReadingProgress();
+        return;
+    }
+    state.progressSaveTimer = setTimeout(() => {
+        state.progressSaveTimer = null;
+        void saveReadingProgress();
+    }, 1200);
+}
+
+async function saveReadingProgress() {
+    if (!state.currentManga) return;
+    const key = resolveCurrentLibraryKey();
+    if (!key) {
+        const lastReadEntry = {
+            id: state.currentManga.id,
+            manga_id: state.currentManga.id,
+            source: state.currentManga.source,
+            title: state.currentManga.title,
+            cover: state.currentManga.cover || state.currentManga.data?.cover_url || state.currentManga.data?.cover || PLACEHOLDER_COVER,
+            last_chapter: state.currentChapterNumber != null ? String(state.currentChapterNumber) : state.currentChapterTitle,
+            last_chapter_id: state.currentChapterId,
+            last_page: state.readerCurrentPage + 1,
+            total_chapters: state.totalChaptersCount || null,
+            last_read_at: new Date().toISOString()
+        };
+        saveLastRead(lastReadEntry);
+        renderContinueReading();
+        return;
+    }
+    let chapterValue = state.currentChapterNumber;
+
+    if (chapterValue == null && state.currentChapterIndex >= 0) {
+        const chapterMeta = state.currentChapters[state.currentChapterIndex];
+        chapterValue = getChapterNumberForProgress(chapterMeta, state.currentChapterIndex);
+        state.currentChapterNumber = chapterValue;
+    }
+
+    if (chapterValue == null && state.currentChapterTitle) {
+        chapterValue = state.currentChapterTitle;
+    }
+
+    if (chapterValue == null) return;
+
+    const pageValue = state.readerCurrentPage + 1;
+    const totalChapters = state.totalChaptersCount || state.currentChapters.length || null;
+
+    try {
+        await API.updateProgress(
+            key,
+            String(chapterValue),
+            pageValue,
+            state.currentChapterId,
+            totalChapters
+        );
+        const updateData = {
+            last_chapter: String(chapterValue),
+            last_page: pageValue,
+            last_chapter_id: state.currentChapterId
+        };
+        if (totalChapters !== null) {
+            updateData.total_chapters = totalChapters;
+        }
+        updateLocalLibraryProgress(key, updateData);
+    } catch (error) {
+        log(`Progress save failed: ${error.message}`);
+    }
+}
+
+function setReaderPage(index, options = {}) {
+    const total = state.readerPages.length;
+    if (total === 0) return;
+    const clamped = Math.max(0, Math.min(index, total - 1));
+    if (clamped === state.readerCurrentPage && !options.force) return;
+    state.readerCurrentPage = clamped;
+    updateReaderControls({ scroll: options.scroll !== false });
+    scheduleProgressSave();
+}
+
+function clearReaderObserver() {
+    if (state.readerObserver) {
+        state.readerObserver.disconnect();
+        state.readerObserver = null;
+    }
+}
+
+function setupReaderObserver() {
+    clearReaderObserver();
+    if (!('IntersectionObserver' in window)) return;
+    if (state.readerMode !== 'strip') return;
+    const pages = els.readerContent.querySelectorAll('.reader-page');
+    if (pages.length === 0) return;
+
+    state.readerObserver = new IntersectionObserver((entries) => {
+        const visible = entries
+            .filter(entry => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible.length === 0) return;
+        const index = Number(visible[0].target.dataset.pageIndex || 0);
+        if (!Number.isNaN(index)) {
+            setReaderPage(index, { scroll: false });
+        }
+    }, {
+        root: els.readerContent,
+        threshold: [0.6]
+    });
+
+    pages.forEach(page => state.readerObserver.observe(page));
+}
+
+function applyReaderMode() {
+    if (state.readerMode === 'paged') {
+        els.readerContainer.classList.add('paged');
+        clearReaderObserver();
+    } else {
+        els.readerContainer.classList.remove('paged');
+        setupReaderObserver();
+    }
+
+    if (els.readerModeLabel) {
+        els.readerModeLabel.textContent = state.readerMode === 'paged' ? 'Paged' : 'Strip';
+    }
+
+    updateReaderControls({ scroll: true });
+}
+
+function handleReaderScroll() {
+    if (state.readerMode !== 'strip') return;
+    if (state.readerScrollRaf) return;
+    state.readerScrollRaf = requestAnimationFrame(() => {
+        state.readerScrollRaf = null;
+        const pages = els.readerContent.querySelectorAll('.reader-page');
+        if (pages.length === 0) return;
+        const containerTop = els.readerContent.getBoundingClientRect().top;
+        let closestIndex = 0;
+        let closestDistance = Infinity;
+        pages.forEach((page, index) => {
+            const rect = page.getBoundingClientRect();
+            const distance = Math.abs(rect.top - containerTop);
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestIndex = index;
+            }
+        });
+        setReaderPage(closestIndex, { scroll: false });
+    });
+}
+
+function setReaderMode(mode) {
+    state.readerMode = mode;
+    localStorage.setItem('manganegus.readerMode', mode);
+    applyReaderMode();
+}
+
+function toggleReaderMode() {
+    const next = state.readerMode === 'strip' ? 'paged' : 'strip';
+    setReaderMode(next);
+    showToast(`Reader Mode: ${next === 'strip' ? 'Strip' : 'Paged'}`);
+}
+
+function toggleReaderImmersive() {
+    state.readerImmersive = !state.readerImmersive;
+    els.readerContainer.classList.toggle('immersive', state.readerImmersive);
+}
+
+async function resolveNextChapterForPrefetch() {
+    if (!state.currentChapters.length || state.currentChapterIndex < 0) return null;
+
+    const nextIndex = state.currentChapterIndex + 1;
+    if (nextIndex < state.currentChapters.length) {
+        return state.currentChapters[nextIndex];
+    }
+
+    if (state.currentPage < state.totalPages) {
+        const nextPage = state.currentPage + 1;
+        try {
+            const response = await fetchChaptersPage(nextPage);
+            return response?.chapters?.[0] || null;
+        } catch (error) {
+            log(`Prefetch chapter list failed: ${error.message}`);
+            return null;
+        }
+    }
+
+    return null;
+}
+
+async function prefetchNextChapter() {
+    if (state.prefetchInFlight) return;
+    if (!state.currentManga?.source) return;
+    if (!state.currentChapters.length || state.currentChapterIndex < 0) return;
+
+    const nextChapter = await resolveNextChapterForPrefetch();
+    if (!nextChapter) return;
+
+    if (state.prefetchedChapterId === nextChapter.id) return;
+
+    state.prefetchInFlight = true;
+    try {
+        const pages = await API.getChapterPages(nextChapter.id, state.currentManga.source);
+        state.prefetchedChapterId = nextChapter.id;
+        state.prefetchedChapterTitle = nextChapter.title;
+        state.prefetchedPages = pages;
+        log(`Prefetched next chapter (${nextChapter.title || nextChapter.id})`);
+    } catch (error) {
+        log(`Prefetch failed: ${error.message}`);
+    } finally {
+        state.prefetchInFlight = false;
+    }
+}
+
+async function advanceToNextChapter() {
+    if (!state.currentChapters.length || state.currentChapterIndex < 0) {
+        showToast('No next chapter available');
+        return;
+    }
+
+    let nextChapter = null;
+    let nextIndex = state.currentChapterIndex + 1;
+    if (nextIndex < state.currentChapters.length) {
+        nextChapter = state.currentChapters[nextIndex];
+    } else if (state.currentPage < state.totalPages) {
+        const response = await fetchChaptersPage(state.currentPage + 1, { updateState: true });
+        nextChapter = response?.chapters?.[0] || null;
+        nextIndex = 0;
+    }
+
+    if (!nextChapter) {
+        showToast('No next chapter available');
+        return;
+    }
+
+    const chapterNumber = getChapterNumberForProgress(nextChapter, nextIndex);
+    await openReader(nextChapter.id, nextChapter.title || 'Chapter', 0, chapterNumber, state.totalChaptersCount);
+}
+
+function handleReaderTap(event) {
+    if (!els.readerContainer.classList.contains('active')) return;
+    if (event.target.closest('.reader-controls') || event.target.closest('#close-reader-btn')) return;
+
+    const rect = els.readerContent.getBoundingClientRect();
+    if (!rect.width) return;
+    const x = event.clientX - rect.left;
+    const ratio = x / rect.width;
+
+    if (ratio < 0.33) {
+        setReaderPage(state.readerCurrentPage - 1);
+    } else if (ratio > 0.66) {
+        if (state.readerCurrentPage >= state.readerPages.length - 1) {
+            advanceToNextChapter();
+        } else {
+            setReaderPage(state.readerCurrentPage + 1);
+        }
+    } else {
+        toggleReaderImmersive();
+    }
+}
+
 // ========================================
 // Reader
 // ========================================
-async function openReader(chapterId, chapterTitle) {
+async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberOverride = null, totalChaptersOverride = null) {
     console.log('[READER DEBUG] openReader called', { chapterId, chapterTitle, source: state.currentManga?.source });
+
+    if (!state.currentManga?.source) {
+        showToast('Missing manga source');
+        return;
+    }
+    state.currentChapterId = chapterId;
+    state.currentChapterTitle = chapterTitle;
+    state.currentChapterNumber = chapterNumberOverride;
+    state.currentChapterIndex = state.currentChapters.findIndex(chapter => chapter.id === chapterId);
+
+    if (state.currentChapterIndex >= 0) {
+        const chapterMeta = state.currentChapters[state.currentChapterIndex];
+        if (!chapterTitle && chapterMeta?.title) {
+            chapterTitle = chapterMeta.title;
+            state.currentChapterTitle = chapterTitle;
+        }
+        if (chapterNumberOverride == null) {
+            state.currentChapterNumber = getChapterNumberForProgress(chapterMeta, state.currentChapterIndex);
+        }
+    }
+
+    if (totalChaptersOverride) {
+        state.totalChaptersCount = totalChaptersOverride;
+    } else if (!state.totalChaptersCount && state.currentChapters.length) {
+        state.totalChaptersCount = state.currentChapters.length;
+    }
 
     els.readerTitle.textContent = chapterTitle;
     els.readerContent.innerHTML = `
@@ -1226,7 +1947,15 @@ async function openReader(chapterId, chapterTitle) {
 
     try {
         console.log('[READER DEBUG] Calling API.getChapterPages...');
-        const pages = await API.getChapterPages(chapterId, state.currentManga.source);
+        let pages = null;
+        if (state.prefetchedChapterId === chapterId && Array.isArray(state.prefetchedPages)) {
+            pages = state.prefetchedPages;
+            state.prefetchedChapterId = null;
+            state.prefetchedChapterTitle = null;
+            state.prefetchedPages = null;
+        } else {
+            pages = await API.getChapterPages(chapterId, state.currentManga.source);
+        }
         console.log('[READER DEBUG] Pages received:', pages, 'Type:', typeof pages, 'IsArray:', Array.isArray(pages));
 
         state.readerPages = pages;
@@ -1238,9 +1967,12 @@ async function openReader(chapterId, chapterTitle) {
         }
 
         console.log('[READER DEBUG] Rendering', pages.length, 'pages');
+        state.readerCurrentPage = Math.max(0, Math.min(startPage, pages.length - 1));
         renderReaderPages();
-        updateReaderControls();
+        applyReaderMode();
         log(`✅ Loaded ${pages.length} pages`);
+        scheduleProgressSave(true);
+        prefetchNextChapter();
     } catch (error) {
         console.error('[READER DEBUG] Error:', error);
         els.readerContent.innerHTML = `<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load pages<br/>${escapeHtml(error.message)}</p>`;
@@ -1254,26 +1986,46 @@ function renderReaderPages() {
     const html = state.readerPages.map((page, index) => {
         // Handle both string URLs and object with url property
         const pageUrl = typeof page === 'string' ? page : page.url;
+        const referer = typeof page === 'object'
+            ? (page.referer || page.headers?.Referer || page.headers?.referer || '')
+            : '';
         console.log(`[READER DEBUG] Page ${index + 1}:`, { page, pageUrl });
 
-        const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(pageUrl)}`;
-        return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page" loading="lazy" />`;
+        const proxyUrl = referer
+            ? `/api/proxy/image?url=${encodeURIComponent(pageUrl)}&referer=${encodeURIComponent(referer)}`
+            : `/api/proxy/image?url=${encodeURIComponent(pageUrl)}`;
+        return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page" data-page-index="${index}" loading="lazy" />`;
     }).join('');
 
     console.log('[READER DEBUG] Generated HTML length:', html.length);
     els.readerContent.innerHTML = html;
     console.log('[READER DEBUG] Rendered', state.readerPages.length, 'page elements');
+    setupReaderObserver();
 }
 
-function updateReaderControls() {
+function updateReaderControls(options = {}) {
     const total = state.readerPages.length;
+    if (!total) {
+        els.readerPageIndicator.textContent = '0 / 0';
+        els.prevPageBtn.disabled = true;
+        els.nextPageBtn.disabled = true;
+        return;
+    }
+
     els.readerPageIndicator.textContent = `${state.readerCurrentPage + 1} / ${total}`;
     els.prevPageBtn.disabled = state.readerCurrentPage === 0;
     els.nextPageBtn.disabled = state.readerCurrentPage >= total - 1;
 
     // Scroll to current page
     const pages = els.readerContent.querySelectorAll('.reader-page');
-    if (pages[state.readerCurrentPage]) {
+    if (state.readerMode === 'paged') {
+        pages.forEach((page, index) => {
+            page.classList.toggle('active', index === state.readerCurrentPage);
+        });
+        if (options.scroll !== false && pages[state.readerCurrentPage]) {
+            pages[state.readerCurrentPage].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    } else if (options.scroll !== false && pages[state.readerCurrentPage]) {
         pages[state.readerCurrentPage].scrollIntoView({
             behavior: 'smooth',
             block: 'start'
@@ -1281,10 +2033,26 @@ function updateReaderControls() {
     }
 }
 
-function closeReader() {
+async function closeReader() {
+    await saveReadingProgress();
+    clearReaderObserver();
+    if (state.progressSaveTimer) {
+        clearTimeout(state.progressSaveTimer);
+        state.progressSaveTimer = null;
+    }
+    if (state.readerScrollRaf) {
+        cancelAnimationFrame(state.readerScrollRaf);
+        state.readerScrollRaf = null;
+    }
     els.readerContainer.classList.remove('active');
+    els.readerContainer.classList.remove('immersive');
+    state.readerImmersive = false;
     state.readerPages = [];
     state.readerCurrentPage = 0;
+    state.currentChapterId = null;
+    state.currentChapterTitle = '';
+    state.currentChapterNumber = null;
+    state.currentChapterIndex = -1;
 }
 
 // ========================================
@@ -1327,6 +2095,7 @@ function initElements() {
         searchModeIcon: document.getElementById('search-mode-icon'),
         clearSearchBtn: document.getElementById('clear-search'),
         searchBtn: document.getElementById('search-btn'),
+        searchSuggestions: document.getElementById('search-suggestions'),
 
         // Navigation
         navList: document.getElementById('nav-list'),
@@ -1344,6 +2113,11 @@ function initElements() {
         discoverTitle: document.getElementById('discover-title'),
         discoverSubtitle: document.getElementById('discover-subtitle'),
         discoverPagination: document.getElementById('discover-pagination'),
+        continueReading: document.getElementById('continue-reading'),
+        continueBtn: document.getElementById('continue-btn'),
+        continueTitle: document.getElementById('continue-title'),
+        continueCover: document.getElementById('continue-cover'),
+        continueProgress: document.getElementById('continue-progress'),
 
         // Library
         libraryGrid: document.getElementById('library-grid'),
@@ -1372,6 +2146,8 @@ function initElements() {
         readerPageIndicator: document.getElementById('reader-page-indicator'),
         prevPageBtn: document.getElementById('prev-page-btn'),
         nextPageBtn: document.getElementById('next-page-btn'),
+        readerModeBtn: document.getElementById('reader-mode-btn'),
+        readerModeLabel: document.getElementById('reader-mode-label'),
 
         // Modals
         libraryStatusModal: document.getElementById('library-status-modal'),
@@ -1515,8 +2291,18 @@ async function init() {
     // Initialize DOM elements first
     initElements();
 
+    // Load search history for suggestions
+    loadSearchHistory();
+    loadLastRead();
+
     // Setup event delegation (once, prevents memory leaks)
     setupEventDelegation();
+
+    const savedReaderMode = localStorage.getItem('manganegus.readerMode');
+    if (savedReaderMode === 'strip' || savedReaderMode === 'paged') {
+        state.readerMode = savedReaderMode;
+    }
+    applyReaderMode();
 
     log('Initializing MangaNegus...');
     console.log('[DEBUG] Init started');
@@ -1537,6 +2323,7 @@ async function init() {
     // Load library
     state.library = await API.getLibrary();
     log(`Loaded ${state.library.length} library items`);
+    renderContinueReading();
 
     // Render navigation
     renderNav();
@@ -1558,6 +2345,16 @@ async function init() {
     els.searchInput.addEventListener('input', (e) => {
         state.searchQuery = e.target.value.trim();
         els.clearSearchBtn.classList.toggle('hidden', !state.searchQuery);
+        renderSearchSuggestions(state.searchQuery);
+        scheduleLiveSuggestions(state.searchQuery);
+    });
+
+    els.searchInput.addEventListener('focus', () => {
+        renderSearchSuggestions(state.searchQuery);
+    });
+
+    els.searchInput.addEventListener('blur', () => {
+        setTimeout(() => hideSearchSuggestions(), 150);
     });
 
     els.searchInput.addEventListener('keypress', (e) => {
@@ -1568,12 +2365,36 @@ async function init() {
         state.searchQuery = '';
         els.searchInput.value = '';
         els.clearSearchBtn.classList.add('hidden');
+        clearLiveSuggestions();
         loadDiscover(state.viewPages.discover || 1);
+        hideSearchSuggestions();
     });
 
     els.searchBtn.addEventListener('click', () => {
         performSearch();
     });
+
+    if (els.searchSuggestions) {
+        els.searchSuggestions.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const item = e.target.closest('.search-suggestion-item');
+            if (!item) return;
+            const action = item.dataset.action;
+            if (action === 'clear') {
+                state.searchHistory = [];
+                localStorage.removeItem('manganegus.searchHistory');
+                hideSearchSuggestions();
+                return;
+            }
+            const value = item.dataset.value || '';
+            if (value) {
+                els.searchInput.value = value;
+                state.searchQuery = value;
+                els.clearSearchBtn.classList.remove('hidden');
+                performSearch();
+            }
+        });
+    }
 
     els.searchModeBtn.addEventListener('click', () => {
         state.searchMode = state.searchMode === 'title' ? 'url' : 'title';
@@ -1583,6 +2404,7 @@ async function init() {
             : 'Paste manga URL (18 sources supported)...';
         els.searchInput.value = ''; // Clear input on mode change
         state.searchQuery = '';
+        clearLiveSuggestions();
         els.clearSearchBtn.classList.add('hidden');
         els.searchModeIcon.setAttribute('data-lucide', isTitle ? 'search' : 'link');
         safeCreateIcons();
@@ -1591,6 +2413,12 @@ async function init() {
         showToast(isTitle ? 'Search Mode: Title' : 'Search Mode: URL');
         log(`🔄 Search mode: ${state.searchMode.toUpperCase()}`);
     });
+
+    if (els.continueBtn) {
+        els.continueBtn.addEventListener('click', () => {
+            resumeContinueReading();
+        });
+    }
 
     // Source Status Modal
     els.closeSourceModal.addEventListener('click', () => {
@@ -1636,17 +2464,20 @@ async function init() {
     // Reader
     els.closeReaderBtn.addEventListener('click', closeReader);
     els.prevPageBtn.addEventListener('click', () => {
-        if (state.readerCurrentPage > 0) {
-            state.readerCurrentPage--;
-            updateReaderControls();
-        }
+        setReaderPage(state.readerCurrentPage - 1);
     });
     els.nextPageBtn.addEventListener('click', () => {
-        if (state.readerCurrentPage < state.readerPages.length - 1) {
-            state.readerCurrentPage++;
-            updateReaderControls();
+        if (state.readerCurrentPage >= state.readerPages.length - 1) {
+            advanceToNextChapter();
+        } else {
+            setReaderPage(state.readerCurrentPage + 1);
         }
     });
+    if (els.readerModeBtn) {
+        els.readerModeBtn.addEventListener('click', toggleReaderMode);
+    }
+    els.readerContent.addEventListener('click', handleReaderTap);
+    els.readerContent.addEventListener('scroll', handleReaderScroll, { passive: true });
 
     // Console
     els.consoleToggleBtn.addEventListener('click', () => {
