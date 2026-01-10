@@ -2737,7 +2737,7 @@ function setupEventDelegation() {
         if (removeBtn) {
             e.stopPropagation();
             const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
-            removeFromLibrary(key)
+            API.removeFromLibrary(key)
                 .then(() => {
                     showToast('Removed from library');
                     return loadLibrary();
