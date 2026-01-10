@@ -2817,6 +2817,40 @@ function setupEventDelegation() {
     });
 }
 
+// ==================== Title Cycling ====================
+
+const titles = [
+    'Manga Negus',
+    'Manga King',
+    'マンガキング'  // Japanese: Manga Kingu
+];
+
+function updateTitle() {
+    if (!els.appTitle) return;
+
+    els.appTitle.style.opacity = '0';
+
+    setTimeout(() => {
+        els.appTitle.textContent = titles[state.currentTitleIndex];
+        els.appTitle.style.opacity = '1';
+    }, 150);
+}
+
+function cycleTitle() {
+    state.currentTitleIndex = (state.currentTitleIndex + 1) % titles.length;
+    updateTitle();
+}
+
+function startTitleCycling() {
+    if (!els.appTitle) return;
+
+    // Auto-cycle every 30 seconds
+    setInterval(cycleTitle, 30000);
+
+    // Manual cycle on click
+    els.appTitle.addEventListener('click', cycleTitle);
+}
+
 async function init() {
     // Initialize DOM elements first
     initElements();
@@ -3104,6 +3138,9 @@ async function init() {
     window.addEventListener('resize', () => {
         if (window.innerWidth < 1024) closeSidebar();
     });
+
+    // Start title cycling
+    startTitleCycling();
 
     log('Initialization complete');
 }
