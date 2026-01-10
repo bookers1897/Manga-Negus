@@ -520,13 +520,53 @@ class History:
         return key
 
 
+class DownloadItem:
+    """Represents a single download job in the queue."""
+    def __init__(self, job_id: str, chapters: List[Dict], title: str, source_id: str, manga_id: str = ""):
+        self.job_id = job_id
+        self.chapters = chapters
+        self.title = title
+        self.source_id = source_id
+        self.manga_id = manga_id
+        self.status = "queued"  # queued, downloading, paused, completed, failed, cancelled
+        self.current_chapter_index = 0
+        self.current_page = 0
+        self.total_pages = 0
+        self.error = None
+        self.created_at = time.time()
+        self.started_at = None
+        self.completed_at = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "job_id": self.job_id,
+            "title": self.title,
+            "source": self.source_id,
+            "status": self.status,
+            "chapters_total": len(self.chapters),
+            "chapters_done": self.current_chapter_index,
+            "current_page": self.current_page,
+            "total_pages": self.total_pages,
+            "error": self.error,
+            "created_at": self.created_at,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at
+        }
+
+
 class Downloader:
-    """Background chapter downloader with CBZ packaging."""
+    """Background chapter downloader with CBZ packaging and queue management."""
     def __init__(self, download_dir: str):
         self.download_dir = download_dir
-        self._active: Dict[str, threading.Thread] = {}
-        self._cancel: Dict[str, bool] = {}
+        self._queue: List[DownloadItem] = []
+        self._active_item: Optional[DownloadItem] = None
+        self._worker_thread: Optional[threading.Thread] = None
+        self._pause_event = threading.Event()
+        self._pause_event.set()  # Start unpaused
+        self._stop_event = threading.Event()
+        self._cancel_current = threading.Event()
         self._lock = threading.Lock()
+        self._start_worker()
     
     def _sanitize(self, name: str) -> str:
         return "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
@@ -537,146 +577,275 @@ class Downloader:
         if os.altsep:
             clean = clean.replace(os.altsep, '_')
         return clean or "untitled"
-    
-    def _is_cancelled(self, job_id: str) -> bool:
-        with self._lock:
-            return self._cancel.get(job_id, False)
+
+    def _start_worker(self):
+        """Start the background worker thread that processes the queue."""
+        def worker():
+            while not self._stop_event.is_set():
+                # Wait if paused
+                self._pause_event.wait()
+
+                # Get next item from queue
+                item = None
+                with self._lock:
+                    for q_item in self._queue:
+                        if q_item.status == "queued":
+                            item = q_item
+                            item.status = "downloading"
+                            item.started_at = time.time()
+                            self._active_item = item
+                            break
+
+                if item is None:
+                    # No items to process, wait a bit
+                    time.sleep(0.5)
+                    continue
+
+                # Process the download
+                self._process_download(item)
+
+                with self._lock:
+                    self._active_item = None
+
+        self._worker_thread = threading.Thread(target=worker, daemon=True)
+        self._worker_thread.start()
+
+    def _process_download(self, item: DownloadItem):
+        """Process a single download item."""
+        from sources import get_source_manager
+
+        manager = get_source_manager()
+        source = manager.get_source(item.source_id)
+
+        if not source:
+            item.status = "failed"
+            item.error = f"Source '{item.source_id}' not found"
+            log(f"❌ {item.error}")
+            return
+
+        safe_title = self._sanitize(item.title) or "untitled"
+        series_dir = os.path.join(self.download_dir, safe_title)
+        os.makedirs(series_dir, exist_ok=True)
+        log(f"🚀 Downloading {len(item.chapters)} chapters from {source.name}")
+
+        # Fetch manga metadata for ComicInfo.xml
+        manga_details = None
+        if item.manga_id:
+            try:
+                manga_details = source.get_manga_details(item.manga_id)
+            except Exception as e:
+                log(f"⚠️ Failed to fetch manga details: {e}")
+
+        download_session = getattr(source, "get_download_session", None)
+        download_session = download_session() if callable(download_session) else source.session
+        if not download_session:
+            download_session = requests.Session()
+
+        for idx, ch in enumerate(item.chapters[item.current_chapter_index:], start=item.current_chapter_index):
+            # Check for pause
+            self._pause_event.wait()
+
+            # Check for cancel
+            if self._cancel_current.is_set():
+                item.status = "cancelled"
+                self._cancel_current.clear()
+                log("⏹️ Download cancelled")
+                return
+
+            item.current_chapter_index = idx
+            ch_num = str(ch.get("chapter", "0"))
+            ch_id = ch.get("id", "")
+
+            try:
+                pages = source.get_pages(ch_id)
+                if not pages:
+                    log(f"⚠️ No pages for Chapter {ch_num}")
+                    continue
+
+                item.total_pages = len(pages)
+                item.current_page = 0
+
+                safe_ch = self._sanitize_filename(ch_num)
+                folder_name = f"{safe_title} - Ch{safe_ch}"
+                log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
+
+                # Handle file sources (PDFs, EPUBs)
+                if getattr(source, "is_file_source", False):
+                    page = pages[0]
+                    headers = dict(page.headers) if page.headers else {}
+                    if page.referer:
+                        headers['Referer'] = page.referer
+                    source.wait_for_rate_limit()
+                    resp = download_session.get(page.url, headers=headers, timeout=60, stream=True)
+                    if resp.status_code != 200:
+                        log(f"⚠️ Failed file download: HTTP {resp.status_code}")
+                        continue
+                    ct = resp.headers.get('Content-Type', '')
+                    ext = os.path.splitext(page.url.split('?', 1)[0])[1] or ''
+                    if not ext:
+                        if 'pdf' in ct: ext = '.pdf'
+                        elif 'epub' in ct: ext = '.epub'
+                        elif 'cbz' in ct or 'zip' in ct: ext = '.cbz'
+                        else: ext = '.bin'
+                    filepath = os.path.join(series_dir, f"{folder_name}{ext}")
+                    with open(filepath, 'wb') as f:
+                        for chunk in resp.iter_content(chunk_size=1024 * 256):
+                            if chunk: f.write(chunk)
+                    log(f"✅ Saved file: {folder_name}{ext}")
+                    item.current_chapter_index = idx + 1
+                    continue
+
+                # Standard image download
+                temp_folder = os.path.join(series_dir, folder_name)
+                os.makedirs(temp_folder, exist_ok=True)
+                self._write_comic_info(temp_folder, item.title, ch, source, manga_details)
+
+                for page in pages:
+                    # Check for pause/cancel during page download
+                    self._pause_event.wait()
+                    if self._cancel_current.is_set():
+                        shutil.rmtree(temp_folder, ignore_errors=True)
+                        item.status = "cancelled"
+                        self._cancel_current.clear()
+                        return
+
+                    item.current_page = page.index
+                    success = False
+
+                    for attempt in range(3):
+                        try:
+                            headers = dict(page.headers) if page.headers else {}
+                            if page.referer:
+                                headers['Referer'] = page.referer
+                            source.wait_for_rate_limit()
+                            resp = download_session.get(page.url, headers=headers, timeout=30)
+                            if resp.status_code == 200:
+                                ext = '.jpg'
+                                ct = resp.headers.get('Content-Type', '')
+                                if 'png' in ct: ext = '.png'
+                                elif 'webp' in ct: ext = '.webp'
+                                filepath = os.path.join(temp_folder, f"{page.index:03d}{ext}")
+                                with open(filepath, 'wb') as f:
+                                    f.write(resp.content)
+                                success = True
+                                break
+                        except Exception as e:
+                            log(f"   ⚠️ Retry {attempt + 1}/3: {e}")
+                            time.sleep(1)
+
+                    if not success:
+                        log(f"   ⚠️ Failed page {page.index}")
+                    time.sleep(0.1)
+
+                # Create CBZ
+                cbz_path = os.path.join(series_dir, f"{folder_name}.cbz")
+                with zipfile.ZipFile(cbz_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for r, _, fs in os.walk(temp_folder):
+                        for f in sorted(fs):
+                            zf.write(os.path.join(r, f), arcname=f)
+                shutil.rmtree(temp_folder)
+                log(f"✅ Finished: Ch {ch_num}")
+                item.current_chapter_index = idx + 1
+                time.sleep(0.5)
+
+            except Exception as e:
+                log(f"❌ Error Ch {ch_num}: {e}")
+                item.error = str(e)
+
+        # Completed all chapters
+        item.status = "completed"
+        item.completed_at = time.time()
+        log("✨ All downloads completed!")
 
     def start(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "") -> str:
-        from sources import get_source_manager
+        """Add a download job to the queue."""
         job_id = f"{source_id}:{title}:{int(time.time())}"
+        item = DownloadItem(job_id, chapters, title, source_id, manga_id)
+
         with self._lock:
-            self._cancel[job_id] = False
+            self._queue.append(item)
 
-        def worker():
-            manager = get_source_manager()
-            source = manager.get_source(source_id)
-            if not source:
-                log(f"❌ Source '{source_id}' not found")
-                with self._lock:
-                    if job_id in self._active:
-                        del self._active[job_id]
-                    if job_id in self._cancel:
-                        del self._cancel[job_id]
-                return
-            safe_title = self._sanitize(title)
-            if not safe_title:
-                safe_title = "untitled"
-            series_dir = os.path.join(self.download_dir, safe_title)
-            os.makedirs(series_dir, exist_ok=True)
-            log(f"🚀 Downloading {len(chapters)} chapters from {source.name}")
-            
-            # Fetch full manga metadata for ComicInfo.xml
-            manga_details = None
-            if manga_id:
-                try:
-                    manga_details = source.get_manga_details(manga_id)
-                except Exception as e:
-                    log(f"⚠️ Failed to fetch manga details for metadata: {e}")
-
-            for ch in chapters:
-                if self._is_cancelled(job_id):
-                    log("⏹️ Download cancelled")
-                    break
-                ch_num = str(ch.get("chapter", "0"))
-                ch_id = ch.get("id", "")
-                try:
-                    pages = source.get_pages(ch_id)
-                    if not pages:
-                        log(f"⚠️ No pages for Chapter {ch_num}")
-                        continue
-                    safe_ch = self._sanitize_filename(ch_num)
-                    folder_name = f"{safe_title} - Ch{safe_ch}"
-                    log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
-                    download_session = getattr(source, "get_download_session", None)
-                    download_session = download_session() if callable(download_session) else source.session
-                    if not download_session:
-                        download_session = requests.Session()
-
-                    if getattr(source, "is_file_source", False):
-                        page = pages[0]
-                        headers = dict(page.headers) if page.headers else {}
-                        if page.referer:
-                            headers['Referer'] = page.referer
-                        source.wait_for_rate_limit()
-                        resp = download_session.get(page.url, headers=headers, timeout=60, stream=True)
-                        if resp.status_code != 200:
-                            log(f"⚠️ Failed file download for Chapter {ch_num}: HTTP {resp.status_code}")
-                            continue
-                        ct = resp.headers.get('Content-Type', '')
-                        ext = os.path.splitext(page.url.split('?', 1)[0])[1] or ''
-                        if not ext:
-                            if 'pdf' in ct: ext = '.pdf'
-                            elif 'epub' in ct: ext = '.epub'
-                            elif 'cbz' in ct or 'zip' in ct: ext = '.cbz'
-                            else: ext = '.bin'
-                        filename = f"{folder_name}{ext}"
-                        filepath = os.path.join(series_dir, filename)
-                        with open(filepath, 'wb') as f:
-                            for chunk in resp.iter_content(chunk_size=1024 * 256):
-                                if chunk: f.write(chunk)
-                        log(f"✅ Saved file: {filename}")
-                        continue
-
-                    temp_folder = os.path.join(series_dir, folder_name)
-                    os.makedirs(temp_folder, exist_ok=True)
-                    
-                    # Create ComicInfo.xml
-                    self._write_comic_info(temp_folder, title, ch, source, manga_details)
-
-                    for page in pages:
-                        if self._is_cancelled(job_id):
-                            break
-                        success = False
-                        for attempt in range(3):
-                            try:
-                                headers = dict(page.headers) if page.headers else {}
-                                if page.referer:
-                                    headers['Referer'] = page.referer
-                                source.wait_for_rate_limit()
-                                resp = download_session.get(page.url, headers=headers, timeout=30)
-                                if resp.status_code == 200:
-                                    ext = '.jpg'
-                                    ct = resp.headers.get('Content-Type', '')
-                                    if 'png' in ct: ext = '.png'
-                                    elif 'webp' in ct: ext = '.webp'
-                                    filepath = os.path.join(temp_folder, f"{page.index:03d}{ext}")
-                                    with open(filepath, 'wb') as f: f.write(resp.content)
-                                    success = True
-                                    break
-                            except Exception as e:
-                                log(f"   ⚠️ Retry {attempt + 1}/3 for page {page.index}: {e}")
-                                time.sleep(1)
-                        if not success:
-                            log(f"   ⚠️ Failed page {page.index}")
-                        time.sleep(0.1)
-                    with zipfile.ZipFile(os.path.join(series_dir, f"{folder_name}.cbz"), 'w', zipfile.ZIP_DEFLATED) as zf:
-                        for r, _, fs in os.walk(temp_folder):
-                            for f in sorted(fs):
-                                zf.write(os.path.join(r, f), arcname=f)
-                    shutil.rmtree(temp_folder)
-                    log(f"✅ Finished: Ch {ch_num}")
-                    time.sleep(0.5)
-                except Exception as e:
-                    log(f"❌ Error Ch {ch_num}: {e}")
-            log("✨ All downloads completed!")
-            with self._lock:
-                if job_id in self._active: del self._active[job_id]
-                if job_id in self._cancel: del self._cancel[job_id]
-
-        thread = threading.Thread(target=worker, daemon=True)
-        with self._lock:
-            self._active[job_id] = thread
-        thread.start()
+        log(f"📥 Added to queue: {title} ({len(chapters)} chapters)")
         return job_id
 
     def cancel(self, job_id: str) -> bool:
+        """Cancel a download (queued or active)."""
         with self._lock:
-            if job_id in self._cancel:
-                self._cancel[job_id] = True
+            # If it's the active download, signal cancel
+            if self._active_item and self._active_item.job_id == job_id:
+                self._cancel_current.set()
                 return True
-            return False
-    
+
+            # Otherwise find in queue and mark cancelled
+            for item in self._queue:
+                if item.job_id == job_id and item.status == "queued":
+                    item.status = "cancelled"
+                    log(f"⏹️ Cancelled: {item.title}")
+                    return True
+        return False
+
+    def pause(self, job_id: Optional[str] = None) -> bool:
+        """Pause downloads. If job_id is None, pause all."""
+        if job_id is None:
+            self._pause_event.clear()
+            log("⏸️ Downloads paused")
+            return True
+
+        with self._lock:
+            if self._active_item and self._active_item.job_id == job_id:
+                self._active_item.status = "paused"
+                self._pause_event.clear()
+                log(f"⏸️ Paused: {self._active_item.title}")
+                return True
+        return False
+
+    def resume(self, job_id: Optional[str] = None) -> bool:
+        """Resume downloads. If job_id is None, resume all."""
+        if job_id is None:
+            self._pause_event.set()
+            log("▶️ Downloads resumed")
+            return True
+
+        with self._lock:
+            if self._active_item and self._active_item.job_id == job_id:
+                self._active_item.status = "downloading"
+                self._pause_event.set()
+                log(f"▶️ Resumed: {self._active_item.title}")
+                return True
+
+            # Check if paused in queue
+            for item in self._queue:
+                if item.job_id == job_id and item.status == "paused":
+                    item.status = "queued"
+                    self._pause_event.set()
+                    return True
+        return False
+
+    def get_queue(self) -> List[Dict[str, Any]]:
+        """Get the current download queue status."""
+        with self._lock:
+            return [item.to_dict() for item in self._queue]
+
+    def clear_completed(self) -> int:
+        """Remove completed/cancelled/failed items from queue."""
+        with self._lock:
+            before = len(self._queue)
+            self._queue = [item for item in self._queue if item.status in ("queued", "downloading", "paused")]
+            return before - len(self._queue)
+
+    def remove_from_queue(self, job_id: str) -> bool:
+        """Remove a specific item from queue (if not downloading)."""
+        with self._lock:
+            for i, item in enumerate(self._queue):
+                if item.job_id == job_id and item.status != "downloading":
+                    del self._queue[i]
+                    return True
+        return False
+
+    def is_paused(self) -> bool:
+        """Check if downloads are paused."""
+        return not self._pause_event.is_set()
+
     def _write_comic_info(self, folder: str, title: str, chapter: Dict, source: Any, manga_details: Any = None) -> None:
         """Generate ComicInfo.xml metadata file."""
         try:
@@ -687,7 +856,6 @@ class Downloader:
             root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
             root.set('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema')
 
-            # Basic Info
             SubElement(root, 'Title').text = chapter.get('title') or f"Chapter {chapter.get('chapter')}"
             SubElement(root, 'Series').text = title
             SubElement(root, 'Number').text = str(chapter.get('chapter', '0'))
@@ -704,7 +872,6 @@ class Downloader:
                 if hasattr(manga_details, 'status') and manga_details.status:
                     SubElement(root, 'Notes').text = f"Status: {manga_details.status}"
 
-            # Manga specific
             SubElement(root, 'Manga').text = 'YesAndRightToLeft'
 
             xml_str = minidom.parseString(tostring(root)).toprettyxml(indent="   ")

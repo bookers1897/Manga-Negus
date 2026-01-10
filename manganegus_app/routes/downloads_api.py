@@ -41,6 +41,59 @@ def cancel_download():
         return jsonify({'status': 'ok'})
     return jsonify({'status': 'error'}), 404
 
+
+@downloads_bp.route('/api/download/queue', methods=['GET'])
+def get_download_queue():
+    """Get the current download queue status."""
+    queue = downloader.get_queue()
+    return jsonify({
+        'queue': queue,
+        'paused': downloader.is_paused()
+    })
+
+
+@downloads_bp.route('/api/download/pause', methods=['POST'])
+@csrf_protect
+def pause_download():
+    """Pause downloads. Optionally specify job_id to pause specific download."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get('job_id')  # None = pause all
+    if downloader.pause(job_id):
+        return jsonify({'status': 'ok', 'paused': True})
+    return jsonify({'status': 'error'}), 404
+
+
+@downloads_bp.route('/api/download/resume', methods=['POST'])
+@csrf_protect
+def resume_download():
+    """Resume downloads. Optionally specify job_id to resume specific download."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get('job_id')  # None = resume all
+    if downloader.resume(job_id):
+        return jsonify({'status': 'ok', 'paused': False})
+    return jsonify({'status': 'error'}), 404
+
+
+@downloads_bp.route('/api/download/clear', methods=['POST'])
+@csrf_protect
+def clear_completed():
+    """Clear completed/cancelled/failed downloads from queue."""
+    removed = downloader.clear_completed()
+    return jsonify({'status': 'ok', 'removed': removed})
+
+
+@downloads_bp.route('/api/download/remove', methods=['POST'])
+@csrf_protect
+def remove_from_queue():
+    """Remove a specific item from the queue."""
+    data = request.get_json(silent=True) or {}
+    job_id = data.get('job_id')
+    if not job_id:
+        return jsonify({'error': 'job_id required'}), 400
+    if downloader.remove_from_queue(job_id):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'error', 'message': 'Item not found or currently downloading'}), 404
+
 @downloads_bp.route('/api/downloaded_chapters', methods=['POST'])
 @csrf_protect
 def get_downloaded_chapters():
