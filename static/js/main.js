@@ -1561,8 +1561,12 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
                                 <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
                             </button>
                         ` : ''}
-                        <button class="card-menu-btn" data-action="menu">
-                            <i data-lucide="more-vertical" width="16"></i>
+                        <button class="card-menu-btn"
+                                data-action="menu"
+                                aria-label="Open menu"
+                                aria-haspopup="true"
+                                aria-expanded="false">
+                            <i data-lucide="more-vertical" width="16" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -2906,6 +2910,8 @@ function createCardMenu(context, mangaId, source, key, title, coverUrl) {
     const menu = document.createElement('div');
     menu.className = 'card-menu-dropdown';
     menu.style.display = 'none';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', context === 'library' ? 'Library options' : 'Discovery options');
 
     const items = context === 'library' ? [
         { action: 'status', icon: 'bookmark', label: 'Change Status' },
@@ -2918,8 +2924,11 @@ function createCardMenu(context, mangaId, source, key, title, coverUrl) {
     ];
 
     menu.innerHTML = items.map(item => `
-        <button class="menu-item ${item.danger ? 'danger' : ''}" data-action="${item.action}">
-            <i data-lucide="${item.icon}"></i>
+        <button class="menu-item ${item.danger ? 'danger' : ''}"
+                data-action="${item.action}"
+                role="menuitem"
+                tabindex="-1">
+            <i data-lucide="${item.icon}" aria-hidden="true"></i>
             ${item.label}
         </button>
     `).join('');
@@ -2956,17 +2965,70 @@ function openCardMenu(button, menu) {
     // Re-render icons
     safeCreateIcons();
 
-    // Add menu item click handlers
-    menu.querySelectorAll('.menu-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const action = item.dataset.action;
-            handleMenuAction(action, menu);
+    // Event delegation: single listener on menu (only add if not already present)
+    if (!menu.hasAttribute('data-listeners-attached')) {
+        menu.addEventListener('click', (e) => {
+            const item = e.target.closest('.menu-item');
+            if (item) {
+                e.stopPropagation();
+                const action = item.dataset.action;
+                handleMenuAction(action, menu);
+            }
         });
-    });
+        menu.setAttribute('data-listeners-attached', 'true');
+    }
+
+    // Keyboard navigation
+    if (!menu.hasAttribute('data-keyboard-attached')) {
+        menu.addEventListener('keydown', (e) => {
+            const items = Array.from(menu.querySelectorAll('.menu-item'));
+            const currentIndex = items.indexOf(document.activeElement);
+
+            switch (e.key) {
+                case 'Escape':
+                    e.preventDefault();
+                    closeAllMenus();
+                    button.focus(); // Return focus to menu button
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    const nextIndex = (currentIndex + 1) % items.length;
+                    items[nextIndex].focus();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    const prevIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+                    items[prevIndex].focus();
+                    break;
+                case 'Home':
+                    e.preventDefault();
+                    items[0].focus();
+                    break;
+                case 'End':
+                    e.preventDefault();
+                    items[items.length - 1].focus();
+                    break;
+            }
+        });
+        menu.setAttribute('data-keyboard-attached', 'true');
+    }
+
+    // Focus first menu item when opened
+    const firstItem = menu.querySelector('.menu-item');
+    if (firstItem) {
+        setTimeout(() => firstItem.focus(), 50); // Small delay for animation
+    }
+
+    // Update button aria-expanded
+    button.setAttribute('aria-expanded', 'true');
 }
 
 function closeAllMenus() {
+    // Reset aria-expanded on all menu buttons
+    document.querySelectorAll('.card-menu-btn[aria-expanded="true"]').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+
     if (state.activeMenu) {
         state.activeMenu.style.display = 'none';
         state.activeMenu = null;
