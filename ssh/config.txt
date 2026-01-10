@@ -1,4 +1,0 @@
-Host github.com
-  AddKeysToAgent yes
-  UseKeychain yes
-  IdentityFile ../manga-negus-v2/ssh/ssh-ed25519.txt
