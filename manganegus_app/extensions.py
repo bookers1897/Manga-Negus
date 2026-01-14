@@ -2,6 +2,7 @@ import os
 import threading
 import json
 import time
+import uuid
 from datetime import datetime, timezone
 import shutil
 import zipfile
@@ -50,13 +51,18 @@ class Library:
             return self._load_from_file()
 
     def _load_from_db(self) -> Dict[str, Any]:
-        """Load from PostgreSQL database."""
+        """Load from PostgreSQL database with optimized eager loading."""
         try:
             from .database import get_db_session
             from .models import LibraryEntry, Manga
+            from sqlalchemy.orm import joinedload
 
             with get_db_session() as session:
-                entries = session.query(LibraryEntry).join(Manga).all()
+                # Eager load Manga data to prevent N+1 queries
+                # This loads all manga data in a single JOIN query instead of 1 + N separate queries
+                entries = session.query(LibraryEntry).options(
+                    joinedload(LibraryEntry.manga)
+                ).all()
 
                 result = {}
                 for entry in entries:
@@ -236,14 +242,14 @@ class Library:
                     with open(self.filepath, 'w', encoding='utf-8') as f:
                         json.dump(db, f, indent=4, ensure_ascii=False)
 
-    def update_progress(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
+    def update_progress(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None, page_total: Optional[int] = None) -> None:
         """Update reading progress."""
         if self._use_db:
-            self._update_progress_db(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
+            self._update_progress_db(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters, page_total=page_total)
         else:
-            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
+            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters, page_total=page_total)
 
-    def _update_progress_db(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
+    def _update_progress_db(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None, page_total: Optional[int] = None) -> None:
         """Update progress in database."""
         try:
             from .database import get_db_session
@@ -282,9 +288,9 @@ class Library:
                         log(f"📖 Progress saved: Chapter {chapter} (page {page})")
         except Exception as e:
             log(f"❌ Database error: {e}")
-            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters)
+            self._update_progress_file(key, chapter, page=page, chapter_id=chapter_id, total_chapters=total_chapters, page_total=page_total)
 
-    def _update_progress_file(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None) -> None:
+    def _update_progress_file(self, key: str, chapter: str, page: Optional[int] = None, chapter_id: Optional[str] = None, total_chapters: Optional[int] = None, page_total: Optional[int] = None) -> None:
         """Update progress in file."""
         db = self._load_from_file()
         if key in db:
@@ -293,6 +299,8 @@ class Library:
                 db[key]['last_chapter_id'] = str(chapter_id)
             if page is not None:
                 db[key]['last_page'] = int(page)
+            if page_total is not None:
+                db[key]['last_page_total'] = int(page_total)
             if total_chapters is not None:
                 db[key]['total_chapters'] = int(total_chapters)
             db[key]['last_read_at'] = datetime.now(timezone.utc).isoformat()
@@ -521,14 +529,24 @@ class History:
 
 
 class DownloadItem:
-    """Represents a single download job in the queue."""
+    """Represents a single download job in the queue.
+
+    Status values:
+    - paused_queue: Added but not started (user must manually start)
+    - queued: Ready to download
+    - downloading: Currently downloading
+    - paused: User paused
+    - completed: Finished
+    - failed: Error occurred
+    - cancelled: User cancelled
+    """
     def __init__(self, job_id: str, chapters: List[Dict], title: str, source_id: str, manga_id: str = ""):
         self.job_id = job_id
         self.chapters = chapters
         self.title = title
         self.source_id = source_id
         self.manga_id = manga_id
-        self.status = "queued"  # queued, downloading, paused, completed, failed, cancelled
+        self.status = "queued"
         self.current_chapter_index = 0
         self.current_page = 0
         self.total_pages = 0
@@ -757,16 +775,23 @@ class Downloader:
         item.completed_at = time.time()
         log("✨ All downloads completed!")
 
-    def start(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "") -> str:
+    def add_to_queue(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", start_immediately: bool = True) -> str:
         """Add a download job to the queue."""
-        job_id = f"{source_id}:{title}:{int(time.time())}"
+        job_id = str(uuid.uuid4())
         item = DownloadItem(job_id, chapters, title, source_id, manga_id)
+
+        if not start_immediately:
+            item.status = "paused_queue"
 
         with self._lock:
             self._queue.append(item)
 
-        log(f"📥 Added to queue: {title} ({len(chapters)} chapters)")
+        log(f"📥 Added to queue: {title} ({len(chapters)} chapters) - {'auto-start' if start_immediately else 'paused'}")
         return job_id
+
+    def start(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", start_immediately: bool = True) -> str:
+        """Backward-compatible wrapper for adding a download job."""
+        return self.add_to_queue(chapters, title, source_id, manga_id, start_immediately)
 
     def cancel(self, job_id: str) -> bool:
         """Cancel a download (queued or active)."""
@@ -778,7 +803,7 @@ class Downloader:
 
             # Otherwise find in queue and mark cancelled
             for item in self._queue:
-                if item.job_id == job_id and item.status == "queued":
+                if item.job_id == job_id and item.status in ("queued", "paused_queue"):
                     item.status = "cancelled"
                     log(f"⏹️ Cancelled: {item.title}")
                     return True
@@ -821,16 +846,47 @@ class Downloader:
                     return True
         return False
 
-    def get_queue(self) -> List[Dict[str, Any]]:
-        """Get the current download queue status."""
+    def start_paused_items(self, job_ids: Optional[List[str]] = None) -> None:
+        """Start paused queue items."""
         with self._lock:
-            return [item.to_dict() for item in self._queue]
+            started_count = 0
+            for item in self._queue:
+                if item.status == "paused_queue" and (job_ids is None or item.job_id in job_ids):
+                    item.status = "queued"
+                    started_count += 1
+
+            if started_count:
+                log(f"▶️ Started {started_count} paused downloads")
+
+    def get_queue(self) -> Dict[str, Any]:
+        """Get the current download queue status with paused count."""
+        with self._lock:
+            queue_data = []
+            paused_count = 0
+            active_count = 0
+            completed_count = 0
+
+            for item in self._queue:
+                if item.status == "paused_queue":
+                    paused_count += 1
+                elif item.status in ("queued", "downloading", "paused"):
+                    active_count += 1
+                elif item.status in ("completed", "failed", "cancelled"):
+                    completed_count += 1
+                queue_data.append(item.to_dict())
+
+            return {
+                "queue": queue_data,
+                "paused_count": paused_count,
+                "active_count": active_count,
+                "completed_count": completed_count
+            }
 
     def clear_completed(self) -> int:
         """Remove completed/cancelled/failed items from queue."""
         with self._lock:
             before = len(self._queue)
-            self._queue = [item for item in self._queue if item.status in ("queued", "downloading", "paused")]
+            self._queue = [item for item in self._queue if item.status in ("queued", "downloading", "paused", "paused_queue")]
             return before - len(self._queue)
 
     def remove_from_queue(self, job_id: str) -> bool:

@@ -339,7 +339,10 @@ class BaseConnector(ABC):
             "is_available": self.is_available,
             "failure_count": self._failure_count,
             "last_error": self._last_error,
-            "cooldown_remaining": max(0, self._cooldown_until - time.time())
+            "cooldown_remaining": max(0, self._cooldown_until - time.time()),
+            "rate_limit_per_minute": int(self.rate_limit * 60),
+            "rate_limit_burst": int(self.rate_limit_burst),
+            "rate_limit_tokens": round(self._tokens, 2)
         }
     
     def reset(self) -> None:

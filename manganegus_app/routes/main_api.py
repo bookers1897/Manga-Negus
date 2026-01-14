@@ -8,7 +8,7 @@ main_bp = Blueprint('main_api', __name__)
 
 def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
     """
-    Validate URL for SSRF protection.
+    Validate URL for SSRF protection with DNS rebinding prevention.
 
     Args:
         url: URL to validate
@@ -19,6 +19,7 @@ def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
     """
     try:
         from urllib.parse import urlparse
+        import socket
         parsed = urlparse(url)
 
         # Only allow http/https schemes
@@ -29,20 +30,27 @@ def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
         if not hostname:
             return False, 'Missing hostname'
 
-        # Resolve hostname and block private/loopback/link-local/reserved IPs for ALL hosts
-        try:
-            import socket
-            ip_str = socket.gethostbyname(hostname)
-            ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-                return False, f'Access to private IP ranges not allowed'
-        except (socket.gaierror, ValueError):
-            # Resolution failed; continue to domain whitelist check
-            pass
-
-        # Check domain whitelist
+        # Check domain whitelist FIRST (before DNS resolution)
         if hostname not in allowed_domains:
             return False, f'Domain {hostname} not in whitelist'
+
+        # DNS rebinding protection: Resolve hostname and block private IPs
+        # This is done AFTER whitelist check to prevent unnecessary DNS queries
+        try:
+            # Get ALL IP addresses for the hostname (not just first one)
+            addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            for info in addr_info:
+                ip_str = info[4][0]
+                try:
+                    ip = ipaddress.ip_address(ip_str)
+                    # Block private, loopback, link-local, reserved, multicast IPs
+                    if (ip.is_private or ip.is_loopback or ip.is_link_local or
+                        ip.is_reserved or ip.is_multicast):
+                        return False, f'Access to private/reserved IP ranges not allowed ({ip_str})'
+                except ValueError:
+                    continue
+        except (socket.gaierror, OSError) as e:
+            return False, f'DNS resolution failed: {str(e)}'
 
         return True, ''
 
@@ -92,9 +100,13 @@ def proxy_image():
         'uploads.mangadex.org',
         'mangadex.org',
 
+        # MyAnimeList CDN (Jikan covers)
+        'cdn.myanimelist.net',
+
         # WeebCentral V2 CDNs
         'official.lowee.us',
         'temp.compsci88.com',
+        'hot.planeptune.us',
         'planeptune.us',
         'www.planeptune.us',
         'weebcentral.com',
@@ -152,9 +164,49 @@ def proxy_image():
         resp = requests.get(url, headers=headers, timeout=10, stream=True)
         if resp.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), resp.status_code
+
         content_type = resp.headers.get('Content-Type', 'image/jpeg')
+        img_bytes = resp.content
+
+        fmt = (request.args.get('format') or '').lower().strip()
+        quality = request.args.get('quality')
+        width = request.args.get('w')
+        height = request.args.get('h')
+
+        try:
+            from io import BytesIO
+            from PIL import Image
+
+            if fmt or width or height:
+                image = Image.open(BytesIO(img_bytes))
+                if width or height:
+                    try:
+                        w = int(width) if width else None
+                        h = int(height) if height else None
+                    except ValueError:
+                        w = h = None
+                    if w or h:
+                        image.thumbnail((w or image.width, h or image.height), Image.LANCZOS)
+
+                out = BytesIO()
+                save_format = fmt.upper() if fmt else image.format or 'JPEG'
+                save_kwargs = {}
+                if quality:
+                    try:
+                        save_kwargs['quality'] = max(20, min(95, int(quality)))
+                    except ValueError:
+                        pass
+                if save_format == 'WEBP':
+                    save_kwargs.setdefault('method', 6)
+                image.save(out, format=save_format, optimize=True, **save_kwargs)
+                img_bytes = out.getvalue()
+                content_type = f"image/{save_format.lower()}"
+        except ImportError:
+            # Pillow not installed; skip optimization
+            pass
+
         return Response(
-            resp.content,
+            img_bytes,
             mimetype=content_type,
             headers={
                 'Cache-Control': 'public, max-age=86400',

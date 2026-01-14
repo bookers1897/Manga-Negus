@@ -44,3 +44,35 @@ def add_history():
     log(f"🕑 History updated: {data.get('title')}")
     return jsonify({'status': 'ok'})
 
+
+@history_bp.route('/import', methods=['POST'])
+@csrf_protect
+def import_history():
+    """Import history entries from backup."""
+    data = request.get_json(silent=True) or {}
+    entries = data.get('entries') if isinstance(data, dict) else data
+    if isinstance(entries, dict):
+        entries = list(entries.values())
+    if not isinstance(entries, list):
+        return jsonify({'error': 'Invalid history import payload'}), 400
+
+    imported = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        manga_id = entry.get('id') or entry.get('manga_id')
+        title = entry.get('title')
+        source = entry.get('source')
+        if not (manga_id and title and source):
+            continue
+        history.add(
+            manga_id=manga_id,
+            title=title,
+            source=source,
+            cover=entry.get('cover'),
+            mal_id=entry.get('mal_id'),
+            payload=entry.get('payload') or {}
+        )
+        imported += 1
+
+    return jsonify({'status': 'ok', 'imported': imported})

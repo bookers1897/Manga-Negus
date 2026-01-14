@@ -72,6 +72,7 @@ def search():
     """Search for manga using Jikan (MyAnimeList) API."""
     data = request.get_json(silent=True) or {}
     query = sanitize_string(data.get('query', ''), max_length=200).strip()
+    filters = data.get('filters') or {}
 
     # Validate pagination
     _, limit, _ = validate_pagination(None, data.get('limit', 15))
@@ -83,9 +84,77 @@ def search():
     if len(query) < 2:
         return jsonify({'error': 'Query too short (min 2 characters)'}), 400
 
+    source_id = ''
+    if isinstance(filters, dict):
+        source_id = (filters.get('source') or '').strip()
+    if source_id:
+        log(f"🔍 Searching source {source_id} for '{query}'...")
+        manager = get_source_manager()
+        results = manager.search(query, source_id=source_id)
+        payload = []
+        for result in results[:limit]:
+            data = result.to_dict() if hasattr(result, 'to_dict') else dict(result)
+            cover = data.get('cover') or data.get('cover_url')
+            data['cover'] = cover
+            data['cover_url'] = cover
+            data['source'] = data.get('source') or source_id
+            payload.append(data)
+        return jsonify(payload)
+
     log(f"🔍 Searching Jikan for '{query}'...")
     jikan = get_jikan_client()
-    results = jikan.search_manga(query, limit=limit)
+    jikan_filters = {}
+    if isinstance(filters, dict):
+        status = filters.get('status') or ''
+        manga_type = filters.get('type') or ''
+        sort = filters.get('sort') or ''
+        order = filters.get('order') or ''
+        min_score = filters.get('scoreMin')
+        max_score = filters.get('scoreMax')
+        year_start = filters.get('yearStart')
+        year_end = filters.get('yearEnd')
+
+        if status:
+            jikan_filters['status'] = status
+        if manga_type:
+            jikan_filters['type'] = manga_type
+        if sort:
+            jikan_filters['order_by'] = sort
+        if order:
+            jikan_filters['sort'] = order
+        if min_score not in (None, ''):
+            jikan_filters['min_score'] = min_score
+        if max_score not in (None, ''):
+            jikan_filters['max_score'] = max_score
+        if year_start:
+            jikan_filters['start_date'] = f"{year_start}-01-01"
+        if year_end:
+            jikan_filters['end_date'] = f"{year_end}-12-31"
+
+        def normalize_list(value):
+            if isinstance(value, list):
+                return [str(v).strip() for v in value if str(v).strip()]
+            if isinstance(value, str):
+                return [v.strip() for v in value.split(',') if v.strip()]
+            return []
+
+        include_names = normalize_list(filters.get('genres')) + normalize_list(filters.get('demographics'))
+        exclude_names = normalize_list(filters.get('exclude'))
+        genre_ids = filters.get('genre_ids') or filters.get('genreIds')
+        if isinstance(genre_ids, list):
+            include_ids = [str(g).strip() for g in genre_ids if str(g).strip()]
+        else:
+            include_ids = []
+
+        include_ids = include_ids or [str(g) for g in jikan.resolve_genre_ids(include_names)]
+        exclude_ids = [str(g) for g in jikan.resolve_genre_ids(exclude_names)]
+
+        if include_ids:
+            jikan_filters['genres'] = ','.join(include_ids)
+        if exclude_ids:
+            jikan_filters['genres_exclude'] = ','.join(exclude_ids)
+
+    results = jikan.search_manga(query, limit=limit, filters=jikan_filters)
 
     return jsonify(results)
 

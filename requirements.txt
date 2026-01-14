@@ -34,6 +34,7 @@ jikanpy>=4.3.0
 # Utilities
 rapidfuzz>=3.14.0
 cachetools>=6.2.0
+Pillow>=10.0.0
 
 # PostgreSQL database
 psycopg2-binary>=2.9.11

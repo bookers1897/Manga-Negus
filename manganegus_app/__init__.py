@@ -84,6 +84,7 @@ def create_app():
     from .routes.downloads_api import downloads_bp
     from .routes.metadata_api import metadata_api_bp
     from .routes.history_api import history_bp
+    from .routes.cloud_api import cloud_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(sources_bp)
@@ -92,6 +93,7 @@ def create_app():
     app.register_blueprint(downloads_bp)
     app.register_blueprint(metadata_api_bp)
     app.register_blueprint(history_bp)
+    app.register_blueprint(cloud_bp)
     
     # =============================================================================
     # INITIALIZATION LOGIC (from old if __name__ == '__main__')

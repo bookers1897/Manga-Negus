@@ -20,6 +20,7 @@ class JikanAPI:
         })
         self._last_request_time = 0
         self._rate_limit_delay = 0.34  # Jikan has 3 req/sec limit, so ~333ms between requests
+        self._genre_cache = {'timestamp': 0, 'map': {}}
 
     def _rate_limit(self):
         """Ensure we don't exceed Jikan's rate limit (3 req/sec)"""
@@ -28,7 +29,7 @@ class JikanAPI:
             time.sleep(self._rate_limit_delay - elapsed)
         self._last_request_time = time.time()
 
-    def search_manga(self, query: str, limit: int = 10) -> List[Dict]:
+    def search_manga(self, query: str, limit: int = 10, filters: Optional[Dict] = None) -> List[Dict]:
         """
         Search for manga by title.
 
@@ -48,6 +49,11 @@ class JikanAPI:
                 'order_by': 'popularity',  # Sort by popularity for best matches
                 'type': 'manga'
             }
+            if filters:
+                # Only include supported filter params
+                for key in ('status', 'type', 'order_by', 'sort', 'min_score', 'max_score', 'start_date', 'end_date', 'genres', 'genres_exclude'):
+                    if filters.get(key) not in (None, ''):
+                        params[key] = filters.get(key)
 
             resp = self.session.get(
                 f"{self.BASE_URL}/manga",
@@ -175,17 +181,68 @@ class JikanAPI:
             print(f"Jikan get_manga error: {e}")
             return None
 
+    def _fetch_genre_map(self) -> Dict[str, int]:
+        """Fetch and cache genre name -> id map."""
+        cache_ttl = 7 * 24 * 60 * 60
+        now = time.time()
+        if self._genre_cache['map'] and (now - self._genre_cache['timestamp']) < cache_ttl:
+            return self._genre_cache['map']
+
+        try:
+            self._rate_limit()
+            resp = self.session.get(f"{self.BASE_URL}/genres/manga", timeout=10)
+            if resp.status_code != 200:
+                return self._genre_cache['map']
+            data = resp.json().get('data', [])
+            mapping = {}
+            for item in data:
+                name = item.get('name')
+                if name:
+                    mapping[name.lower()] = item.get('mal_id')
+            self._genre_cache = {'timestamp': now, 'map': mapping}
+            return mapping
+        except Exception:
+            return self._genre_cache['map']
+
+    def resolve_genre_ids(self, names: List[str]) -> List[int]:
+        """Resolve genre names or ids to MAL genre ids."""
+        if not names:
+            return []
+        mapping = self._fetch_genre_map()
+        ids = []
+        for name in names:
+            if name is None:
+                continue
+            try:
+                as_int = int(name)
+                ids.append(as_int)
+                continue
+            except (ValueError, TypeError):
+                pass
+            lookup = mapping.get(str(name).strip().lower())
+            if lookup:
+                ids.append(int(lookup))
+        # Deduplicate
+        return sorted(set(ids))
+
     def _parse_manga(self, item: Dict) -> Dict:
         """Parse Jikan manga object into our standard format"""
 
         # Get the best quality image
         images = item.get('images', {})
-        cover_url = (
+        cover_url_large = (
             images.get('webp', {}).get('large_image_url') or
-            images.get('jpg', {}).get('large_image_url') or
+            images.get('jpg', {}).get('large_image_url')
+        )
+        cover_url_medium = (
             images.get('webp', {}).get('image_url') or
             images.get('jpg', {}).get('image_url')
         )
+        cover_url_small = (
+            images.get('webp', {}).get('small_image_url') or
+            images.get('jpg', {}).get('small_image_url')
+        )
+        cover_url = cover_url_large or cover_url_medium or cover_url_small
 
         # Extract genres
         genres = [g['name'] for g in item.get('genres', [])]
@@ -214,6 +271,9 @@ class JikanAPI:
             'title_english': item.get('title_english'),
             'title_japanese': item.get('title_japanese'),
             'cover_url': cover_url,
+            'cover_url_large': cover_url_large,
+            'cover_url_medium': cover_url_medium,
+            'cover_url_small': cover_url_small,
             'synopsis': item.get('synopsis', ''),
             'background': item.get('background', ''),
             'type': item.get('type', 'Manga'),  # Manga, Novel, One-shot, etc.

@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Manga Negus - Redesign</title>
+    <meta name="theme-color" content="#0b0b0f" />
+    <link rel="manifest" href="/static/manifest.json" />
 
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -36,11 +38,11 @@
                     <i id="search-mode-icon" data-lucide="search" width="18"></i>
                 </button>
                 <div class="divider-v"></div>
-                <input id="search-input" type="text" class="search-input" placeholder="Search titles..." autocomplete="off" />
-                <button id="clear-search" class="clear-btn hidden">
+                <input id="search-input" type="text" class="search-input" placeholder="Search titles..." autocomplete="off" aria-label="Search manga" />
+                <button id="clear-search" class="clear-btn hidden" aria-label="Clear search">
                     <i data-lucide="x" width="16"></i>
                 </button>
-                <button id="search-btn" class="icon-btn" style="margin-left: 4px;">
+                <button id="search-btn" class="icon-btn" style="margin-left: 4px;" aria-label="Search">
                     <i data-lucide="arrow-right" width="20"></i>
                 </button>
             </div>
@@ -48,14 +50,20 @@
         </div>
 
         <div class="header-actions">
-            <button class="icon-btn" id="theme-toggle-btn" title="Change theme">
+            <button class="icon-btn" id="theme-toggle-btn" title="Change theme" aria-label="Toggle theme">
                 <i data-lucide="sun" id="theme-icon"></i>
             </button>
-            <button class="icon-btn"><i data-lucide="filter"></i></button>
+            <button class="icon-btn" id="filter-btn" title="Filters" aria-label="Open filters">
+                <i data-lucide="filter"></i>
+            </button>
             <div class="divider-v"></div>
             <button class="login-btn">LOGIN</button>
         </div>
     </header>
+
+    <div id="offline-banner" class="offline-banner hidden">
+        You are offline. Some features may be unavailable.
+    </div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
@@ -109,6 +117,12 @@
                         // LATEST UPDATES
                     </div>
                 </div>
+                <div class="page-actions">
+                    <button class="control-btn" id="random-btn">
+                        <i data-lucide="shuffle"></i>
+                        Random
+                    </button>
+                </div>
             </div>
 
             <div id="continue-reading" class="continue-reading hidden">
@@ -122,6 +136,22 @@
                 </div>
                 <button id="continue-btn" class="control-btn primary">Resume</button>
             </div>
+
+            <div id="recommendations-section" class="recommendations-section hidden">
+                <div class="section-header">
+                    <h3>Recommended for you</h3>
+                    <p id="recommendations-subtitle" class="subtitle">Based on your library</p>
+                </div>
+                <div id="recommendations-grid" class="manga-grid"></div>
+            </div>
+
+            <div id="history-tools" class="history-tools hidden">
+                <div id="history-on-this-day" class="history-on-this-day"></div>
+                <div class="history-actions">
+                    <button class="control-btn" id="history-export-btn">Export History CSV</button>
+                </div>
+            </div>
+            <div id="history-calendar" class="history-calendar hidden"></div>
 
             <div id="discover-grid" class="manga-grid">
                 <div class="loading-state">
@@ -154,13 +184,43 @@
             </div>
 
             <!-- Library Filters -->
-            <div style="margin-bottom: 24px; display: flex; gap: 8px; flex-wrap: wrap;">
-                <button class="control-btn active" data-filter="all">All</button>
-                <button class="control-btn" data-filter="reading">Reading</button>
-                <button class="control-btn" data-filter="completed">Completed</button>
-                <button class="control-btn" data-filter="plan_to_read">Plan to Read</button>
-                <button class="control-btn" data-filter="on_hold">On Hold</button>
-                <button class="control-btn" data-filter="dropped">Dropped</button>
+            <div class="library-controls">
+                <div class="library-filters">
+                    <button class="control-btn active" data-filter="all">All</button>
+                    <button class="control-btn" data-filter="reading">Reading</button>
+                    <button class="control-btn" data-filter="completed">Completed</button>
+                    <button class="control-btn" data-filter="plan_to_read">Plan to Read</button>
+                    <button class="control-btn" data-filter="on_hold">On Hold</button>
+                    <button class="control-btn" data-filter="dropped">Dropped</button>
+                </div>
+                <div class="library-tools">
+                    <div class="select-wrap">
+                        <label for="library-collection">Collection</label>
+                        <select id="library-collection">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                    <div class="select-wrap">
+                        <label for="library-smart-filter">Smart</label>
+                        <select id="library-smart-filter">
+                            <option value="">None</option>
+                            <option value="unread_updates">Unread Updates</option>
+                            <option value="completed_unfinished">Completed but Unfinished</option>
+                            <option value="abandoned">Abandoned Plans</option>
+                        </select>
+                    </div>
+                    <div class="select-wrap">
+                        <label for="library-sort">Sort</label>
+                        <select id="library-sort">
+                            <option value="recent">Recently Added</option>
+                            <option value="last_read">Last Read</option>
+                            <option value="title_asc">Title A-Z</option>
+                            <option value="title_desc">Title Z-A</option>
+                            <option value="rating_desc">Rating High</option>
+                            <option value="rating_asc">Rating Low</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
             <div id="library-grid" class="manga-grid">
@@ -202,10 +262,49 @@
                                 <i data-lucide="heart" width="20"></i>
                                 Add to Library
                             </button>
+                            <button class="action-btn secondary" id="favorite-btn">
+                                <i data-lucide="star" width="20"></i>
+                                Favorite
+                            </button>
+                            <button class="action-btn secondary" id="mark-all-read-btn">
+                                <i data-lucide="check-circle" width="20"></i>
+                                Mark All Read
+                            </button>
+                            <button class="action-btn secondary" id="download-next-btn">
+                                <i data-lucide="download" width="20"></i>
+                                Download Next 5
+                            </button>
                             <button class="action-btn secondary" id="download-all-btn">
                                 <i data-lucide="download" width="20"></i>
                                 Download All
                             </button>
+                        </div>
+                        <div id="details-sources" class="details-sources hidden">
+                            <span class="details-sources-label">Also available on</span>
+                            <div id="details-sources-list" class="details-sources-list"></div>
+                        </div>
+                        <div class="details-notes">
+                            <label for="notes-input">Notes</label>
+                            <textarea id="notes-input" placeholder="Add personal notes..."></textarea>
+                            <div class="details-rating">
+                                <label for="rating-input">Rating</label>
+                                <input id="rating-input" type="range" min="1" max="10" step="1" />
+                                <span id="rating-value">-</span>
+                            </div>
+                            <div class="details-review">
+                                <label for="review-input">Review</label>
+                                <textarea id="review-input" placeholder="Write a quick review..."></textarea>
+                                <div class="details-review-actions">
+                                    <button class="control-btn" id="share-review-btn">
+                                        <i data-lucide="share-2" width="14"></i>
+                                        Share Review
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="details-collections">
+                                <label for="collections-input">Collections</label>
+                                <input id="collections-input" type="text" placeholder="Action Favorites, To Re-read" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -226,6 +325,33 @@
                                 <i data-lucide="download" width="14"></i>
                                 Download Selected
                             </button>
+                            <button class="control-btn" id="download-next-chapters-btn">
+                                <i data-lucide="fast-forward" width="14"></i>
+                                Download Next 5
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="chapter-filters">
+                        <div class="select-wrap">
+                            <label for="chapter-language">Language</label>
+                            <select id="chapter-language">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="chapter-group">Group</label>
+                            <select id="chapter-group">
+                                <option value="">All</option>
+                            </select>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="chapter-translation">Translation</label>
+                            <select id="chapter-translation">
+                                <option value="">All</option>
+                                <option value="official">Official</option>
+                                <option value="fan">Fan</option>
+                            </select>
                         </div>
                     </div>
 
@@ -240,12 +366,21 @@
                         <!-- Pagination injected here -->
                     </div>
                 </div>
+
+                <div class="similar-section">
+                    <h3 class="chapters-title">Similar Titles</h3>
+                    <div id="similar-grid" class="manga-grid"></div>
+                </div>
             </div>
         </section>
 
         <!-- Selection Action Bar (appears in multi-select mode) -->
         <div id="selection-action-bar" class="selection-action-bar hidden">
             <span id="selection-count" class="selection-count">0 selected</span>
+            <button id="btn-status-selected" class="btn-status-selected" type="button">
+                <i data-lucide="bookmark" width="18" aria-hidden="true"></i>
+                Change Status
+            </button>
             <button id="btn-delete-selected" class="btn-delete-selected" type="button">
                 <i data-lucide="trash" width="18" aria-hidden="true"></i>
                 Delete Selected
@@ -282,8 +417,22 @@
                         <button data-fit="fit-height">Fit Height</button>
                         <button data-fit="fit-screen">Fit Screen</button>
                         <button data-fit="fit-original">Original Size</button>
+                        <div class="reader-settings-divider"></div>
+                        <button data-direction="ltr">Left to Right</button>
+                        <button data-direction="rtl">Right to Left</button>
+                        <div class="reader-settings-divider"></div>
+                        <button data-bg="dark">Background: Dark</button>
+                        <button data-bg="light">Background: Light</button>
+                        <button data-bg="sepia">Background: Sepia</button>
+                        <button data-bg="black">Background: Black</button>
+                        <button data-bg="white">Background: White</button>
+                        <div class="reader-settings-divider"></div>
+                        <button data-spread="toggle">Toggle Spread</button>
                     </div>
                 </div>
+                <button class="icon-btn" id="reader-immersive-btn" title="Toggle immersive mode">
+                    <i data-lucide="maximize-2"></i>
+                </button>
                 <button class="icon-btn" id="prev-page-btn">
                     <i data-lucide="chevron-left"></i>
                 </button>
@@ -298,6 +447,11 @@
                 <div class="spinner"></div>
                 <span class="loading-text">Loading pages...</span>
             </div>
+        </div>
+        <div id="reader-tap-zones" class="reader-tap-zones" aria-hidden="true">
+            <button class="tap-zone left" data-zone="prev" aria-label="Previous page"></button>
+            <button class="tap-zone center" data-zone="menu" aria-label="Reader menu"></button>
+            <button class="tap-zone right" data-zone="next" aria-label="Next page"></button>
         </div>
     </div>
 
@@ -334,14 +488,317 @@
         </div>
     </div>
 
+    <!-- Advanced Filters Modal -->
+    <div id="filter-modal" class="modal-overlay">
+        <div class="modal-panel filter-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Filters</h3>
+                <button class="modal-close" id="close-filter-modal">
+                    <i data-lucide="x" width="18"></i>
+                </button>
+            </div>
+            <div class="modal-body filter-body">
+                <div class="filter-grid">
+                    <div class="filter-field">
+                        <label for="filter-genres">Genres (include)</label>
+                        <input id="filter-genres" type="text" placeholder="Action, Romance" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-exclude">Exclude tags</label>
+                        <input id="filter-exclude" type="text" placeholder="Horror, Gore" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-status">Status</label>
+                        <select id="filter-status">
+                            <option value="">Any</option>
+                            <option value="publishing">Publishing</option>
+                            <option value="finished">Finished</option>
+                            <option value="hiatus">Hiatus</option>
+                            <option value="discontinued">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-type">Type</label>
+                        <select id="filter-type">
+                            <option value="">Any</option>
+                            <option value="manga">Manga</option>
+                            <option value="manhwa">Manhwa</option>
+                            <option value="manhua">Manhua</option>
+                            <option value="novel">Novel</option>
+                            <option value="one-shot">One-shot</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-demographics">Demographics</label>
+                        <input id="filter-demographics" type="text" placeholder="Shounen, Seinen" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-source">Search Source</label>
+                        <select id="filter-source">
+                            <option value="">All Sources</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-year-start">Year From</label>
+                        <input id="filter-year-start" type="number" min="1900" max="2100" placeholder="1999" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-year-end">Year To</label>
+                        <input id="filter-year-end" type="number" min="1900" max="2100" placeholder="2025" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-score-min">Score Min</label>
+                        <input id="filter-score-min" type="number" step="0.1" min="0" max="10" placeholder="7.5" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-score-max">Score Max</label>
+                        <input id="filter-score-max" type="number" step="0.1" min="0" max="10" placeholder="9.5" />
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-sort">Sort</label>
+                        <select id="filter-sort">
+                            <option value="popularity">Popularity</option>
+                            <option value="score">Score</option>
+                            <option value="title">Title</option>
+                            <option value="chapters">Chapters</option>
+                            <option value="year">Year</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-order">Order</label>
+                        <select id="filter-order">
+                            <option value="desc">High → Low</option>
+                            <option value="asc">Low → High</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-density">Grid Density</label>
+                        <select id="filter-density">
+                            <option value="comfortable">Comfortable</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="compact">Compact</option>
+                            <option value="list">List</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-meta">Card Metadata</label>
+                        <select id="filter-meta">
+                            <option value="on">Show</option>
+                            <option value="off">Hide</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-pagination">Pagination</label>
+                        <select id="filter-pagination">
+                            <option value="paged">Paged</option>
+                            <option value="infinite">Infinite Scroll</option>
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="filter-data-saver">Data Saver</label>
+                        <select id="filter-data-saver">
+                            <option value="off">Off</option>
+                            <option value="on">On</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="control-btn" id="filter-reset">Reset</button>
+                <button class="control-btn primary" id="filter-apply">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="modal-panel settings-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Settings</h3>
+                <button class="modal-close" id="close-settings-modal">
+                    <i data-lucide="x" width="18"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>Reading Stats</h4>
+                    <div id="stats-grid" class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">Library</span>
+                            <span class="stat-value" data-stat="library">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Chapters Read</span>
+                            <span class="stat-value" data-stat="chapters">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Pages Read</span>
+                            <span class="stat-value" data-stat="pages">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Last Read</span>
+                            <span class="stat-value" data-stat="last-read">-</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Storage</span>
+                            <span class="stat-value" data-stat="storage">-</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Data Usage</span>
+                            <span class="stat-value" data-stat="data-usage">-</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Streak</span>
+                            <span class="stat-value" data-stat="streak">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Top Genre</span>
+                            <span class="stat-value" data-stat="top-genre">-</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Reading Time</span>
+                            <span class="stat-value" data-stat="time">-</span>
+                        </div>
+                    </div>
+                    <div id="reading-calendar" class="reading-calendar"></div>
+                    <div id="genre-breakdown" class="genre-breakdown"></div>
+                </div>
+                <div class="settings-section">
+                    <h4>Appearance</h4>
+                    <div class="settings-actions">
+                        <div class="select-wrap">
+                            <label for="theme-schedule">Theme Schedule</label>
+                            <select id="theme-schedule">
+                                <option value="off">Manual</option>
+                                <option value="system">System</option>
+                                <option value="night">Night Auto</option>
+                            </select>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="accent-color">Accent Color</label>
+                            <input id="accent-color" type="color" value="#dc2626" />
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Reader Enhancements</h4>
+                    <div class="settings-sliders">
+                        <div class="slider-row">
+                            <label for="reader-brightness">Brightness</label>
+                            <input id="reader-brightness" type="range" min="80" max="130" value="100" />
+                        </div>
+                        <div class="slider-row">
+                            <label for="reader-contrast">Contrast</label>
+                            <input id="reader-contrast" type="range" min="80" max="140" value="100" />
+                        </div>
+                        <div class="slider-row">
+                            <label for="reader-sharpen">Sharpen</label>
+                            <input id="reader-sharpen" type="range" min="0" max="10" value="0" />
+                        </div>
+                        <div class="slider-row">
+                            <label for="reader-crop">Trim Borders</label>
+                            <input id="reader-crop" type="range" min="0" max="6" value="0" />
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <div class="select-wrap">
+                            <label for="reader-prefetch">Prefetch</label>
+                            <select id="reader-prefetch">
+                                <option value="0">Off</option>
+                                <option value="1">1 Chapter</option>
+                                <option value="2">2 Chapters</option>
+                                <option value="3">3 Chapters</option>
+                            </select>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="merge-chapters">Merge Sources</label>
+                            <select id="merge-chapters">
+                                <option value="off">Off</option>
+                                <option value="on">On</option>
+                            </select>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="auto-download-favorites">Auto-download Favorites</label>
+                            <select id="auto-download-favorites">
+                                <option value="off">Off</option>
+                                <option value="on">On</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Install</h4>
+                    <div class="settings-actions">
+                        <button class="control-btn" id="install-btn">Install App</button>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Backup & Restore</h4>
+                    <div class="settings-actions">
+                        <button class="control-btn" id="export-library-btn">Export Library</button>
+                        <input id="import-library-input" type="file" accept="application/json" class="hidden" />
+                        <button class="control-btn" id="import-library-btn">Import Library</button>
+                        <button class="control-btn" id="backup-export-btn">Export Full Backup</button>
+                        <input id="backup-import-input" type="file" accept="application/json" class="hidden" />
+                        <button class="control-btn" id="backup-import-btn">Import Backup</button>
+                        <div class="select-wrap">
+                            <label for="auto-backup-toggle">Auto Backup</label>
+                            <select id="auto-backup-toggle">
+                                <option value="off">Off</option>
+                                <option value="on">On</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Cloud Sync</h4>
+                    <div class="settings-actions">
+                        <div class="input-wrap">
+                            <label for="cloud-sync-id">Sync Key</label>
+                            <div class="input-inline">
+                                <input id="cloud-sync-id" type="text" />
+                                <button class="control-btn" id="copy-cloud-sync">Copy</button>
+                            </div>
+                        </div>
+                        <div class="select-wrap">
+                            <label for="cloud-sync-toggle">Cloud Sync</label>
+                            <select id="cloud-sync-toggle">
+                                <option value="off">Off</option>
+                                <option value="on">On</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="settings-actions">
+                        <button class="control-btn" id="cloud-sync-now">Sync Now</button>
+                        <button class="control-btn" id="cloud-sync-pull">Pull</button>
+                        <button class="control-btn" id="cloud-sync-push">Push</button>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Cloud Sync</h4>
+                    <div class="settings-actions">
+                        <button class="control-btn" id="sync-pull-btn">Pull from Server</button>
+                        <button class="control-btn" id="sync-push-btn">Push to Server</button>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Cache</h4>
+                    <div class="settings-actions">
+                        <button class="control-btn" id="clear-cache-btn">Clear Cache</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Source Status Modal -->
     <div id="source-status-modal" class="modal-overlay">
         <div class="modal-panel">
             <button class="modal-close" id="close-source-modal">
                 <i data-lucide="x" width="16"></i>
             </button>
-            <h2 class="modal-title">Source Status</h2>
-            <p class="modal-subtitle">Check availability of all sources</p>
+            <h2 class="modal-title">Sources</h2>
+            <p class="modal-subtitle">Manage favorites, hidden sources, and status</p>
             <div id="source-status-grid" class="source-status-grid">
                 <div class="loading-state">
                     <div class="spinner"></div>
