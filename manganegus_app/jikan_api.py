@@ -29,13 +29,15 @@ class JikanAPI:
             time.sleep(self._rate_limit_delay - elapsed)
         self._last_request_time = time.time()
 
-    def search_manga(self, query: str, limit: int = 10, filters: Optional[Dict] = None) -> List[Dict]:
+    def search_manga(self, query: str, limit: int = 10, filters: Optional[Dict] = None, sfw: bool = True) -> List[Dict]:
         """
         Search for manga by title.
 
         Args:
             query: Manga title to search for
             limit: Maximum number of results (default 10, max 25)
+            filters: Additional filter parameters
+            sfw: Filter out adult content (default True)
 
         Returns:
             List of manga objects with metadata
@@ -49,11 +51,23 @@ class JikanAPI:
                 'order_by': 'popularity',  # Sort by popularity for best matches
                 'type': 'manga'
             }
+
+            # SFW filter - enabled by default
+            if sfw:
+                params['sfw'] = 'true'
+
             if filters:
                 # Only include supported filter params
                 for key in ('status', 'type', 'order_by', 'sort', 'min_score', 'max_score', 'start_date', 'end_date', 'genres', 'genres_exclude'):
                     if filters.get(key) not in (None, ''):
                         params[key] = filters.get(key)
+                # Handle SFW filter specially - needs to be string 'true'/'false'
+                if 'sfw' in filters:
+                    sfw_val = filters.get('sfw')
+                    if sfw_val is True or sfw_val == 'true' or sfw_val == '1':
+                        params['sfw'] = 'true'
+                    elif sfw_val is False or sfw_val == 'false' or sfw_val == '0':
+                        params['sfw'] = 'false'
 
             resp = self.session.get(
                 f"{self.BASE_URL}/manga",
@@ -76,13 +90,14 @@ class JikanAPI:
             print(f"Jikan search error: {e}")
             return []
 
-    def get_top_manga(self, limit: int = 20, page: int = 1) -> List[Dict]:
+    def get_top_manga(self, limit: int = 20, page: int = 1, sfw: bool = True) -> List[Dict]:
         """
         Get top/popular manga from MyAnimeList.
 
         Args:
             limit: Maximum number of results (default 20, max 25)
             page: Page number for pagination
+            sfw: Filter out adult content (default True)
 
         Returns:
             List of top manga with metadata
@@ -95,6 +110,10 @@ class JikanAPI:
                 'page': page,
                 'type': 'manga'
             }
+
+            # SFW filter - enabled by default
+            if sfw:
+                params['sfw'] = 'true'
 
             resp = self.session.get(
                 f"{self.BASE_URL}/top/manga",
@@ -180,6 +199,43 @@ class JikanAPI:
         except Exception as e:
             print(f"Jikan get_manga error: {e}")
             return None
+
+    def get_recommendations(self, mal_id: int, limit: int = 8) -> List[Dict]:
+        """
+        Get manga recommendations based on a specific manga.
+        Uses MyAnimeList's user-generated recommendations.
+
+        Args:
+            mal_id: MyAnimeList manga ID to get recommendations for
+            limit: Maximum number of recommendations (default 8)
+
+        Returns:
+            List of recommended manga with metadata
+        """
+        self._rate_limit()
+
+        try:
+            resp = self.session.get(
+                f"{self.BASE_URL}/manga/{mal_id}/recommendations",
+                timeout=10
+            )
+
+            if resp.status_code != 200:
+                return []
+
+            data = resp.json()
+            results = []
+
+            for item in data.get('data', [])[:limit]:
+                entry = item.get('entry', {})
+                if entry:
+                    results.append(self._parse_manga(entry))
+
+            return results
+
+        except Exception as e:
+            print(f"Jikan recommendations error: {e}")
+            return []
 
     def _fetch_genre_map(self) -> Dict[str, int]:
         """Fetch and cache genre name -> id map."""
@@ -335,7 +391,7 @@ class JikanAPI:
 
         return enriched
 
-    def get_hidden_gems(self, limit: int = 20, page: int = 1) -> List[Dict]:
+    def get_hidden_gems(self, limit: int = 20, page: int = 1, sfw: bool = True) -> List[Dict]:
         """
         Get "hidden gems" - lesser-known but high-quality manga.
 
@@ -347,6 +403,7 @@ class JikanAPI:
         Args:
             limit: Maximum number of results
             page: Page number for variety
+            sfw: Filter out adult content (default True)
 
         Returns:
             List of manga that are quality but lesser-known
@@ -368,6 +425,10 @@ class JikanAPI:
                 'order_by': 'score',
                 'sort': 'desc'
             }
+
+            # SFW filter - enabled by default
+            if sfw:
+                params['sfw'] = 'true'
 
             resp = self.session.get(
                 f"{self.BASE_URL}/manga",
@@ -395,7 +456,7 @@ class JikanAPI:
             print(f"Jikan hidden gems error: {e}")
             return []
 
-    def get_blended_popular(self, limit: int = 20, page: int = 1) -> List[Dict]:
+    def get_blended_popular(self, limit: int = 20, page: int = 1, sfw: bool = True) -> List[Dict]:
         """
         Get a blend of trending (seasonal) and all-time popular manga.
 
@@ -404,6 +465,7 @@ class JikanAPI:
         Args:
             limit: Total number of results
             page: Page number
+            sfw: Filter out adult content (default True)
 
         Returns:
             Blended list of popular manga
@@ -413,8 +475,8 @@ class JikanAPI:
             popular_count = int(limit * 0.6)
             trending_count = limit - popular_count
 
-            # Get both feeds
-            popular = self.get_top_manga(limit=popular_count, page=page)
+            # Get both feeds (pass through SFW filter)
+            popular = self.get_top_manga(limit=popular_count, page=page, sfw=sfw)
             trending = self.get_seasonal_manga(limit=trending_count, page=page)
 
             # Merge and interleave for variety

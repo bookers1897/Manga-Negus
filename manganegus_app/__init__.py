@@ -53,10 +53,14 @@ def create_app():
         pass
 
     # =============================================================================
-    # LOGGING, CSRF, and OTHER EXTENSIONS
+    # LOGGING, CSRF, RATE LIMITING, and OTHER EXTENSIONS
     # =============================================================================
     from .log import log, msg_queue
     from .csrf import ensure_csrf_token, get_csrf_token
+    from .rate_limit import init_rate_limiting
+
+    # Initialize rate limiting (disable in debug if needed)
+    init_rate_limiting(app)
 
     @app.before_request
     def assign_request_id():

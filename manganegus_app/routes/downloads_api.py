@@ -3,15 +3,22 @@ from flask import Blueprint, jsonify, request, send_from_directory, abort
 from werkzeug.utils import secure_filename
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
+from manganegus_app.rate_limit import limit_download, limit_light
 from manganegus_app.extensions import downloader, DOWNLOAD_DIR
+from manganegus_app.celery_app import is_celery_available
 from .validators import validate_fields
 
 downloads_bp = Blueprint('downloads_api', __name__)
 
 @downloads_bp.route('/api/download', methods=['POST'])
 @csrf_protect
+@limit_download
 def start_download():
-    """Start downloading chapters."""
+    """Start downloading chapters.
+
+    When Celery/Redis is available, jobs are processed by distributed workers
+    and survive server restarts. Otherwise, falls back to threading.
+    """
     data = request.get_json(silent=True) or {}
     error = validate_fields(data, [
         ('chapters', list, None),
@@ -25,16 +32,43 @@ def start_download():
     title = data['title']
     manga_id = data.get('manga_id', '')
     start_immediately = data.get('start_immediately', True)
+    use_celery = data.get('use_celery', True)  # Allow override
+
     if not isinstance(start_immediately, bool):
         return jsonify({'error': 'start_immediately must be boolean'}), 400
     if len(chapters) > 500:
         return jsonify({'error': 'Too many chapters requested'}), 400
     if len(str(title)) > 200:
         return jsonify({'error': 'Title too long'}), 400
+
+    # Use Celery if available and not explicitly disabled
+    if use_celery and is_celery_available() and start_immediately:
+        from manganegus_app.tasks.downloads import download_chapters_task
+
+        # Submit task to Celery
+        result = download_chapters_task.delay(
+            source_id=source_id,
+            manga_id=manga_id,
+            manga_title=title,
+            chapters=chapters,
+            download_dir=DOWNLOAD_DIR
+        )
+
+        log(f"📥 Submitted Celery download job: {result.id} ({len(chapters)} chapters)")
+
+        return jsonify({
+            'status': 'started',
+            'job_id': result.id,
+            'backend': 'celery',
+            'message': f'Queued {len(chapters)} chapters for download'
+        })
+
+    # Fallback to threading-based downloader
     job_id = downloader.add_to_queue(chapters, title, source_id, manga_id, start_immediately)
     return jsonify({
         'status': 'started',
         'job_id': job_id,
+        'backend': 'threading',
         'message': 'Queued download' if start_immediately else 'Added to passive queue'
     })
 
@@ -173,3 +207,63 @@ def serve_download(filename: str):
         abort(404)
 
     return send_from_directory(DOWNLOAD_DIR, safe_filename)
+
+
+@downloads_bp.route('/api/download/celery/status/<task_id>', methods=['GET'])
+def get_celery_job_status(task_id: str):
+    """Get the status of a Celery download job.
+
+    Args:
+        task_id: Celery task ID returned from /api/download
+
+    Returns:
+        JSON with task state, progress, and result
+    """
+    if not is_celery_available():
+        return jsonify({
+            'error': 'Celery not available',
+            'message': 'This endpoint requires Celery/Redis to be configured'
+        }), 503
+
+    from celery.result import AsyncResult
+    from manganegus_app.celery_app import celery_app
+
+    result = AsyncResult(task_id, app=celery_app)
+
+    response = {
+        'task_id': task_id,
+        'state': result.state,
+        'ready': result.ready(),
+    }
+
+    if result.state == 'PROGRESS':
+        response['progress'] = result.info
+    elif result.ready():
+        if result.successful():
+            response['result'] = result.result
+        else:
+            response['error'] = str(result.result)
+
+    return jsonify(response)
+
+
+@downloads_bp.route('/api/download/backend', methods=['GET'])
+def get_download_backend():
+    """Get information about the download backend.
+
+    Returns which backend is active (celery or threading) and status.
+    """
+    celery_available = is_celery_available()
+
+    return jsonify({
+        'backend': 'celery' if celery_available else 'threading',
+        'celery_available': celery_available,
+        'threading_available': True,  # Always available as fallback
+        'features': {
+            'persistent_queue': celery_available,
+            'distributed_workers': celery_available,
+            'survives_restart': celery_available,
+            'progress_tracking': True,
+            'pause_resume': not celery_available,  # Only threading supports pause/resume currently
+        }
+    })

@@ -3,6 +3,7 @@
 
 # Core
 flask>=3.0.0
+flask-limiter>=3.5.0
 requests>=2.31.0
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
@@ -41,6 +42,10 @@ psycopg2-binary>=2.9.11
 sqlalchemy>=2.0.45
 pytest>=7.4.0
 alembic>=1.17.0
+
+# Background job queue (optional - requires Redis server)
+celery>=5.3.0
+redis>=5.0.0
 
 # For iOS Code App, you may need specific versions:
 # pip install markupsafe==2.1.3

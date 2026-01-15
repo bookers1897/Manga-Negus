@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, Response, render_template
 from manganegus_app.log import log, msg_queue
+from manganegus_app.rate_limit import limit_burst, limit_light
 import requests
 import queue
 import ipaddress
@@ -31,7 +32,20 @@ def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
             return False, 'Missing hostname'
 
         # Check domain whitelist FIRST (before DNS resolution)
-        if hostname not in allowed_domains:
+        # Support exact matches and wildcard suffix patterns (e.g., *.mangadex.network)
+        domain_allowed = False
+        for allowed in allowed_domains:
+            if allowed.startswith('*.'):
+                # Wildcard pattern: *.example.com matches sub.example.com
+                suffix = allowed[1:]  # Remove the * to get .example.com
+                if hostname.endswith(suffix) or hostname == allowed[2:]:
+                    domain_allowed = True
+                    break
+            elif hostname == allowed:
+                domain_allowed = True
+                break
+
+        if not domain_allowed:
             return False, f'Domain {hostname} not in whitelist'
 
         # DNS rebinding protection: Resolve hostname and block private IPs
@@ -83,6 +97,7 @@ def legacy():
     return render_template('legacy_v3.0/index.html')
 
 @main_bp.route('/api/proxy/image')
+@limit_burst
 def proxy_image():
     """
     Proxy external images to avoid CORS issues.
@@ -95,10 +110,19 @@ def proxy_image():
         return jsonify({'error': 'Missing url parameter'}), 400
 
     # Validate URL is from allowed domains (SSRF protection)
+    # Comprehensive whitelist covering ALL source connectors
     allowed_domains = [
-        # MangaDex
+        # MangaDex (including dynamic CDN subdomains)
         'uploads.mangadex.org',
         'mangadex.org',
+        'api.mangadex.org',
+        '*.mangadex.network',  # CDN for chapter images (dynamic subdomains)
+
+        # ComicK
+        'api.comick.io',
+        'comick.io',
+        'meo.comick.pictures',  # ComicK image CDN (CRITICAL)
+        '*.comick.pictures',    # Wildcard for ComicK CDN variants
 
         # MyAnimeList CDN (Jikan covers)
         'cdn.myanimelist.net',
@@ -111,43 +135,110 @@ def proxy_image():
         'www.planeptune.us',
         'weebcentral.com',
         'www.weebcentral.com',
+        'scans.lastation.us',    # Added to fix blank images
+        '*.lastation.us',        # Wildcard for Lastation CDNs
 
-        # MangaNato / MangaKakalot
+        # MangaNato / MangaKakalot (all variants and mirrors)
         'cover.nep.li',
         'avt.mkklcdnv6temp.com',
         'mangakakalot.com',
+        'mangakakalot.gg',      # Updated domain (Jan 2026)
         'chapmanganato.com',
+        'chapmanganato.to',     # Mirror domain
+        'manganato.com',
         'v1.mkklcdnv6tempv5.com',
         'v2.mkklcdnv6tempv5.com',
+        '*.mkklcdnv6tempv5.com', # Wildcard for CDN variants
 
         # MangaSee / Manga4Life
         'official-ongoing-1.ivalice.us',
         'official-ongoing-2.ivalice.us',
         'official-complete-1.ivalice.us',
         'official-complete-2.ivalice.us',
-        'temp.compsci88.com',
+        'official-ongoing.ivalice.us',
+        'official-complete.ivalice.us',
+        '*.ivalice.us',         # Wildcard for all ivalice CDNs
+        'manga4life.com',
 
         # MangaFire
         'mangafire.to',
         'cdn.mangafire.to',
+        '*.mangafire.to',       # Wildcard for MangaFire CDNs
 
         # AsuraScans
         'asurascans.com',
         'cdn.asurascans.com',
+        '*.asurascans.com',     # Wildcard for AsuraScans CDNs
 
-        # Other sources
-        'fanfox.net',
+        # FlameScans
+        'flamescans.org',
+        '*.flamescans.org',
+
+        # ReaperScans
+        'reaperscans.com',
+        '*.reaperscans.com',
+
+        # TCB Scans
+        'tcbscans.me',
+        '*.tcbscans.me',
+
+        # MangaReader
+        'mangareader.to',
+        '*.mangareader.to',
+
+        # MangaPark
+        'mangapark.net',
+        '*.mangapark.net',
+
+        # MangaBuddy
+        'mangabuddy.com',
+        '*.mangabuddy.com',
+
+        # MangaFreak
+        'mangafreak.net',
+        '*.mangafreak.net',
+
+        # MangaKatana
+        'mangakatana.com',
+        '*.mangakatana.com',
+
+        # ComicX
+        'comicx.to',
+        '*.comicx.to',
+
+        # MangaHere / Fanfox
         'mangahere.cc',
+        'www.mangahere.cc',
+        'fanfox.net',
+        '*.fanfox.net',
+
+        # Anna's Archive and Shadow Libraries
+        'annas-archive.org',
+        '*.annas-archive.org',
+        'libgen.rs',
+        'libgen.st',
+        'libgen.is',
+        'libgen.lc',
+
+        # IPFS Gateway (used by LibGen mirrors)
+        'cloudflare-ipfs.com',
+        '*.cloudflare-ipfs.com',
+
+        # MangaBuddy CDN variants
         's1.mbcdnv1.xyz',
         's1.mbcdnv2.xyz',
         's1.mbcdnv3.xyz',
         's1.mbcdnv4.xyz',
         's1.mbcdnv5.xyz',
+        '*.mbcdnv1.xyz',
+        '*.mbcdnv2.xyz',
+        '*.mbcdnv3.xyz',
+        '*.mbcdnv4.xyz',
+        '*.mbcdnv5.xyz',
 
-        # Common manga CDNs
-        'manga4life.com',
-        'official-ongoing.ivalice.us',
-        'official-complete.ivalice.us',
+        # Imgur (for gallery-dl sources)
+        'i.imgur.com',
+        'imgur.com',
     ]
 
     # SECURITY: Validate URL to prevent SSRF attacks
@@ -165,7 +256,6 @@ def proxy_image():
         if resp.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), resp.status_code
 
-        content_type = resp.headers.get('Content-Type', 'image/jpeg')
         img_bytes = resp.content
 
         fmt = (request.args.get('format') or '').lower().strip()
@@ -177,8 +267,17 @@ def proxy_image():
             from io import BytesIO
             from PIL import Image
 
-            if fmt or width or height:
-                image = Image.open(BytesIO(img_bytes))
+            # Always open with Pillow to detect actual format (servers often lie about Content-Type)
+            image = Image.open(BytesIO(img_bytes))
+            actual_format = image.format or 'JPEG'
+
+            # Determine output format
+            save_format = fmt.upper() if fmt else actual_format
+
+            # Check if we need to process the image
+            needs_processing = fmt or width or height or quality
+
+            if needs_processing:
                 if width or height:
                     try:
                         w = int(width) if width else None
@@ -189,7 +288,6 @@ def proxy_image():
                         image.thumbnail((w or image.width, h or image.height), Image.LANCZOS)
 
                 out = BytesIO()
-                save_format = fmt.upper() if fmt else image.format or 'JPEG'
                 save_kwargs = {}
                 if quality:
                     try:
@@ -198,12 +296,20 @@ def proxy_image():
                         pass
                 if save_format == 'WEBP':
                     save_kwargs.setdefault('method', 6)
+                # Convert RGBA to RGB for JPEG format
+                if save_format == 'JPEG' and image.mode in ('RGBA', 'P'):
+                    image = image.convert('RGB')
                 image.save(out, format=save_format, optimize=True, **save_kwargs)
                 img_bytes = out.getvalue()
-                content_type = f"image/{save_format.lower()}"
+
+            content_type = f"image/{save_format.lower()}"
         except ImportError:
-            # Pillow not installed; skip optimization
-            pass
+            # Pillow not installed; use server's Content-Type
+            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+        except Exception as e:
+            # If Pillow fails to process, return original with detected or server Content-Type
+            log(f"⚠️ Image processing error: {e}")
+            content_type = resp.headers.get('Content-Type', 'image/jpeg')
 
         return Response(
             img_bytes,

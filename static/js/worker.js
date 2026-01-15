@@ -1,14 +1,117 @@
 // Web Worker for Heavy Filtering Computations
 // Offloads filtering logic from main thread to prevent UI freezing
 
-self.onmessage = function(e) {
-    const { list, filters, hiddenManga, searchQuery } = e.data;
-    if (!list || !Array.isArray(list)) {
-        self.postMessage([]);
-        return;
-    }
+// Helper: Get collections for entry (replicated from main.js logic)
+function getCollectionsForEntry(entry) {
+    const tags = [];
+    if (entry.status) tags.push(entry.status);
+    if (entry.source) tags.push(entry.source);
+    // Add custom collections if present in metadata (future proofing)
+    return tags;
+}
 
-    const f = filters;
+self.onmessage = function(e) {
+    const { id, type } = e.data;
+    
+    try {
+        let result = [];
+        
+        if (type === 'filterLibrary') {
+            result = processLibraryFilter(e.data);
+        } else {
+            // Default to generic list filtering
+            result = processListFilter(e.data);
+        }
+        
+        self.postMessage({ id, result });
+    } catch (err) {
+        self.postMessage({ id, error: err.message });
+    }
+};
+
+function processLibraryFilter({ library, filter, smartFilter, collectionFilter, sort }) {
+    if (!library || !Array.isArray(library)) return [];
+    
+    // 1. Status Filter
+    let filtered = filter === 'all' 
+        ? library 
+        : library.filter(item => item.status === filter);
+        
+    // 2. Smart Filter
+    if (smartFilter) {
+        const now = Date.now();
+        switch (smartFilter) {
+            case 'unread_updates':
+                filtered = filtered.filter(item => {
+                    const total = parseFloat(item.total_chapters || 0);
+                    const last = parseFloat(item.last_chapter || 0);
+                    return !Number.isNaN(total) && !Number.isNaN(last) && total > last;
+                });
+                break;
+            case 'completed_unfinished':
+                filtered = filtered.filter(item => {
+                    const total = parseFloat(item.total_chapters || 0);
+                    const last = parseFloat(item.last_chapter || 0);
+                    return item.status === 'completed' && !Number.isNaN(total) && !Number.isNaN(last) && total > last;
+                });
+                break;
+            case 'abandoned':
+                filtered = filtered.filter(item => {
+                    if (item.status !== 'plan_to_read') return false;
+                    const addedAt = Date.parse(item.added_at || '');
+                    if (Number.isNaN(addedAt)) return false;
+                    return (now - addedAt) > 30 * 24 * 60 * 60 * 1000;
+                });
+                break;
+        }
+    }
+    
+    // 3. Collection Filter
+    if (collectionFilter) {
+        filtered = filtered.filter(item => {
+            const collections = getCollectionsForEntry(item).map(tag => tag.toLowerCase());
+            return collections.includes(collectionFilter);
+        });
+    }
+    
+    // 4. Sort
+    filtered.sort((a, b) => {
+        switch (sort) {
+            case 'title_asc':
+                return String(a.title || '').localeCompare(String(b.title || ''));
+            case 'title_desc':
+                return String(b.title || '').localeCompare(String(a.title || ''));
+            case 'last_read': {
+                const aTime = Date.parse(a.last_read_at || '') || 0;
+                const bTime = Date.parse(b.last_read_at || '') || 0;
+                return bTime - aTime;
+            }
+            case 'rating_desc': {
+                const aRating = a.rating?.average || a.score || 0;
+                const bRating = b.rating?.average || b.score || 0;
+                return bRating - aRating;
+            }
+            case 'rating_asc': {
+                const aRating = a.rating?.average || a.score || 0;
+                const bRating = b.rating?.average || b.score || 0;
+                return aRating - bRating;
+            }
+            case 'recent':
+            default: {
+                const aTime = Date.parse(a.added_at || '') || 0;
+                const bTime = Date.parse(b.added_at || '') || 0;
+                return bTime - aTime;
+            }
+        }
+    });
+    
+    return filtered;
+}
+
+function processListFilter({ list, filters, hiddenManga }) {
+    if (!list || !Array.isArray(list)) return [];
+
+    const f = filters || {};
     const hiddenSet = new Set(hiddenManga || []);
     let results = [...list];
 
@@ -20,7 +123,7 @@ self.onmessage = function(e) {
         const id = item.mal_id || item.id || item.manga_id;
         const src = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
         if (id && src && isHidden(id, src)) return false;
-        if (f.source && searchQuery && src !== f.source) return false;
+        if (f.source && src !== f.source) return false;
         return true;
     });
 
@@ -60,5 +163,5 @@ self.onmessage = function(e) {
         return (valA - valB) * ord;
     });
 
-    self.postMessage(results);
-};
+    return results;
+}

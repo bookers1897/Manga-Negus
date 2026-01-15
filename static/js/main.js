@@ -1,10 +1,12 @@
 // MangaNegus Redesign - Main Application
 // Integrates with existing Flask backend APIs
 
+import { Storage } from './storage.js';
+
 // ========================================
 // Debug Mode
 // ========================================
-const DEBUG_MODE = true; // Set to false in production
+const DEBUG_MODE = false; // Set to true for development debugging
 
 // ========================================
 // State Management
@@ -112,6 +114,7 @@ const state = {
     readerSessionStart: null,
     readerSessionPageStart: 0,
     readerScrollRaf: null,
+    readerPreviousScrollY: 0, // Save scroll position when entering reader
     progressSaveTimer: null,
     prefetchedChapterId: null,
     prefetchedChapterTitle: null,
@@ -182,13 +185,86 @@ function debounce(func, wait) {
 
 // Initialize Web Worker for heavy filtering operations
 const filterWorker = new Worker('/static/js/worker.js');
-let filterResolve = null;
+const workerCallbacks = new Map();
 
 filterWorker.onmessage = (e) => {
-    if (filterResolve) filterResolve(e.data);
+    const { id, result, error } = e.data;
+    if (workerCallbacks.has(id)) {
+        const { resolve, reject } = workerCallbacks.get(id);
+        workerCallbacks.delete(id);
+        if (error) reject(new Error(error));
+        else resolve(result);
+    }
 };
 
+function runFilterTask(taskType, payload) {
+    return new Promise((resolve, reject) => {
+        const id = Date.now() + Math.random();
+        workerCallbacks.set(id, { resolve, reject });
+        filterWorker.postMessage({ id, type: taskType, ...payload });
+    });
+}
+
 const PLACEHOLDER_COVER = '/static/images/placeholder.png';
+
+// ========================================
+// Performance: Chunked Rendering
+// ========================================
+// Threshold for using chunked rendering (items count)
+const CHUNKED_RENDER_THRESHOLD = 100;
+const CHUNK_SIZE = 50;  // Items per frame
+
+/**
+ * Render items in chunks using requestAnimationFrame to avoid blocking UI.
+ * Only used for large datasets (>100 items).
+ */
+async function renderChunked(items, container, renderFn, options = {}) {
+    const { onProgress, onComplete, chunkSize = CHUNK_SIZE } = options;
+    const total = items.length;
+    let rendered = 0;
+
+    // Clear container
+    container.innerHTML = '';
+
+    // Create document fragment for batch insertion
+    const fragment = document.createDocumentFragment();
+
+    return new Promise((resolve) => {
+        function renderChunk() {
+            const chunkEnd = Math.min(rendered + chunkSize, total);
+
+            for (let i = rendered; i < chunkEnd; i++) {
+                const html = renderFn(items[i], i);
+                const temp = document.createElement('div');
+                temp.innerHTML = html;
+                fragment.appendChild(temp.firstElementChild);
+            }
+
+            // Append chunk to container
+            container.appendChild(fragment);
+
+            rendered = chunkEnd;
+
+            if (onProgress) {
+                onProgress(rendered, total);
+            }
+
+            if (rendered < total) {
+                // Schedule next chunk
+                requestAnimationFrame(renderChunk);
+            } else {
+                // Done rendering
+                if (onComplete) {
+                    onComplete();
+                }
+                resolve();
+            }
+        }
+
+        // Start rendering
+        requestAnimationFrame(renderChunk);
+    });
+}
 const COVER_PROXY_HOSTS = new Set([
     'cdn.myanimelist.net',
     'uploads.mangadex.org',
@@ -303,38 +379,76 @@ function saveFeedCache() {
     }
 }
 
-function loadCachedLibrary() {
+/**
+ * Load cached library from IndexedDB (async).
+ * Falls back to localStorage if IndexedDB unavailable.
+ */
+async function loadCachedLibrary() {
     try {
-        const raw = localStorage.getItem(LIBRARY_CACHE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
+        const library = await Storage.getLibrary();
+        return library && library.length > 0 ? library : null;
+    } catch (error) {
+        console.warn('[Storage] Failed to load library from IndexedDB, falling back to localStorage:', error);
+        try {
+            const raw = localStorage.getItem(LIBRARY_CACHE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
     }
 }
 
+/**
+ * Save library to IndexedDB (async).
+ * Non-blocking - doesn't wait for completion.
+ */
 function saveCachedLibrary() {
+    // Use async but don't await - fire and forget for better UX
+    Storage.setLibrary(state.library || []).catch(error => {
+        console.warn('[Storage] Failed to save library to IndexedDB:', error);
+        // Fallback to localStorage
+        try {
+            localStorage.setItem(LIBRARY_CACHE_KEY, JSON.stringify(state.library || []));
+        } catch {
+            // Ignore
+        }
+    });
+}
+
+/**
+ * Load cached history from IndexedDB (async).
+ * Falls back to localStorage if IndexedDB unavailable.
+ */
+async function loadCachedHistory() {
     try {
-        localStorage.setItem(LIBRARY_CACHE_KEY, JSON.stringify(state.library || []));
-    } catch {
-        // Ignore
+        const history = await Storage.getHistory();
+        return history && history.length > 0 ? history : null;
+    } catch (error) {
+        console.warn('[Storage] Failed to load history from IndexedDB, falling back to localStorage:', error);
+        try {
+            const raw = localStorage.getItem(HISTORY_CACHE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
+        }
     }
 }
 
-function loadCachedHistory() {
-    try {
-        const raw = localStorage.getItem(HISTORY_CACHE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
-}
-
+/**
+ * Save history to IndexedDB (async).
+ * Non-blocking - doesn't wait for completion.
+ */
 function saveCachedHistory() {
-    try {
-        localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(state.history || []));
-    } catch {
-        // Ignore
-    }
+    // Use async but don't await - fire and forget for better UX
+    Storage.setHistory(state.history || []).catch(error => {
+        console.warn('[Storage] Failed to save history to IndexedDB:', error);
+        // Fallback to localStorage
+        try {
+            localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(state.history || []));
+        } catch {
+            // Ignore
+        }
+    });
 }
 
 function loadOfflineQueue() {
@@ -543,6 +657,21 @@ const API = {
         return Array.isArray(data) ? data : [];
     },
 
+    async getRecommendations(malId, limit = 8) {
+        if (!malId) return [];
+        const cacheKey = `recommendations:${malId}`;
+        const cached = getCacheValue(cacheKey);
+        if (cached) return cached;
+        const data = await this.request(`/api/recommendations/${malId}?limit=${limit}`, {
+            silent: true,
+            retries: 1,
+            retryDelay: 300
+        });
+        const results = Array.isArray(data) ? data : [];
+        setCacheValue(cacheKey, results, 30 * 60 * 1000); // Cache for 30 mins
+        return results;
+    },
+
     async getLatestFeed(sourceId = '', page = 1) {
         const url = `/api/latest_feed?page=${page}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`;
         const data = await this.request(url);
@@ -608,8 +737,9 @@ const API = {
             body: JSON.stringify({ chapter_id: chapterId, source })
         });
         console.log('[API DEBUG] chapter_pages response:', data);
-        const pages = data.pages || [];
-        console.log('[API DEBUG] Extracted pages:', pages);
+        // Use pages_data (with referer info) if available, fallback to pages (strings only)
+        const pages = data.pages_data || data.pages || [];
+        console.log('[API DEBUG] Extracted pages:', pages.length, 'items, hasReferer:', !!(pages[0]?.referer));
         return pages;
     },
 
@@ -813,6 +943,56 @@ function log(message) {
     line.style.marginBottom = '4px';
     els.consoleContent.appendChild(line);
     els.consoleContent.scrollTop = els.consoleContent.scrollHeight;
+}
+
+/**
+ * Show a custom confirm modal (replacement for native confirm())
+ * @param {string} title - Modal title
+ * @param {string} message - Modal message
+ * @param {string} confirmText - Text for confirm button (default: 'Confirm')
+ * @returns {Promise<boolean>} - Resolves true if confirmed, false if cancelled
+ */
+function showConfirmModal(title, message, confirmText = 'Confirm') {
+    return new Promise((resolve) => {
+        if (!els.confirmModal) {
+            // Fallback to native confirm if modal elements don't exist
+            resolve(confirm(message));
+            return;
+        }
+
+        els.confirmTitle.textContent = title;
+        els.confirmMessage.textContent = message;
+        els.confirmOkBtn.textContent = confirmText;
+        els.confirmModal.classList.add('active');
+
+        const cleanup = () => {
+            els.confirmModal.classList.remove('active');
+            els.confirmOkBtn.removeEventListener('click', handleConfirm);
+            els.confirmCancelBtn.removeEventListener('click', handleCancel);
+            els.confirmModal.removeEventListener('click', handleOverlayClick);
+        };
+
+        const handleConfirm = () => {
+            cleanup();
+            resolve(true);
+        };
+
+        const handleCancel = () => {
+            cleanup();
+            resolve(false);
+        };
+
+        const handleOverlayClick = (e) => {
+            if (e.target === els.confirmModal) {
+                cleanup();
+                resolve(false);
+            }
+        };
+
+        els.confirmOkBtn.addEventListener('click', handleConfirm);
+        els.confirmCancelBtn.addEventListener('click', handleCancel);
+        els.confirmModal.addEventListener('click', handleOverlayClick);
+    });
 }
 
 // ========================================
@@ -1142,6 +1322,14 @@ window.removeQueueItem = removeQueueItem;
 // Sidebar & Navigation
 // ========================================
 function toggleSidebar() {
+    // Safety: If reader-active is on body but reader is not actually active,
+    // remove it (handles edge case where reader closed unexpectedly)
+    if (document.body.classList.contains('reader-active') &&
+        !els.readerContainer.classList.contains('active')) {
+        console.log('[DEBUG] toggleSidebar - cleaning up orphaned reader-active class');
+        document.body.classList.remove('reader-active');
+    }
+
     // Check actual DOM state, not state variable
     const isOpen = els.sidebar.classList.contains('is-open');
     console.log('[DEBUG] toggleSidebar - isOpen:', isOpen);
@@ -1368,15 +1556,19 @@ function setSource(sourceId) {
         return;
     }
     state.currentSource = sourceId;
+    state.filters.source = sourceId;
     try {
         localStorage.setItem('manganegus.currentSource', sourceId);
     } catch {
         // Ignore
     }
     renderSources();
-    if (state.activeView === 'discover' && !state.searchQuery) {
-        loadPopular();
+    saveFilters();
+    updateFilterButtonState();
+    if (els.filterSource) {
+        els.filterSource.value = state.filters.source || '';
     }
+    reloadActiveView();
     showToast(`Source: ${state.sources.find(s => s.id === sourceId)?.name || sourceId}`);
 }
 
@@ -1481,7 +1673,11 @@ function setView(viewId) {
             els.discoverView.classList.remove('hidden');
             els.discoverTitle.textContent = 'Discover';
             state.viewPages.discover = state.viewPages.discover || 1;
-            if (!state.searchQuery) loadDiscover(state.viewPages.discover);
+            if (!state.searchQuery) {
+                loadDiscover(state.viewPages.discover);
+            } else {
+                setupLazyImages(els.discoverGrid);
+            }
             break;
         case 'trending':
             els.discoverView.classList.remove('hidden');
@@ -1633,9 +1829,9 @@ function applyFiltersToList(list) {
         return !isHiddenManga(mangaId, sourceId);
     });
 
-    if (f.source && state.searchQuery) {
+    if (f.source) {
         results = results.filter(item => {
-            const sourceId = item.source || item.source_id;
+            const sourceId = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
             return sourceId ? sourceId === f.source : false;
         });
     }
@@ -2375,7 +2571,7 @@ async function loadHistory() {
 
     try {
         if (!navigator.onLine) {
-            const cached = loadCachedHistory();
+            const cached = await loadCachedHistory();
             if (cached) {
                 state.history = cached;
                 renderHistorySummary(cached);
@@ -2794,48 +2990,62 @@ function sortLibraryItems(items) {
     return sorted;
 }
 
-function renderLibraryFromState() {
-    let filteredLibrary = state.activeFilter === 'all'
-        ? state.library
-        : state.library.filter(item => item.status === state.activeFilter);
-    filteredLibrary = applyLibrarySmartFilter(filteredLibrary);
-    if (state.collectionFilter) {
-        filteredLibrary = filteredLibrary.filter(item => {
-            const collections = getCollectionsForEntry(item).map(tag => tag.toLowerCase());
-            return collections.includes(state.collectionFilter);
+async function renderLibraryFromState() {
+    // Show loading if library is large
+    if (state.library.length > 500) {
+        els.libraryGrid.innerHTML = `
+            <div class="loading-state">
+                <div class="spinner"></div>
+                <span class="loading-text">Filtering library...</span>
+            </div>
+        `;
+    }
+
+    try {
+        const filteredLibrary = await runFilterTask('filterLibrary', {
+            library: state.library,
+            filter: state.activeFilter,
+            smartFilter: state.smartFilter,
+            collectionFilter: state.collectionFilter,
+            sort: state.librarySort || 'recent'
         });
+
+        els.libraryCount.textContent = `// ${filteredLibrary.length} ENTRIES`;
+
+        if (filteredLibrary.length === 0) {
+            els.libraryGrid.classList.add('hidden');
+            els.libraryEmpty.classList.remove('hidden');
+            return;
+        }
+
+        // Convert library format to manga format for rendering
+        const mangaItems = filteredLibrary.map(item => ({
+            key: item.key,
+            id: item.manga_id,
+            mal_id: item.mal_id,
+            source: item.source,
+            title: item.title,
+            cover_url: item.cover,
+            author: item.author || 'Unknown',
+            genres: item.genres || [],
+            tags: item.tags || [],
+            status: item.status,
+            last_chapter: item.last_chapter,
+            last_chapter_id: item.last_chapter_id,
+            last_page: item.last_page,
+            total_chapters: item.total_chapters,
+            last_read_at: item.last_read_at,
+            added_at: item.added_at
+        }));
+
+        els.libraryEmpty.classList.add('hidden');
+        els.libraryGrid.classList.remove('hidden');
+        renderMangaGrid(mangaItems, els.libraryGrid, els.libraryEmpty);
+        
+    } catch (error) {
+        console.error('Library filtering failed:', error);
+        els.libraryGrid.innerHTML = `<div class="error-message">Failed to load library: ${error.message}</div>`;
     }
-    filteredLibrary = sortLibraryItems(filteredLibrary);
-
-    els.libraryCount.textContent = `// ${filteredLibrary.length} ENTRIES`;
-
-    if (filteredLibrary.length === 0) {
-        els.libraryGrid.classList.add('hidden');
-        els.libraryEmpty.classList.remove('hidden');
-        return;
-    }
-
-    // Convert library format to manga format for rendering
-    const mangaItems = filteredLibrary.map(item => ({
-        key: item.key,
-        id: item.manga_id,
-        mal_id: item.mal_id,
-        source: item.source,
-        title: item.title,
-        cover_url: item.cover,
-        author: item.author || 'Unknown',
-        genres: item.genres || [],
-        tags: item.tags || [],
-        status: item.status,
-        last_chapter: item.last_chapter,
-        last_chapter_id: item.last_chapter_id,
-        last_page: item.last_page,
-        total_chapters: item.total_chapters,
-        last_read_at: item.last_read_at,
-        added_at: item.added_at
-    }));
-
-    renderMangaGrid(mangaItems, els.libraryGrid, els.libraryEmpty);
 }
 
 function populateCollectionFilterOptions() {
@@ -3584,7 +3794,7 @@ async function loadLibrary() {
 
     try {
         if (!navigator.onLine) {
-            const cached = loadCachedLibrary();
+            const cached = await loadCachedLibrary();
             if (cached) {
                 state.library = cached;
                 renderLibraryFromState();
@@ -3966,7 +4176,171 @@ function prefetchCoverImages(items, limit = 8) {
     }
 }
 
-function renderMangaGrid(manga, gridEl, emptyEl) {
+/**
+ * Generate HTML for a single manga card.
+ * Extracted to enable chunked rendering for large datasets.
+ */
+function generateCardHtml(item) {
+    // For Jikan manga, use mal_id as the ID and 'jikan' as pseudo-source
+    const mangaId = item.mal_id || item.id || item.manga_id || `item-${Math.random().toString(36).slice(2)}`;
+    const source = item.mal_id ? 'jikan' : (item.source || 'unknown');
+    const isLibraryView = state.activeView === 'library';
+    const libraryKey = item.key || (source && mangaId ? `${source}:${mangaId}` : '');
+
+    const inLibrary = isInLibrary(mangaId, source);
+    const isFavorite = isFavoriteManga(mangaId, source);
+    const coverUrl = getCoverUrlsForItem(item).display;
+    const status = item.status || 'reading';
+    const statusLabel = isLibraryView ? (STATUS_LABELS[status] || 'Reading') : '';
+    const statusIconMap = {
+        reading: 'eye',
+        completed: 'check-circle',
+        plan_to_read: 'bookmark',
+        on_hold: 'pause-circle',
+        dropped: 'x-circle'
+    };
+    const statusIcon = isLibraryView ? statusIconMap[status] : null;
+    let collectionsHtml = '';
+    if (isLibraryView) {
+        try {
+            const stored = localStorage.getItem(getCollectionsStorageKey(mangaId, source));
+            const collections = stored ? JSON.parse(stored) : [];
+            if (Array.isArray(collections) && collections.length) {
+                collectionsHtml = `
+                    <div class="collection-tags">
+                        ${collections.slice(0, 3).map(tag => `<span class="collection-tag">${escapeHtml(tag)}</span>`).join('')}
+                    </div>
+                `;
+            }
+        } catch {
+            // Ignore
+        }
+    }
+
+    // Use actual data from API
+    const scoreValue = item.rating?.average ?? item.score;
+    const scoreNumber = Number(scoreValue);
+    const scoreLabel = Number.isFinite(scoreNumber) ? scoreNumber.toFixed(1) : '-';
+    const ratingCount = Number(item.rating?.count);
+    const viewsLabel = Number.isFinite(ratingCount) && ratingCount > 0
+        ? `${(ratingCount / 1000).toFixed(0)}k`
+        : '-';
+    const userRating = isLibraryView ? getLocalRating(mangaId, source) : null;
+    const author = item.author || 'Unknown Author';
+    const tags = item.tags || item.genres || ['Manga'];
+    const tag = Array.isArray(tags) ? tags[0] : tags;
+    const coverMarkup = coverUrl
+        ? `<img src="${PLACEHOLDER_COVER}" data-src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async" width="220" height="300" class="card-image lazy-image" onload="if (this.dataset.srcLoaded === '1') { this.classList.add('loaded'); }" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />`
+        : '<i data-lucide="book-open" width="48" height="48"></i>';
+
+    let progressHtml = '';
+    let notificationHtml = '';
+    if (isLibraryView) {
+        const notifications = [];
+        const addedAt = item.added_at || item.addedAt;
+        if (addedAt) {
+            const addedMs = Date.parse(addedAt);
+            if (!Number.isNaN(addedMs) && (Date.now() - addedMs) < 7 * 24 * 60 * 60 * 1000) {
+                notifications.push({ label: 'New', className: 'new' });
+            }
+        }
+
+        const totalCh = parseFloat(item.total_chapters || item.chapters || 0);
+        const lastCh = parseFloat(item.last_chapter || 0);
+        if (!Number.isNaN(totalCh) && !Number.isNaN(lastCh) && totalCh > lastCh) {
+            const diff = Math.max(0, Math.round(totalCh - lastCh));
+            notifications.push({ label: diff > 0 ? `${diff} new` : 'Updated', className: 'updated' });
+        }
+
+        if (status === 'completed') {
+            notifications.push({ label: 'Completed', className: 'completed' });
+        }
+
+        if (notifications.length) {
+            notificationHtml = `
+                <div class="card-notifications">
+                    ${notifications.map(n => `<span class="notification-badge ${n.className}">${escapeHtml(n.label)}</span>`).join('')}
+                </div>
+            `;
+        }
+    }
+    if (isLibraryView && item.total_chapters && item.last_chapter) {
+        const total = parseFloat(item.total_chapters);
+        const current = parseFloat(item.last_chapter);
+        if (!Number.isNaN(total) && total > 0 && !Number.isNaN(current)) {
+            const percent = Math.min(100, Math.max(0, (current / total) * 100));
+            const pageTotal = getPageTotal(libraryKey);
+            const pageProgress = pageTotal && item.last_page
+                ? ` · Page ${escapeHtml(String(item.last_page))}/${escapeHtml(String(pageTotal))}`
+                : (item.last_page ? ` · Page ${escapeHtml(String(item.last_page))}` : '');
+            progressHtml = `
+                <div class="progress-wrap">
+                    <div class="progress-bar" style="width: ${percent.toFixed(0)}%"></div>
+                    <span class="progress-text">Ch ${escapeHtml(String(item.last_chapter))} / ${escapeHtml(String(item.total_chapters))} · ${percent.toFixed(0)}%${pageProgress}</span>
+                </div>
+            `;
+        }
+    }
+    const statusHtml = isLibraryView && statusLabel
+        ? `<div class="status-row">${statusIcon ? `<i data-lucide="${statusIcon}"></i>` : ''}<span class="status-pill status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></div>`
+        : '';
+
+    return `
+        <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}" data-library-key="${escapeHtml(libraryKey)}">
+            ${state.selectionMode && isLibraryView ? `
+                <div class="card-selection-overlay">
+                    <input type="checkbox" class="card-checkbox" ${state.selectedCards.has(libraryKey) ? 'checked' : ''} />
+                </div>
+            ` : ''}
+            <div class="card-cover">
+                ${coverMarkup}
+                <div class="card-overlay">
+                    <button class="read-btn">Read</button>
+                </div>
+                <div class="card-badges">
+                    <span class="badge-score"><i data-lucide="flame"></i> ${escapeHtml(String(scoreLabel))}</span>
+                    ${userRating ? `<span class="badge-user-rating"><i data-lucide="star"></i> ${escapeHtml(String(userRating))}</span>` : ''}
+                    ${isLibraryView ? `
+                        <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-action="favorite" aria-label="Toggle favorite">
+                            <i data-lucide="star" width="16" height="16" ${isFavorite ? 'fill="currentColor"' : 'fill="none"'}></i>
+                        </button>
+                    ` : ''}
+                    ${!isLibraryView ? `
+                        <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
+                            <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
+                        </button>
+                    ` : ''}
+                    <button class="card-menu-btn"
+                            data-action="menu"
+                            aria-label="Open menu"
+                            aria-haspopup="true"
+                            aria-expanded="false">
+                        <i data-lucide="more-vertical" width="16" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-info">
+                <div>
+                    <h3 class="card-title">${escapeHtml(item.title)}</h3>
+                    <p class="card-author">${escapeHtml(author)}</p>
+                </div>
+                ${statusHtml}
+                ${notificationHtml}
+                ${collectionsHtml}
+                <div class="card-footer">
+                    <span class="tag">${escapeHtml(tag)}</span>
+                    <span class="views">${escapeHtml(String(viewsLabel))}</span>
+                </div>
+                ${progressHtml}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render manga grid - uses chunked rendering for large datasets to avoid blocking UI.
+ */
+async function renderMangaGrid(manga, gridEl, emptyEl) {
     if (manga.length === 0) {
         gridEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
@@ -3975,163 +4349,24 @@ function renderMangaGrid(manga, gridEl, emptyEl) {
 
     emptyEl.classList.add('hidden');
     gridEl.classList.remove('hidden');
-    gridEl.innerHTML = manga.map(item => {
-        // For Jikan manga, use mal_id as the ID and 'jikan' as pseudo-source
-        const mangaId = item.mal_id || item.id || item.manga_id || `item-${Math.random().toString(36).slice(2)}`;
-        const source = item.mal_id ? 'jikan' : (item.source || 'unknown');
-        const isLibraryView = state.activeView === 'library';
-        const libraryKey = item.key || (source && mangaId ? `${source}:${mangaId}` : '');
 
-        const inLibrary = isInLibrary(mangaId, source);
-        const isFavorite = isFavoriteManga(mangaId, source);
-        const coverUrl = getCoverUrlsForItem(item).display;
-        const status = item.status || 'reading';
-        const statusLabel = isLibraryView ? (STATUS_LABELS[status] || 'Reading') : '';
-        const statusIconMap = {
-            reading: 'eye',
-            completed: 'check-circle',
-            plan_to_read: 'bookmark',
-            on_hold: 'pause-circle',
-            dropped: 'x-circle'
-        };
-        const statusIcon = isLibraryView ? statusIconMap[status] : null;
-        let collectionsHtml = '';
-        if (isLibraryView) {
-            try {
-                const stored = localStorage.getItem(getCollectionsStorageKey(mangaId, source));
-                const collections = stored ? JSON.parse(stored) : [];
-                if (Array.isArray(collections) && collections.length) {
-                    collectionsHtml = `
-                        <div class="collection-tags">
-                            ${collections.slice(0, 3).map(tag => `<span class="collection-tag">${escapeHtml(tag)}</span>`).join('')}
-                        </div>
-                    `;
-                }
-            } catch {
-                // Ignore
-            }
-        }
-
-        // Use actual data from API
-        const score = item.rating?.average || item.score || (8.0 + Math.random() * 2).toFixed(1);
-        const userRating = isLibraryView ? getLocalRating(mangaId, source) : null;
-        const author = item.author || 'Unknown Author';
-        const tags = item.tags || item.genres || ['Manga'];
-        const tag = Array.isArray(tags) ? tags[0] : tags;
-        const views = item.rating?.count ? `${(item.rating.count / 1000).toFixed(0)}k` : `${Math.floor(Math.random() * 5000)}k`;
-        const coverMarkup = coverUrl
-            ? `<img src="${PLACEHOLDER_COVER}" data-src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async" width="220" height="300" class="card-image lazy-image" onload="if (this.dataset.srcLoaded === '1') { this.classList.add('loaded'); }" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />`
-            : '<i data-lucide="book-open" width="48" height="48"></i>';
-
-        let progressHtml = '';
-        let notificationHtml = '';
-        if (isLibraryView) {
-            const notifications = [];
-            const addedAt = item.added_at || item.addedAt;
-            if (addedAt) {
-                const addedMs = Date.parse(addedAt);
-                if (!Number.isNaN(addedMs) && (Date.now() - addedMs) < 7 * 24 * 60 * 60 * 1000) {
-                    notifications.push({ label: 'New', className: 'new' });
-                }
-            }
-
-            const totalCh = parseFloat(item.total_chapters || item.chapters || 0);
-            const lastCh = parseFloat(item.last_chapter || 0);
-            if (!Number.isNaN(totalCh) && !Number.isNaN(lastCh) && totalCh > lastCh) {
-                const diff = Math.max(0, Math.round(totalCh - lastCh));
-                notifications.push({ label: diff > 0 ? `${diff} new` : 'Updated', className: 'updated' });
-            }
-
-            if (status === 'completed') {
-                notifications.push({ label: 'Completed', className: 'completed' });
-            }
-
-            if (notifications.length) {
-                notificationHtml = `
-                    <div class="card-notifications">
-                        ${notifications.map(n => `<span class="notification-badge ${n.className}">${escapeHtml(n.label)}</span>`).join('')}
-                    </div>
-                `;
-            }
-        }
-        if (isLibraryView && item.total_chapters && item.last_chapter) {
-            const total = parseFloat(item.total_chapters);
-            const current = parseFloat(item.last_chapter);
-            if (!Number.isNaN(total) && total > 0 && !Number.isNaN(current)) {
-                const percent = Math.min(100, Math.max(0, (current / total) * 100));
-                const pageTotal = getPageTotal(libraryKey);
-                const pageProgress = pageTotal && item.last_page
-                    ? ` · Page ${escapeHtml(String(item.last_page))}/${escapeHtml(String(pageTotal))}`
-                    : (item.last_page ? ` · Page ${escapeHtml(String(item.last_page))}` : '');
-                progressHtml = `
-                    <div class="progress-wrap">
-                        <div class="progress-bar" style="width: ${percent.toFixed(0)}%"></div>
-                        <span class="progress-text">Ch ${escapeHtml(String(item.last_chapter))} / ${escapeHtml(String(item.total_chapters))} · ${percent.toFixed(0)}%${pageProgress}</span>
-                    </div>
-                `;
-            }
-        }
-        const statusHtml = isLibraryView && statusLabel
-            ? `<div class="status-row">${statusIcon ? `<i data-lucide="${statusIcon}"></i>` : ''}<span class="status-pill status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></div>`
-            : '';
-
-        return `
-            <div class="card" data-manga-id="${escapeHtml(String(mangaId))}" data-source="${escapeHtml(source)}" data-library-key="${escapeHtml(libraryKey)}">
-                ${state.selectionMode && isLibraryView ? `
-                    <div class="card-selection-overlay">
-                        <input type="checkbox" class="card-checkbox" ${state.selectedCards.has(libraryKey) ? 'checked' : ''} />
-                    </div>
-                ` : ''}
-                <div class="card-cover">
-                    ${coverMarkup}
-                    <div class="card-overlay">
-                        <button class="read-btn">Read</button>
-                    </div>
-                    <div class="card-badges">
-                        <span class="badge-score"><i data-lucide="flame"></i> ${escapeHtml(String(score))}</span>
-                        ${userRating ? `<span class="badge-user-rating"><i data-lucide="star"></i> ${escapeHtml(String(userRating))}</span>` : ''}
-                        ${isLibraryView ? `
-                            <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-action="favorite" aria-label="Toggle favorite">
-                                <i data-lucide="star" width="16" height="16" ${isFavorite ? 'fill="currentColor"' : 'fill="none"'}></i>
-                            </button>
-                        ` : ''}
-                        ${!isLibraryView ? `
-                            <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
-                                <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
-                            </button>
-                        ` : ''}
-                        <button class="card-menu-btn"
-                                data-action="menu"
-                                aria-label="Open menu"
-                                aria-haspopup="true"
-                                aria-expanded="false">
-                            <i data-lucide="more-vertical" width="16" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                </div>
-                <div class="card-info">
-                    <div>
-                        <h3 class="card-title">${escapeHtml(item.title)}</h3>
-                        <p class="card-author">${escapeHtml(author)}</p>
-                    </div>
-                    ${statusHtml}
-                    ${notificationHtml}
-                    ${collectionsHtml}
-                    <div class="card-footer">
-                        <span class="tag">${escapeHtml(tag)}</span>
-                        <span class="views">${escapeHtml(String(views))}</span>
-                    </div>
-                    ${progressHtml}
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    safeCreateIcons();
-    setupLazyImages(gridEl);
     // Store manga data for event delegation access
     gridEl._mangaData = manga;
-    // Event delegation handled by setupEventDelegation() - no per-card listeners needed
+
+    // Use chunked rendering for large datasets to avoid blocking UI
+    if (manga.length >= CHUNKED_RENDER_THRESHOLD) {
+        await renderChunked(manga, gridEl, generateCardHtml, {
+            onComplete: () => {
+                safeCreateIcons();
+                setupLazyImages(gridEl);
+            }
+        });
+    } else {
+        // Small dataset - use synchronous rendering for immediate feedback
+        gridEl.innerHTML = manga.map(item => generateCardHtml(item)).join('');
+        safeCreateIcons();
+        setupLazyImages(gridEl);
+    }
 }
 
 function getNotesStorageKey(mangaId, source) {
@@ -4259,22 +4494,34 @@ function getSimilarManga(mangaData) {
 
 async function renderSimilarManga(mangaData) {
     if (!els.similarGrid) return;
-    const similar = getSimilarManga(mangaData);
     const emptyStub = document.createElement('div');
     emptyStub.classList.add('hidden');
 
-    if (similar.length) {
-        renderMangaGrid(similar, els.similarGrid, emptyStub);
-    } else {
-        els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">Finding similar titles...</p>';
+    // Show loading state
+    els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">Finding similar titles...</p>';
+
+    // First try to get recommendations from Jikan API (best quality)
+    const malId = mangaData?.mal_id;
+    if (malId) {
+        try {
+            const recommendations = await API.getRecommendations(malId, 8);
+            if (recommendations.length) {
+                renderMangaGrid(recommendations, els.similarGrid, emptyStub);
+                return;
+            }
+        } catch (error) {
+            log(`Recommendations API failed: ${error.message}`);
+        }
     }
 
-    if (similar.length >= 4) return;
-
+    // Fallback: Search by tags/genres
     try {
         const seedTags = (mangaData?.tags || mangaData?.genres || []).slice(0, 2).join(' ');
         const query = seedTags || mangaData?.title || '';
-        if (!query) return;
+        if (!query) {
+            els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">No similar titles available.</p>';
+            return;
+        }
         const results = await API.search(query, 12, null);
         const filtered = applyFiltersToList(results).filter(item => {
             const id = item.mal_id || item.id || item.manga_id;
@@ -4282,14 +4529,24 @@ async function renderSimilarManga(mangaData) {
         });
         if (filtered.length) {
             renderMangaGrid(filtered.slice(0, 8), els.similarGrid, emptyStub);
-        } else if (!similar.length) {
-            els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">No similar titles yet.</p>';
+        } else {
+            // Final fallback: Use tag matching from cached feeds
+            const similar = getSimilarManga(mangaData);
+            if (similar.length) {
+                renderMangaGrid(similar, els.similarGrid, emptyStub);
+            } else {
+                els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">No similar titles found.</p>';
+            }
         }
     } catch (error) {
-        if (!similar.length) {
-            els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">No similar titles yet.</p>';
-        }
         log(`Similar search failed: ${error.message}`);
+        // Try tag matching as last resort
+        const similar = getSimilarManga(mangaData);
+        if (similar.length) {
+            renderMangaGrid(similar, els.similarGrid, emptyStub);
+        } else {
+            els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">No similar titles found.</p>';
+        }
     }
 }
 
@@ -4420,7 +4677,7 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
     if (mangaData?.synopsis) {
         els.detailsDescription.textContent = mangaData.synopsis;
     } else {
-        els.detailsDescription.textContent = 'Loading description...';
+        els.detailsDescription.textContent = 'No description available.';
     }
 
     // Show meta if available
@@ -4435,13 +4692,9 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
         els.detailsMeta.innerHTML = '';
     }
 
-    // Set cover if available
-    if (mangaData?.cover_url) {
-        const cover = state.filters.dataSaver
-            ? (mangaData.cover_url_small || mangaData.cover_url_medium || mangaData.cover_url)
-            : mangaData.cover_url;
-        els.detailsCoverImg.src = cover;
-    }
+    // Set cover (avoid stale image when data is missing)
+    const coverInfo = getCoverUrlsForItem(mangaData || {});
+    els.detailsCoverImg.src = coverInfo.display || PLACEHOLDER_COVER;
 
     // Update "Add to Library" button state
     const inLibrary = isInLibrary(mangaId, source);
@@ -4486,6 +4739,13 @@ async function fetchChaptersPage(page = 1, { updateState = false } = {}) {
     const cacheKey = `chapters:${payload.id}:${payload.source || payload.mal_id}:${payload.offset}`;
     const cached = getCacheValue(cacheKey);
     if (cached) {
+        // CRITICAL: Update source from cached response to ensure reader uses correct source
+        if (cached.source_id) {
+            state.currentManga.source = cached.source_id;
+        }
+        if (cached.manga_id) {
+            state.currentManga.id = cached.manga_id;
+        }
         if (updateState && Array.isArray(cached?.chapters)) {
             state.currentChapters = cached.chapters;
             state.currentPage = page;
@@ -4499,6 +4759,14 @@ async function fetchChaptersPage(page = 1, { updateState = false } = {}) {
         method: 'POST',
         body: JSON.stringify(payload)
     });
+
+    // CRITICAL: Update source from API response to ensure reader uses correct source
+    if (response?.source_id) {
+        state.currentManga.source = response.source_id;
+    }
+    if (response?.manga_id) {
+        state.currentManga.id = response.manga_id;
+    }
 
     if (response?.total) {
         state.totalChaptersCount = response.total;
@@ -4738,6 +5006,14 @@ async function loadChapters(page = 1) {
         const cacheKey = `chapters:${payload.id}:${payload.source || payload.mal_id}:${payload.offset}`;
         const cached = getCacheValue(cacheKey);
         if (cached?.chapters) {
+            // CRITICAL: Update source from cached response to ensure reader uses correct source
+            if (cached.source_id) {
+                state.currentManga.source = cached.source_id;
+                log(`Using cached source: ${cached.source_id}`);
+            }
+            if (cached.manga_id) {
+                state.currentManga.id = cached.manga_id;
+            }
             state.currentChapters = cached.chapters || [];
             state.totalChaptersCount = cached.total || state.currentChapters.length;
             state.currentChaptersOffset = (page - 1) * 100;
@@ -5568,6 +5844,9 @@ function updateReaderTapZones() {
 
 function handleReaderScroll() {
     if (state.readerMode === 'paged') return;
+    // If observer is active, don't use manual scroll detection to avoid layout thrashing
+    if (state.readerObserver) return;
+    
     if (state.readerScrollRaf) return;
     state.readerScrollRaf = requestAnimationFrame(() => {
         state.readerScrollRaf = null;
@@ -6228,7 +6507,29 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
 
     closeSidebar();
     closeAllMenus();
-    document.body.classList.add('reader-active');
+
+    // Save scroll position before locking body scroll
+    state.readerPreviousScrollY = window.scrollY;
+
+    // IMPORTANT: Show reader container FIRST, then lock body scroll
+    // This prevents the scroll lock from interfering with the reader's visibility
+    els.readerContainer.classList.add('active');
+
+    // Use requestAnimationFrame to ensure the reader is painted before locking scroll
+    await new Promise(resolve => requestAnimationFrame(() => {
+        // Now lock body scroll AFTER reader is visible
+        document.body.classList.add('reader-active');
+
+        // Scroll the reader content to top (not the window)
+        if (els.readerContent) {
+            els.readerContent.scrollTop = 0;
+        }
+
+        // Also reset window scroll for safety
+        window.scrollTo(0, 0);
+
+        resolve();
+    }));
 
     state.currentChapterId = chapterId;
     state.currentChapterTitle = chapterTitle;
@@ -6253,13 +6554,20 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
     }
 
     if (!state.currentManga?.source || state.currentManga.source === 'jikan') {
+        log(`⚠️ Source is '${state.currentManga?.source || 'undefined'}', resolving actual source...`);
         await ensureReaderChapters();
     }
-    if (!state.currentManga?.source) {
-        showToast('Missing manga source');
+    if (!state.currentManga?.source || state.currentManga.source === 'jikan') {
+        showToast('Could not find chapter source - try selecting a different source');
+        log(`❌ Failed to resolve source - still '${state.currentManga?.source || 'undefined'}'`);
         document.body.classList.remove('reader-active');
+        if (state.readerPreviousScrollY > 0) {
+            window.scrollTo(0, state.readerPreviousScrollY);
+            state.readerPreviousScrollY = 0;
+        }
         return;
     }
+    log(`✅ Using source: ${state.currentManga.source}`);
 
     els.readerTitle.textContent = chapterTitle;
     els.readerContent.innerHTML = `
@@ -6268,7 +6576,7 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
             <span class="loading-text">Loading pages...</span>
         </div>
     `;
-    els.readerContainer.classList.add('active');
+    // Reader container already made active at the start of openReader()
     state.readerCurrentPage = 0;
     state.readerSessionStart = Date.now();
     state.readerSessionPageStart = startPage || 0;
@@ -6299,6 +6607,12 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
         if (pages.length === 0) {
             console.error('[READER DEBUG] No pages returned!');
             els.readerContent.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No pages available</p>';
+            // Remove reader-active and restore scroll to allow sidebar to work
+            document.body.classList.remove('reader-active');
+            if (state.readerPreviousScrollY > 0) {
+                window.scrollTo(0, state.readerPreviousScrollY);
+                state.readerPreviousScrollY = 0;
+            }
             return;
         }
 
@@ -6306,6 +6620,14 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
         state.readerCurrentPage = Math.max(0, Math.min(startPage, pages.length - 1));
         renderReaderPages();
         applyReaderMode();
+
+        // Ensure reader content is scrolled to top after rendering
+        requestAnimationFrame(() => {
+            if (els.readerContent) {
+                els.readerContent.scrollTop = 0;
+            }
+        });
+
         log(`✅ Loaded ${pages.length} pages`);
         scheduleProgressSave(true);
         prefetchNextChapter();
@@ -6313,6 +6635,12 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
         console.error('[READER DEBUG] Error:', error);
         els.readerContent.innerHTML = `<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load pages<br/>${escapeHtml(error.message)}</p>`;
         log(`❌ Reader error: ${error.message}`);
+        // Remove reader-active and restore scroll to allow sidebar to work
+        document.body.classList.remove('reader-active');
+        if (state.readerPreviousScrollY > 0) {
+            window.scrollTo(0, state.readerPreviousScrollY);
+            state.readerPreviousScrollY = 0;
+        }
     }
 }
 
@@ -6331,13 +6659,15 @@ function renderReaderPages() {
         const proxyUrl = referer
             ? `/api/proxy/image?url=${encodeURIComponent(pageUrl)}&referer=${encodeURIComponent(referer)}${optimizeParams}`
             : `/api/proxy/image?url=${encodeURIComponent(pageUrl)}${optimizeParams}`;
-        return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page lazy-image" data-page-index="${index}" loading="lazy" onload="this.classList.add('loaded');" />`;
+        return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page lazy-image" data-page-index="${index}" data-original-url="${escapeHtml(pageUrl)}" loading="lazy" />`;
     }).join('');
 
     console.log('[READER DEBUG] Generated HTML length:', html.length);
     els.readerContent.innerHTML = html;
     els.readerContent.querySelectorAll('.reader-page').forEach((img) => {
+        // Handle successful load
         img.addEventListener('load', () => {
+            img.classList.add('loaded');
             const index = Number(img.dataset.pageIndex || 0);
             if (Number.isNaN(index) || !img.naturalWidth || !img.naturalHeight) return;
             const ratio = img.naturalWidth / img.naturalHeight;
@@ -6346,6 +6676,18 @@ function renderReaderPages() {
             } else {
                 state.readerSpreadPages.delete(index);
             }
+        }, { once: true });
+
+        // Handle load errors - show error state and log
+        img.addEventListener('error', () => {
+            const index = img.dataset.pageIndex || '?';
+            const originalUrl = img.dataset.originalUrl || 'unknown';
+            console.error(`[READER] Failed to load page ${index}:`, originalUrl);
+            img.classList.add('load-error');
+            img.alt = `Page ${index} failed to load`;
+            img.style.minHeight = '200px';
+            img.style.background = 'repeating-linear-gradient(45deg, #1a1a1a, #1a1a1a 10px, #222 10px, #222 20px)';
+            log(`⚠️ Page ${index} failed to load`);
         }, { once: true });
     });
     console.log('[READER DEBUG] Rendered', state.readerPages.length, 'page elements');
@@ -6393,14 +6735,31 @@ function updateReaderControls(options = {}) {
 }
 
 async function closeReader() {
-    await saveReadingProgress();
-    if (state.readerSessionStart) {
-        const sessionMs = Date.now() - state.readerSessionStart;
-        const pagesRead = Math.max(0, state.readerCurrentPage - state.readerSessionPageStart + 1);
-        recordReadingSession(sessionMs / 60000, pagesRead);
-        state.readerSessionStart = null;
-        state.readerSessionPageStart = 0;
+    // CRITICAL: Always remove reader-active first to ensure sidebar access is restored
+    // even if subsequent operations fail
+    els.readerContainer.classList.remove('active');
+    els.readerContainer.classList.remove('immersive');
+    document.body.classList.remove('reader-active');
+
+    // Restore scroll position to where user was before opening reader
+    if (state.readerPreviousScrollY > 0) {
+        window.scrollTo(0, state.readerPreviousScrollY);
+        state.readerPreviousScrollY = 0;
     }
+
+    try {
+        await saveReadingProgress();
+        if (state.readerSessionStart) {
+            const sessionMs = Date.now() - state.readerSessionStart;
+            const pagesRead = Math.max(0, state.readerCurrentPage - state.readerSessionPageStart + 1);
+            recordReadingSession(sessionMs / 60000, pagesRead);
+            state.readerSessionStart = null;
+            state.readerSessionPageStart = 0;
+        }
+    } catch (error) {
+        console.error('[READER] Error saving progress on close:', error);
+    }
+
     clearReaderObserver();
     if (state.progressSaveTimer) {
         clearTimeout(state.progressSaveTimer);
@@ -6410,9 +6769,6 @@ async function closeReader() {
         cancelAnimationFrame(state.readerScrollRaf);
         state.readerScrollRaf = null;
     }
-    els.readerContainer.classList.remove('active');
-    els.readerContainer.classList.remove('immersive');
-    document.body.classList.remove('reader-active');
     state.readerImmersive = false;
     state.readerPages = [];
     state.readerCurrentPage = 0;
@@ -6687,7 +7043,14 @@ function initElements() {
         btnDeleteSelected: document.getElementById('btn-delete-selected'),
         btnDownloadSelected: document.getElementById('btn-download-selected'),
         btnCancelSelection: document.getElementById('btn-cancel-selection'),
-        appTitle: document.querySelector('.app-title')
+        appTitle: document.querySelector('.app-title'),
+
+        // Confirm Modal
+        confirmModal: document.getElementById('confirm-modal'),
+        confirmTitle: document.getElementById('confirm-title'),
+        confirmMessage: document.getElementById('confirm-message'),
+        confirmOkBtn: document.getElementById('confirm-ok'),
+        confirmCancelBtn: document.getElementById('confirm-cancel')
     };
 
     // Expose els in debug mode
@@ -6879,6 +7242,11 @@ function setupEventDelegation() {
 
     // Library grid delegation
     els.libraryGrid.addEventListener('click', (e) => handleGridClick(els.libraryGrid, e));
+
+    // Similar grid delegation (in manga details panel)
+    if (els.similarGrid) {
+        els.similarGrid.addEventListener('click', (e) => handleGridClick(els.similarGrid, e));
+    }
 
     function handlePointerDown(gridEl, e) {
         if (e.pointerType !== 'touch') return;
@@ -7435,8 +7803,11 @@ async function deleteSelected() {
         return;
     }
 
-    // TODO: Replace with custom modal for better UX (showConfirmModal)
-    const confirmed = confirm(`Remove ${count} manga from your library?`);
+    const confirmed = await showConfirmModal(
+        'Remove from Library',
+        `Remove ${count} manga from your library?`,
+        'Remove'
+    );
     if (!confirmed) return;
 
     try {
@@ -7549,6 +7920,14 @@ document.addEventListener('click', (e) => {
 async function init() {
     // Initialize DOM elements first
     initElements();
+
+    // Initialize IndexedDB storage (async, handles migration from localStorage)
+    try {
+        await Storage.init();
+        log('📦 IndexedDB storage initialized');
+    } catch (error) {
+        console.warn('[Storage] IndexedDB init failed, using localStorage fallback:', error);
+    }
 
     // Load search history for suggestions
     loadSearchHistory();

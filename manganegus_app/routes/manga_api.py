@@ -3,6 +3,7 @@ import asyncio
 from sources import get_source_manager
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
+from manganegus_app.rate_limit import limit_heavy, limit_medium, limit_light
 from manganegus_app.search.smart_search import SmartSearch
 from manganegus_app.jikan_api import get_jikan_client
 from .validators import validate_fields, validate_pagination, validate_source_id, sanitize_string
@@ -68,6 +69,7 @@ def _run_async(coro):
 
 @manga_bp.route('/search', methods=['POST'])
 @csrf_protect
+@limit_heavy
 def search():
     """Search for manga using Jikan (MyAnimeList) API."""
     data = request.get_json(silent=True) or {}
@@ -104,6 +106,17 @@ def search():
     log(f"🔍 Searching Jikan for '{query}'...")
     jikan = get_jikan_client()
     jikan_filters = {}
+
+    # SFW filter - enabled by default unless explicitly disabled
+    # Set sfw=false in filters to include adult content
+    sfw_mode = True  # Default to safe-for-work
+    if isinstance(filters, dict):
+        sfw_setting = filters.get('sfw')
+        if sfw_setting is False or sfw_setting == 'false' or sfw_setting == '0':
+            sfw_mode = False
+    if sfw_mode:
+        jikan_filters['sfw'] = True  # Filter out adult content
+
     if isinstance(filters, dict):
         status = filters.get('status') or ''
         manga_type = filters.get('type') or ''
@@ -154,12 +167,15 @@ def search():
         if exclude_ids:
             jikan_filters['genres_exclude'] = ','.join(exclude_ids)
 
+    log(f"🔍 Jikan filters: {jikan_filters}")
     results = jikan.search_manga(query, limit=limit, filters=jikan_filters)
+    log(f"✅ Jikan returned {len(results)} results")
 
     return jsonify(results)
 
 @manga_bp.route('/search/smart', methods=['POST'])
 @csrf_protect
+@limit_heavy
 def smart_search():
     """
     Smart search with parallel queries, deduplication, and metadata enrichment.
@@ -238,6 +254,7 @@ def smart_search():
 
 @manga_bp.route('/detect_url', methods=['POST'])
 @csrf_protect
+@limit_medium
 def detect_url():
     """Detect source and manga ID from a URL."""
     manager = get_source_manager()
@@ -258,6 +275,7 @@ def detect_url():
     return jsonify(result)
 
 @manga_bp.route('/discover')
+@limit_medium
 def get_discover():
     """Get hidden gems - lesser-known but high-quality manga for discovery."""
     try:
@@ -277,6 +295,7 @@ def get_discover():
     return jsonify(results)
 
 @manga_bp.route('/popular')
+@limit_medium
 def get_popular():
     """Get popular manga - blended mix of trending and all-time top."""
     try:
@@ -296,6 +315,7 @@ def get_popular():
     return jsonify(results)
 
 @manga_bp.route('/trending')
+@limit_medium
 def get_trending():
     """Get trending/seasonal manga from Jikan."""
     try:
@@ -312,6 +332,25 @@ def get_trending():
     jikan = get_jikan_client()
     # Seasonal feed sometimes returns limited items; fall back to top list for variety
     results = jikan.get_seasonal_manga(limit=limit, page=page) or jikan.get_top_manga(limit=limit, page=page)
+
+    return jsonify(results)
+
+@manga_bp.route('/recommendations/<int:mal_id>')
+def get_recommendations(mal_id):
+    """Get manga recommendations based on a specific manga's MAL ID."""
+    try:
+        limit = int(request.args.get('limit', 8))
+        if limit < 1 or limit > 20:
+            return jsonify({'error': 'Limit must be between 1 and 20'}), 400
+    except ValueError:
+        return jsonify({'error': 'Invalid limit parameter'}), 400
+
+    if mal_id < 1:
+        return jsonify({'error': 'Invalid MAL ID'}), 400
+
+    log(f"🔗 Loading recommendations for MAL ID {mal_id}...")
+    jikan = get_jikan_client()
+    results = jikan.get_recommendations(mal_id, limit=limit)
 
     return jsonify(results)
 
@@ -349,6 +388,7 @@ def get_latest_feed():
 
 @manga_bp.route('/chapters', methods=['POST'])
 @csrf_protect
+@limit_medium
 def get_chapters():
     """
     Get chapters for a manga.
@@ -389,6 +429,27 @@ def get_chapters():
 
     try:
         chapters = manager.get_chapters(manga_id, source_id)
+
+        # Auto-fallback: If source returns no chapters and we have a title, try other sources
+        if not chapters and manga_title:
+            log(f"⚠️ No chapters from {source_id}, trying fallback sources...")
+            priority_sources = ['weebcentral-v2', 'mangadex', 'mangasee-v2', 'manganato-v2', 'mangafire', 'comicx']
+
+            for fallback_source in priority_sources:
+                if fallback_source == source_id:
+                    continue  # Skip the source we already tried
+
+                fallback_results = manager.search(manga_title, source_id=fallback_source)
+                if fallback_results:
+                    fallback_manga = fallback_results[0]
+                    fallback_chapters = manager.get_chapters(fallback_manga.id, fallback_source)
+                    if fallback_chapters:
+                        log(f"✅ Found {len(fallback_chapters)} chapters in {fallback_source}")
+                        chapters = fallback_chapters
+                        manga_id = fallback_manga.id
+                        source_id = fallback_source
+                        break
+
         paginated = chapters[offset:offset + limit]
 
         return jsonify({
@@ -405,6 +466,7 @@ def get_chapters():
 
 @manga_bp.route('/chapter_pages', methods=['POST'])
 @csrf_protect
+@limit_medium
 def get_chapter_pages():
     """Get page images for a chapter."""
     manager = get_source_manager()

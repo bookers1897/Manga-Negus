@@ -1,23 +1,41 @@
-"""MangaFreak Connector"""
+"""MangaFreak Connector - Reliable backup source with Cloudflare bypass"""
 import re
 from typing import List, Optional, Dict, Any
 from urllib.parse import urljoin, quote
+
 try:
     from bs4 import BeautifulSoup
     HAS_BS4 = True
 except ImportError:
     HAS_BS4 = False
+
+# Try curl_cffi for Cloudflare bypass (recommended)
+try:
+    from curl_cffi import requests as curl_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    HAS_CURL_CFFI = False
+
+# Fallback to cloudscraper
+try:
+    import cloudscraper
+    HAS_CLOUDSCRAPER = True
+except ImportError:
+    HAS_CLOUDSCRAPER = False
+
 from .base import BaseConnector, MangaResult, ChapterResult, PageResult, source_log
+
 
 class MangaFreakConnector(BaseConnector):
     id = "mangafreak"
     name = "MangaFreak"
     base_url = "https://mangafreak.net"
     icon = "😈"
-    
+
     # URL Detection patterns
     url_patterns = [
         r'https?://(?:www\.)?mangafreak\.net/manga/([a-z0-9_-]+)',  # e.g., /manga/naruto
+        r'https?://(?:www\.)?mangafreak\.net/Manga/([a-z0-9_-]+)',  # e.g., /Manga/Naruto
     ]
     rate_limit = 2.0
     rate_limit_burst = 4
@@ -26,23 +44,59 @@ class MangaFreakConnector(BaseConnector):
     supports_popular = True
     requires_cloudflare = True
     languages = ["en"]
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    def __init__(self):
+        super().__init__()
+        # Initialize Cloudflare bypass session
+        self._cf_session = None
+        if HAS_CURL_CFFI:
+            self._cf_session = curl_requests.Session()
+            self._log("✅ MangaFreak using curl_cffi bypass")
+        elif HAS_CLOUDSCRAPER:
+            self._cf_session = cloudscraper.create_scraper()
+            self._log("✅ MangaFreak using cloudscraper bypass")
+        else:
+            self._log("⚠️ MangaFreak: No Cloudflare bypass available")
 
     def _headers(self) -> Dict[str, str]:
-        return {"User-Agent": self.USER_AGENT, "Referer": self.base_url}
+        return {
+            "User-Agent": self.USER_AGENT,
+            "Referer": self.base_url,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
 
     def _request_html(self, url: str) -> Optional[str]:
-        if not self.session: return None
         self._wait_for_rate_limit()
         try:
-            r = self.session.get(url, headers=self._headers(), timeout=self.request_timeout)
+            # Prefer curl_cffi for Cloudflare bypass
+            if HAS_CURL_CFFI and self._cf_session:
+                r = self._cf_session.get(
+                    url,
+                    headers=self._headers(),
+                    timeout=self.request_timeout,
+                    impersonate="chrome120"
+                )
+            elif self._cf_session:
+                r = self._cf_session.get(url, headers=self._headers(), timeout=self.request_timeout)
+            elif self.session:
+                r = self.session.get(url, headers=self._headers(), timeout=self.request_timeout)
+            else:
+                return None
+
             if r.status_code == 200:
                 self._handle_success()
                 return r.text
-            elif r.status_code in [403, 503]: self._handle_cloudflare()
-            elif r.status_code == 429: self._handle_rate_limit(60)
-            else: self._handle_error(f"HTTP {r.status_code}")
-        except Exception as e: self._handle_error(str(e))
+            elif r.status_code in [403, 503]:
+                self._handle_cloudflare()
+            elif r.status_code == 429:
+                self._handle_rate_limit(60)
+            else:
+                self._handle_error(f"HTTP {r.status_code}")
+        except Exception as e:
+            self._handle_error(str(e))
         return None
 
     def _log(self, msg: str) -> None:

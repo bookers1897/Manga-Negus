@@ -83,7 +83,7 @@ claude_md_backup/
 codex_code/
 gha-creds-*.json
 
-# Debug documentation (keep only README.md and CLAUDE.md)
+# Debug documentation (keep only README.md, CLAUDE.md, SETUP_GUIDE.md)
 *_gemini_solution.md
 *_report*.md
 *_review*.md
@@ -91,7 +91,6 @@ gha-creds-*.json
 DEBUGGING_*.md
 DATABASE_SETUP.md
 QUICK_START.md
-SETUP_GUIDE.md
 DUAL_SERVER_SETUP.md
 CODEX_RESPONSE.md
 ANNAS_ARCHIVE_INTEGRATION.md

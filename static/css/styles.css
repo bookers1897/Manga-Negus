@@ -1827,6 +1827,9 @@ h1 {
 .reader-container.immersive .reader-content {
   padding-top: 12px;
 }
+body.reader-active {
+  overflow: hidden !important;  /* Lock body scroll when reader is open */
+}
 body.reader-active #sidebar,
 body.reader-active #overlay {
   display: none !important;
