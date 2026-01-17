@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-**MangaNegus v3.1** - Complete AI Assistant Guide
+**MangaNegus v4.0** - Complete AI Assistant Guide
 
 A comprehensive guide for AI assistants working with MangaNegus, a Flask-based manga aggregator, library manager, and reader.
 
-**Last Updated:** 2026-01-08
-**Version:** 3.1.0 (Redesign Edition)
+**Last Updated:** 2026-01-17
+**Version:** 4.0.0 (Authentication & Performance Edition)
 
 ---
 

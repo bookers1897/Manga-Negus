@@ -867,6 +867,63 @@
         </div>
     </div>
 
+    <!-- Auth Modal (Login/Register) -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-panel" style="max-width: 400px;">
+            <button class="modal-close" id="close-auth-modal">
+                <i data-lucide="x" width="16"></i>
+            </button>
+            <h2 class="modal-title" id="auth-modal-title">Login</h2>
+            <p class="modal-subtitle" id="auth-modal-subtitle" style="margin-bottom: 20px; color: var(--text-secondary);">
+                Sign in to sync your library across devices
+            </p>
+
+            <!-- Auth Error Display -->
+            <div id="auth-error" style="display: none; padding: 12px; margin-bottom: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; color: #ef4444; font-size: 14px;"></div>
+
+            <!-- Login Form -->
+            <form id="auth-form" style="display: flex; flex-direction: column; gap: 16px;">
+                <div class="form-group">
+                    <label for="auth-email" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Email</label>
+                    <input type="email" id="auth-email" name="email" required autocomplete="email"
+                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
+                           placeholder="your@email.com">
+                </div>
+
+                <div class="form-group">
+                    <label for="auth-password" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Password</label>
+                    <input type="password" id="auth-password" name="password" required autocomplete="current-password"
+                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
+                           placeholder="Min. 8 characters" minlength="8">
+                </div>
+
+                <!-- Display Name (only for register) -->
+                <div class="form-group" id="auth-name-group" style="display: none;">
+                    <label for="auth-display-name" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Display Name (optional)</label>
+                    <input type="text" id="auth-display-name" name="display_name" autocomplete="name"
+                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
+                           placeholder="How should we call you?">
+                </div>
+
+                <!-- Remember Me (only for login) -->
+                <div id="auth-remember-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="auth-remember" name="remember" style="width: 18px; height: 18px; accent-color: var(--accent);">
+                    <label for="auth-remember" style="font-size: 14px; color: var(--text-secondary); cursor: pointer;">Remember me</label>
+                </div>
+
+                <button type="submit" id="auth-submit" class="control-btn primary" style="width: 100%; padding: 14px; background: var(--accent); color: white; font-weight: 600; font-size: 15px; margin-top: 8px;">
+                    Login
+                </button>
+            </form>
+
+            <!-- Toggle Login/Register -->
+            <div style="margin-top: 20px; text-align: center; font-size: 14px; color: var(--text-secondary);">
+                <span id="auth-toggle-text">Don't have an account?</span>
+                <button id="auth-toggle-btn" style="background: none; border: none; color: var(--accent); cursor: pointer; font-weight: 600; margin-left: 4px;">Register</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div id="toast" class="toast">
         <div class="toast-dot"></div>

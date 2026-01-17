@@ -49,6 +49,67 @@ class Base(DeclarativeBase):
 
 
 # =============================================================================
+# USER - Authentication and user profiles
+# =============================================================================
+
+class User(Base):
+    """
+    User model for authentication and profile management.
+
+    Supports:
+    - Email/password authentication (traditional)
+    - OAuth providers (Google, GitHub, etc.) - ready for future expansion
+    - Profile customization
+
+    OAuth-ready architecture:
+    - password_hash is nullable for OAuth-only users
+    - oauth_provider + oauth_provider_id for social logins
+    """
+    __tablename__ = 'users'
+
+    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Authentication - email is always required
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=True)  # Nullable for OAuth-only users
+
+    # OAuth fields (nullable for email/password users)
+    oauth_provider = Column(String(50), nullable=True)  # 'google', 'github', etc.
+    oauth_provider_id = Column(String(255), nullable=True)  # Provider's user ID
+
+    # Profile
+    display_name = Column(String(100), nullable=True)
+    avatar_url = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), nullable=False,
+                       default=lambda: datetime.now(timezone.utc))
+    last_login = Column(DateTime(timezone=True), nullable=True)
+
+    # Account status
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+
+    # Relationships
+    library_entries = relationship("LibraryEntry", back_populates="user",
+                                   cascade="all, delete-orphan")
+    history_entries = relationship("HistoryEntry", back_populates="user",
+                                   cascade="all, delete-orphan")
+    downloads = relationship("Download", back_populates="user",
+                            cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # Unique constraint for OAuth users (provider + provider_id)
+        UniqueConstraint('oauth_provider', 'oauth_provider_id',
+                        name='uq_user_oauth_provider_id'),
+        Index('ix_user_oauth', 'oauth_provider', 'oauth_provider_id'),
+    )
+
+    def __repr__(self):
+        return f"<User(id={self.id}, email='{self.email}')>"
+
+
+# =============================================================================
 # MANGA - Rich metadata from all sources
 # =============================================================================
 
@@ -184,10 +245,15 @@ class LibraryEntry(Base):
     User's library - tracks reading status and progress.
 
     Replaces the old library.json file-based storage.
+    Each entry belongs to a specific user.
     """
     __tablename__ = 'library'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Link to user (owner of this library entry)
+    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
+                    nullable=False, index=True)
 
     # Link to manga
     manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
@@ -215,7 +281,14 @@ class LibraryEntry(Base):
                        onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
+    user = relationship("User", back_populates="library_entries")
     manga = relationship("Manga", back_populates="library_entries")
+
+    __table_args__ = (
+        # Unique constraint: one entry per user per manga
+        UniqueConstraint('user_id', 'manga_id', name='uq_library_user_manga'),
+        Index('ix_library_user_status', 'user_id', 'status'),
+    )
 
     def __repr__(self):
         return f"<LibraryEntry(manga='{self.manga.title if self.manga else 'N/A'}', status='{self.status}')>"
@@ -228,10 +301,15 @@ class LibraryEntry(Base):
 class HistoryEntry(Base):
     """
     Tracks recently viewed manga so the History tab can be restored across sessions.
+    Each entry belongs to a specific user.
     """
     __tablename__ = 'history'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Link to user (owner of this history entry)
+    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
+                    nullable=False, index=True)
 
     # Link to manga
     manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
@@ -245,10 +323,14 @@ class HistoryEntry(Base):
     # Optional extra payload for quick rendering (cover, author, etc.)
     payload = Column(JSONType)
 
+    # Relationships
+    user = relationship("User", back_populates="history_entries")
     manga = relationship("Manga")
 
     __table_args__ = (
-        UniqueConstraint('manga_id', name='uq_history_manga_id'),
+        # Unique constraint: one history entry per user per manga
+        UniqueConstraint('user_id', 'manga_id', name='uq_history_user_manga'),
+        Index('ix_history_user_viewed', 'user_id', 'last_viewed_at'),
     )
 
     def __repr__(self):
@@ -383,10 +465,16 @@ class Download(Base):
     - Offline reading
     - Download management
     - Storage optimization
+
+    Each download belongs to a specific user.
     """
     __tablename__ = 'downloads'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Link to user (owner of this download)
+    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
+                    nullable=False, index=True)
 
     # Link to chapter
     chapter_id = Column(UUIDType(), ForeignKey('chapters.id', ondelete='CASCADE'),
@@ -409,10 +497,12 @@ class Download(Base):
     error_message = Column(Text)
 
     # Relationships
+    user = relationship("User", back_populates="downloads")
     chapter = relationship("ChapterCache", back_populates="downloads")
 
     __table_args__ = (
         Index('ix_download_status_downloaded', 'status', 'downloaded_at'),
+        Index('ix_download_user_status', 'user_id', 'status'),
     )
 
     def __repr__(self):

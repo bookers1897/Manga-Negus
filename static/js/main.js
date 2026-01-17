@@ -12,6 +12,14 @@ const DEBUG_MODE = false; // Set to true for development debugging
 // State Management
 // ========================================
 const state = {
+    // Authentication state
+    auth: {
+        user: null,
+        isLoggedIn: false,
+        isLoading: true,
+        isAuthModalOpen: false,
+        authMode: 'login' // 'login' or 'register'
+    },
     activeView: 'discover',
     previousView: 'discover', // Track previous view for back button
     activeFilter: 'all',
@@ -182,6 +190,108 @@ function debounce(func, wait) {
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
 }
+
+// ========================================
+// RequestQueue - Serialize and prioritize API requests
+// Prevents rate limiting by spacing requests and silently retrying 429s
+// ========================================
+const RequestQueue = {
+    // Priority levels (lower = higher priority)
+    PRIORITY: {
+        USER_ACTION: 0,    // User clicks, searches - highest priority
+        NAVIGATION: 1,     // Page turns, chapter loads
+        BACKGROUND: 2,     // Prefetch, background sync
+        LOW: 3             // Analytics, non-critical
+    },
+
+    queue: [],
+    processing: false,
+    retryDelays: new Map(),  // Track per-endpoint retry delays from Retry-After headers
+    minRequestGap: 100,      // Minimum ms between requests
+    lastRequestTime: 0,
+
+    /**
+     * Add a request to the queue with priority
+     * @param {Function} requestFn - Async function that makes the request
+     * @param {number} priority - Priority level (default: NAVIGATION)
+     * @returns {Promise} - Resolves when request completes
+     */
+    enqueue(requestFn, priority = 1) {
+        return new Promise((resolve, reject) => {
+            // Insert by priority (lower priority number = higher priority)
+            const item = { requestFn, priority, resolve, reject };
+            const insertIdx = this.queue.findIndex(q => q.priority > priority);
+            if (insertIdx === -1) {
+                this.queue.push(item);
+            } else {
+                this.queue.splice(insertIdx, 0, item);
+            }
+            this.process();
+        });
+    },
+
+    /**
+     * Process the queue sequentially
+     */
+    async process() {
+        if (this.processing || this.queue.length === 0) return;
+        this.processing = true;
+
+        while (this.queue.length > 0) {
+            const item = this.queue.shift();
+
+            // Ensure minimum gap between requests
+            const timeSinceLast = Date.now() - this.lastRequestTime;
+            if (timeSinceLast < this.minRequestGap) {
+                await new Promise(r => setTimeout(r, this.minRequestGap - timeSinceLast));
+            }
+
+            try {
+                this.lastRequestTime = Date.now();
+                const result = await item.requestFn();
+                item.resolve(result);
+            } catch (error) {
+                item.reject(error);
+            }
+        }
+
+        this.processing = false;
+    },
+
+    /**
+     * Get retry delay for an endpoint (from Retry-After header)
+     * @param {string} endpoint - The API endpoint
+     * @returns {number} - Delay in ms, or 0 if no delay needed
+     */
+    getRetryDelay(endpoint) {
+        const delay = this.retryDelays.get(endpoint);
+        if (!delay) return 0;
+        if (Date.now() > delay.until) {
+            this.retryDelays.delete(endpoint);
+            return 0;
+        }
+        return delay.until - Date.now();
+    },
+
+    /**
+     * Set retry delay for an endpoint
+     * @param {string} endpoint - The API endpoint
+     * @param {number} seconds - Retry-After in seconds
+     */
+    setRetryDelay(endpoint, seconds) {
+        this.retryDelays.set(endpoint, {
+            until: Date.now() + (seconds * 1000)
+        });
+    },
+
+    /**
+     * Clear all pending requests
+     */
+    clear() {
+        this.queue.forEach(item => item.reject(new Error('Queue cleared')));
+        this.queue = [];
+    }
+};
 
 // Initialize Web Worker for heavy filtering operations
 const filterWorker = new Worker('/static/js/worker.js');
@@ -515,9 +625,12 @@ let els = {};
 // API Integration
 // ========================================
 const API = {
+    // Maximum retries for rate-limited requests (429)
+    MAX_RATE_LIMIT_RETRIES: 3,
+
     async request(endpoint, options = {}) {
         try {
-            const { silent, retries = 0, retryDelay = 400, ...requestOptions } = options;
+            const { silent, retries = 0, retryDelay = 400, priority, ...requestOptions } = options;
             const headers = {
                 'Content-Type': 'application/json',
                 ...requestOptions.headers
@@ -535,7 +648,16 @@ const API = {
             if (requestOptions.signal) {
                 fetchOptions.signal = requestOptions.signal;
             }
+
+            // Check if we need to wait for a retry delay on this endpoint
+            const initialDelay = RequestQueue.getRetryDelay(endpoint);
+            if (initialDelay > 0) {
+                await new Promise(r => setTimeout(r, initialDelay));
+            }
+
             let attempt = 0;
+            let rateLimitAttempt = 0;
+
             while (true) {
                 try {
                     const response = await fetch(endpoint, fetchOptions);
@@ -543,11 +665,34 @@ const API = {
                     const isJson = contentType.includes('application/json');
                     const data = isJson ? await response.json() : null;
 
+                    // Handle rate limiting SILENTLY with automatic retry
+                    if (response.status === 429) {
+                        if (rateLimitAttempt >= this.MAX_RATE_LIMIT_RETRIES) {
+                            // After max retries, fail silently (no toast)
+                            console.warn(`[API] Rate limit exceeded after ${this.MAX_RATE_LIMIT_RETRIES} retries: ${endpoint}`);
+                            throw new Error('Rate limit exceeded');
+                        }
+
+                        // Parse Retry-After header
+                        let retryAfter = parseInt(response.headers.get('Retry-After')) || 60;
+
+                        // Store retry delay for this endpoint
+                        RequestQueue.setRetryDelay(endpoint, retryAfter);
+
+                        // Calculate backoff with jitter: delay * (0.5 + random)
+                        const baseDelay = retryAfter * 1000;
+                        const jitter = 0.5 + Math.random();
+                        const delay = Math.min(baseDelay * jitter, 120000); // Cap at 2 minutes
+
+                        console.log(`[API] Rate limited, retrying in ${Math.round(delay/1000)}s (attempt ${rateLimitAttempt + 1}/${this.MAX_RATE_LIMIT_RETRIES})`);
+
+                        await new Promise(r => setTimeout(r, delay));
+                        rateLimitAttempt++;
+                        continue; // Retry the request
+                    }
+
                     if (!response.ok) {
                         let message = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
-                        if (response.status === 429) {
-                            message = 'Rate limited. Please try again in a moment.';
-                        }
                         if (response.status === 403) {
                             message = 'Access blocked by security policy.';
                         }
@@ -557,6 +702,10 @@ const API = {
                     return data;
                 } catch (error) {
                     if (error.name === 'AbortError') {
+                        throw error;
+                    }
+                    // Don't retry rate limit errors that exhausted retries
+                    if (error.message === 'Rate limit exceeded') {
                         throw error;
                     }
                     if (attempt >= retries) {
@@ -570,6 +719,10 @@ const API = {
         } catch (error) {
             // Don't log or show toast for aborted requests
             if (error.name === 'AbortError') {
+                throw error;
+            }
+            // NEVER show toast for rate limit errors - they're handled silently
+            if (error.message === 'Rate limit exceeded') {
                 throw error;
             }
             console.error(`API Error (${endpoint}):`, error);
@@ -910,6 +1063,43 @@ const API = {
             body: JSON.stringify({ job_id: jobId })
         });
         return data;
+    },
+
+    // ========================================
+    // Authentication API
+    // ========================================
+    async authRegister(email, password, displayName = null) {
+        const payload = { email, password };
+        if (displayName) payload.display_name = displayName;
+        return this.request('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async authLogin(email, password, remember = false) {
+        return this.request('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password, remember })
+        });
+    },
+
+    async authLogout() {
+        return this.request('/api/auth/logout', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+    },
+
+    async authMe() {
+        return this.request('/api/auth/me', { silent: true });
+    },
+
+    async authUpdate(updates) {
+        return this.request('/api/auth/update', {
+            method: 'POST',
+            body: JSON.stringify(updates)
+        });
     }
 };
 
@@ -4300,16 +4490,6 @@ function generateCardHtml(item) {
                 <div class="card-badges">
                     <span class="badge-score"><i data-lucide="flame"></i> ${escapeHtml(String(scoreLabel))}</span>
                     ${userRating ? `<span class="badge-user-rating"><i data-lucide="star"></i> ${escapeHtml(String(userRating))}</span>` : ''}
-                    ${isLibraryView ? `
-                        <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-action="favorite" aria-label="Toggle favorite">
-                            <i data-lucide="star" width="16" height="16" ${isFavorite ? 'fill="currentColor"' : 'fill="none"'}></i>
-                        </button>
-                    ` : ''}
-                    ${!isLibraryView ? `
-                        <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
-                            <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
-                        </button>
-                    ` : ''}
                     <button class="card-menu-btn"
                             data-action="menu"
                             aria-label="Open menu"
@@ -4317,6 +4497,17 @@ function generateCardHtml(item) {
                             aria-expanded="false">
                         <i data-lucide="more-vertical" width="16" aria-hidden="true"></i>
                     </button>
+                </div>
+                <div class="card-heart-btn">
+                    ${isLibraryView ? `
+                        <button class="favorite-btn ${isFavorite ? 'active' : ''}" data-action="favorite" aria-label="Toggle favorite">
+                            <i data-lucide="star" width="16" height="16" ${isFavorite ? 'fill="currentColor"' : 'fill="none"'}></i>
+                        </button>
+                    ` : `
+                        <button class="bookmark-btn ${inLibrary ? 'active' : ''}" data-action="bookmark">
+                            <i data-lucide="heart" width="16" height="16" fill="${inLibrary ? 'currentColor' : 'none'}"></i>
+                        </button>
+                    `}
                 </div>
             </div>
             <div class="card-info">
@@ -6987,7 +7178,25 @@ function initElements() {
         confirmTitle: document.getElementById('confirm-title'),
         confirmMessage: document.getElementById('confirm-message'),
         confirmOkBtn: document.getElementById('confirm-ok'),
-        confirmCancelBtn: document.getElementById('confirm-cancel')
+        confirmCancelBtn: document.getElementById('confirm-cancel'),
+
+        // Auth Modal
+        loginBtn: document.querySelector('.login-btn'),
+        authModal: document.getElementById('auth-modal'),
+        closeAuthModal: document.getElementById('close-auth-modal'),
+        authModalTitle: document.getElementById('auth-modal-title'),
+        authModalSubtitle: document.getElementById('auth-modal-subtitle'),
+        authError: document.getElementById('auth-error'),
+        authForm: document.getElementById('auth-form'),
+        authEmail: document.getElementById('auth-email'),
+        authPassword: document.getElementById('auth-password'),
+        authDisplayName: document.getElementById('auth-display-name'),
+        authNameGroup: document.getElementById('auth-name-group'),
+        authRemember: document.getElementById('auth-remember'),
+        authRememberGroup: document.getElementById('auth-remember-group'),
+        authSubmit: document.getElementById('auth-submit'),
+        authToggleText: document.getElementById('auth-toggle-text'),
+        authToggleBtn: document.getElementById('auth-toggle-btn')
     };
 
     // Expose els in debug mode
@@ -7854,6 +8063,266 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// ========================================
+// Authentication Functions
+// ========================================
+
+/**
+ * Open the auth modal
+ * @param {string} mode - 'login' or 'register'
+ */
+function openAuthModal(mode = 'login') {
+    state.auth.authMode = mode;
+    state.auth.isAuthModalOpen = true;
+    updateAuthModalUI();
+    els.authModal?.classList.add('active');
+    els.authEmail?.focus();
+}
+
+/**
+ * Close the auth modal
+ */
+function closeAuthModal() {
+    state.auth.isAuthModalOpen = false;
+    els.authModal?.classList.remove('active');
+    els.authForm?.reset();
+    hideAuthError();
+}
+
+/**
+ * Toggle between login and register modes
+ */
+function toggleAuthMode() {
+    state.auth.authMode = state.auth.authMode === 'login' ? 'register' : 'login';
+    updateAuthModalUI();
+}
+
+/**
+ * Update the auth modal UI based on current mode
+ */
+function updateAuthModalUI() {
+    const isLogin = state.auth.authMode === 'login';
+
+    if (els.authModalTitle) {
+        els.authModalTitle.textContent = isLogin ? 'Login' : 'Create Account';
+    }
+    if (els.authModalSubtitle) {
+        els.authModalSubtitle.textContent = isLogin
+            ? 'Sign in to sync your library across devices'
+            : 'Create an account to save your reading progress';
+    }
+    if (els.authSubmit) {
+        els.authSubmit.textContent = isLogin ? 'Login' : 'Create Account';
+    }
+    if (els.authToggleText) {
+        els.authToggleText.textContent = isLogin ? "Don't have an account?" : 'Already have an account?';
+    }
+    if (els.authToggleBtn) {
+        els.authToggleBtn.textContent = isLogin ? 'Register' : 'Login';
+    }
+
+    // Show/hide display name field (only for register)
+    if (els.authNameGroup) {
+        els.authNameGroup.style.display = isLogin ? 'none' : 'block';
+    }
+    // Show/hide remember me checkbox (only for login)
+    if (els.authRememberGroup) {
+        els.authRememberGroup.style.display = isLogin ? 'flex' : 'none';
+    }
+
+    // Update password autocomplete
+    if (els.authPassword) {
+        els.authPassword.autocomplete = isLogin ? 'current-password' : 'new-password';
+    }
+
+    hideAuthError();
+}
+
+/**
+ * Show an error message in the auth modal
+ */
+function showAuthError(message) {
+    if (els.authError) {
+        els.authError.textContent = message;
+        els.authError.style.display = 'block';
+    }
+}
+
+/**
+ * Hide the auth error message
+ */
+function hideAuthError() {
+    if (els.authError) {
+        els.authError.style.display = 'none';
+        els.authError.textContent = '';
+    }
+}
+
+/**
+ * Handle auth form submission
+ */
+async function handleAuthSubmit(event) {
+    event.preventDefault();
+    hideAuthError();
+
+    const email = els.authEmail?.value?.trim();
+    const password = els.authPassword?.value;
+    const displayName = els.authDisplayName?.value?.trim() || null;
+    const remember = els.authRemember?.checked || false;
+
+    if (!email || !password) {
+        showAuthError('Please enter email and password');
+        return;
+    }
+
+    // Disable submit button while processing
+    if (els.authSubmit) {
+        els.authSubmit.disabled = true;
+        els.authSubmit.textContent = state.auth.authMode === 'login' ? 'Logging in...' : 'Creating account...';
+    }
+
+    try {
+        let response;
+        if (state.auth.authMode === 'login') {
+            response = await API.authLogin(email, password, remember);
+        } else {
+            response = await API.authRegister(email, password, displayName);
+        }
+
+        if (response?.user) {
+            state.auth.user = response.user;
+            state.auth.isLoggedIn = true;
+            updateAuthUI();
+            closeAuthModal();
+            showToast(`Welcome${response.user.display_name ? ', ' + response.user.display_name : ''}!`);
+
+            // Refresh library to get user-specific data
+            await loadLibrary();
+        }
+    } catch (error) {
+        showAuthError(error.message || 'Authentication failed');
+    } finally {
+        // Re-enable submit button
+        if (els.authSubmit) {
+            els.authSubmit.disabled = false;
+            els.authSubmit.textContent = state.auth.authMode === 'login' ? 'Login' : 'Create Account';
+        }
+    }
+}
+
+/**
+ * Handle logout
+ */
+async function handleLogout() {
+    try {
+        await API.authLogout();
+        state.auth.user = null;
+        state.auth.isLoggedIn = false;
+        updateAuthUI();
+        showToast('Logged out successfully');
+
+        // Refresh library (will now show anonymous/empty library)
+        await loadLibrary();
+    } catch (error) {
+        console.error('Logout failed:', error);
+        showToast('Logout failed');
+    }
+}
+
+/**
+ * Check authentication status on page load
+ */
+async function checkAuthStatus() {
+    state.auth.isLoading = true;
+    try {
+        const user = await API.authMe();
+        if (user) {
+            state.auth.user = user;
+            state.auth.isLoggedIn = true;
+        } else {
+            state.auth.user = null;
+            state.auth.isLoggedIn = false;
+        }
+    } catch (error) {
+        console.debug('Auth check failed:', error);
+        state.auth.user = null;
+        state.auth.isLoggedIn = false;
+    } finally {
+        state.auth.isLoading = false;
+        updateAuthUI();
+    }
+}
+
+/**
+ * Update the UI based on auth state (login button text, user info, etc.)
+ */
+function updateAuthUI() {
+    if (els.loginBtn) {
+        if (state.auth.isLoggedIn && state.auth.user) {
+            // Show user info or avatar
+            const displayName = state.auth.user.display_name || state.auth.user.email.split('@')[0];
+            els.loginBtn.textContent = displayName.substring(0, 12);
+            els.loginBtn.title = `Logged in as ${state.auth.user.email}`;
+            els.loginBtn.classList.add('logged-in');
+
+            // Change click handler to show user menu or logout
+            els.loginBtn.onclick = handleLogout;
+        } else {
+            els.loginBtn.textContent = 'LOGIN';
+            els.loginBtn.title = 'Click to login or register';
+            els.loginBtn.classList.remove('logged-in');
+
+            // Click to open auth modal
+            els.loginBtn.onclick = () => openAuthModal('login');
+        }
+    }
+}
+
+/**
+ * Initialize auth event listeners
+ */
+function initAuthEventListeners() {
+    // Login button click
+    if (els.loginBtn) {
+        els.loginBtn.addEventListener('click', () => {
+            if (!state.auth.isLoggedIn) {
+                openAuthModal('login');
+            }
+        });
+    }
+
+    // Close auth modal
+    if (els.closeAuthModal) {
+        els.closeAuthModal.addEventListener('click', closeAuthModal);
+    }
+
+    // Toggle between login/register
+    if (els.authToggleBtn) {
+        els.authToggleBtn.addEventListener('click', toggleAuthMode);
+    }
+
+    // Form submission
+    if (els.authForm) {
+        els.authForm.addEventListener('submit', handleAuthSubmit);
+    }
+
+    // Close modal on overlay click
+    if (els.authModal) {
+        els.authModal.addEventListener('click', (e) => {
+            if (e.target === els.authModal) {
+                closeAuthModal();
+            }
+        });
+    }
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && state.auth.isAuthModalOpen) {
+            closeAuthModal();
+        }
+    });
+}
+
 async function init() {
     // Initialize DOM elements first
     initElements();
@@ -8009,9 +8478,15 @@ async function init() {
     log('Initializing MangaNegus...');
     console.log('[DEBUG] Init started');
 
+    // Initialize auth event listeners
+    initAuthEventListeners();
+
     // Get CSRF token
     await API.getCsrfToken();
     log('CSRF token obtained');
+
+    // Check authentication status (async, doesn't block)
+    checkAuthStatus();
 
     // Load sources
     state.sources = await API.getSources();

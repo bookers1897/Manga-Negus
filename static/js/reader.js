@@ -54,7 +54,234 @@ const state = {
     virtualBottomSpacer: null,
     virtualContainer: null,
     virtualScrollRaf: null,
-    virtualGap: 20
+    virtualGap: 20,
+    // Prefetch state
+    prefetchedUrls: new Set(),
+    prefetchQueue: [],
+    prefetchInProgress: false,
+    nextChapterPrefetched: false,
+    nextChapterPages: null
+};
+
+// ========================================
+// Prefetcher - Preload pages ahead for smooth reading
+// ========================================
+const Prefetcher = {
+    // How many pages to prefetch ahead
+    PREFETCH_AHEAD: 5,
+    // When to trigger chapter prefetch (percentage of current chapter)
+    CHAPTER_PREFETCH_THRESHOLD: 0.8,
+    // IndexedDB for image caching
+    DB_NAME: 'manganegus-reader-cache',
+    DB_STORE: 'images',
+    db: null,
+
+    /**
+     * Initialize IndexedDB for image caching
+     */
+    async initDB() {
+        if (this.db) return;
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.DB_NAME, 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+                this.db = request.result;
+                resolve();
+            };
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(this.DB_STORE)) {
+                    const store = db.createObjectStore(this.DB_STORE, { keyPath: 'url' });
+                    store.createIndex('timestamp', 'timestamp');
+                }
+            };
+        });
+    },
+
+    /**
+     * Get cached image from IndexedDB
+     */
+    async getCached(url) {
+        if (!this.db) return null;
+        return new Promise((resolve) => {
+            try {
+                const tx = this.db.transaction(this.DB_STORE, 'readonly');
+                const store = tx.objectStore(this.DB_STORE);
+                const request = store.get(url);
+                request.onsuccess = () => resolve(request.result?.blob || null);
+                request.onerror = () => resolve(null);
+            } catch {
+                resolve(null);
+            }
+        });
+    },
+
+    /**
+     * Cache image in IndexedDB
+     */
+    async cacheImage(url, blob) {
+        if (!this.db) return;
+        try {
+            const tx = this.db.transaction(this.DB_STORE, 'readwrite');
+            const store = tx.objectStore(this.DB_STORE);
+            store.put({
+                url,
+                blob,
+                timestamp: Date.now()
+            });
+        } catch (e) {
+            console.warn('[Prefetcher] Failed to cache image:', e);
+        }
+    },
+
+    /**
+     * Clean up old cached images (older than 7 days)
+     */
+    async cleanup() {
+        if (!this.db) return;
+        const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        try {
+            const tx = this.db.transaction(this.DB_STORE, 'readwrite');
+            const store = tx.objectStore(this.DB_STORE);
+            const index = store.index('timestamp');
+            const range = IDBKeyRange.upperBound(sevenDaysAgo);
+            const request = index.openCursor(range);
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    store.delete(cursor.primaryKey);
+                    cursor.continue();
+                }
+            };
+        } catch (e) {
+            console.warn('[Prefetcher] Cleanup failed:', e);
+        }
+    },
+
+    /**
+     * Prefetch a single image by URL
+     */
+    async prefetchImage(url, referer = null) {
+        if (state.prefetchedUrls.has(url)) return;
+        state.prefetchedUrls.add(url);
+
+        try {
+            // Check cache first
+            const cached = await this.getCached(url);
+            if (cached) return;
+
+            // Fetch the image
+            const headers = {};
+            if (referer) {
+                headers['Referer'] = referer;
+            }
+
+            // Use low priority for prefetch requests
+            const response = await fetch(url, {
+                headers,
+                priority: 'low'
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                await this.cacheImage(url, blob);
+            }
+        } catch (e) {
+            // Silent fail for prefetch
+            console.debug('[Prefetcher] Failed to prefetch:', url);
+        }
+    },
+
+    /**
+     * Prefetch pages ahead of current page
+     */
+    prefetchPagesAhead(currentIndex, pages) {
+        if (!pages || !pages.length) return;
+
+        const endIndex = Math.min(currentIndex + this.PREFETCH_AHEAD, pages.length - 1);
+
+        for (let i = currentIndex + 1; i <= endIndex; i++) {
+            const page = pages[i];
+            if (page) {
+                const url = typeof page === 'string' ? page : page.url;
+                const referer = typeof page === 'object' ? page.referer : null;
+                if (url) {
+                    // Use setTimeout to not block the main thread
+                    setTimeout(() => this.prefetchImage(url, referer), (i - currentIndex) * 50);
+                }
+            }
+        }
+    },
+
+    /**
+     * Check if we should prefetch the next chapter
+     */
+    shouldPrefetchNextChapter(currentIndex, totalPages) {
+        if (state.nextChapterPrefetched) return false;
+        if (totalPages === 0) return false;
+        const progress = (currentIndex + 1) / totalPages;
+        return progress >= this.CHAPTER_PREFETCH_THRESHOLD;
+    },
+
+    /**
+     * Prefetch next chapter's first few pages
+     */
+    async prefetchNextChapter() {
+        if (state.nextChapterPrefetched) return;
+        if (state.chapterList.length === 0) return;
+
+        const order = inferChapterOrder(state.chapterList);
+        const delta = order === 'desc' ? -1 : 1;
+        const nextIndex = state.chapterIndex + delta;
+
+        if (nextIndex < 0 || nextIndex >= state.chapterList.length) return;
+
+        const nextChapter = state.chapterList[nextIndex];
+        if (!nextChapter) return;
+
+        state.nextChapterPrefetched = true;
+        console.log('[Prefetcher] Prefetching next chapter:', nextChapter.id);
+
+        try {
+            // Fetch next chapter's pages
+            const response = await apiRequest('/api/chapter_pages', {
+                method: 'POST',
+                body: JSON.stringify({
+                    chapter_id: nextChapter.id,
+                    source: state.source
+                })
+            });
+
+            const pages = response?.pages_data || response?.pages || [];
+            state.nextChapterPages = pages;
+
+            // Prefetch first 3 pages of next chapter
+            for (let i = 0; i < Math.min(3, pages.length); i++) {
+                const page = pages[i];
+                const url = typeof page === 'string' ? page : page.url;
+                const referer = typeof page === 'object' ? page.referer : null;
+                if (url) {
+                    this.prefetchImage(url, referer);
+                }
+            }
+        } catch (e) {
+            console.debug('[Prefetcher] Failed to prefetch next chapter:', e);
+            state.nextChapterPrefetched = false;
+        }
+    },
+
+    /**
+     * Called when page changes - triggers appropriate prefetching
+     */
+    onPageChange(currentIndex, pages) {
+        // Prefetch pages ahead
+        this.prefetchPagesAhead(currentIndex, pages);
+
+        // Check if we should prefetch next chapter
+        if (this.shouldPrefetchNextChapter(currentIndex, pages.length)) {
+            this.prefetchNextChapter();
+        }
+    }
 };
 
 function clamp(value, min, max) {
@@ -559,6 +786,9 @@ function setReaderPage(index, options = {}) {
     }
     updatePageVisibility({ scroll: options.scroll !== false, behavior: options.behavior });
     scheduleProgressSave();
+
+    // Trigger prefetching for pages ahead and next chapter
+    Prefetcher.onPageChange(state.currentPage, state.pages);
 }
 
 function moveReader(direction, options = {}) {
@@ -907,6 +1137,15 @@ async function init() {
     }
     bindEvents();
 
+    // Initialize prefetcher IndexedDB cache
+    try {
+        await Prefetcher.initDB();
+        // Run cleanup in background (don't await)
+        Prefetcher.cleanup();
+    } catch (e) {
+        console.warn('[Reader] Failed to init prefetch cache:', e);
+    }
+
     if (!state.chapterId || !state.source) {
         showError('Missing chapter or source.');
         return;
@@ -920,6 +1159,12 @@ async function init() {
             return;
         }
         await renderPages();
+
+        // Start prefetching pages ahead after initial render
+        Prefetcher.onPageChange(state.currentPage, state.pages);
+
+        // Pre-fetch chapter list for next chapter prefetching
+        ensureChapterList();
     } catch (error) {
         console.error('[Reader] Failed to load pages:', error);
         showError(`Failed to load pages: ${error.message}`);
