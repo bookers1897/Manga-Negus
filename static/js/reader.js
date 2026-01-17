@@ -1,0 +1,935 @@
+const els = {
+    backBtn: document.getElementById('reader-back-btn'),
+    mangaTitle: document.getElementById('reader-manga-title'),
+    chapterTitle: document.getElementById('reader-chapter-title'),
+    prevBtn: document.getElementById('reader-prev-btn'),
+    nextBtn: document.getElementById('reader-next-btn'),
+    pageIndicator: document.getElementById('reader-page-indicator'),
+    pages: document.getElementById('reader-pages'),
+    loading: document.getElementById('reader-loading'),
+    settings: document.getElementById('reader-settings'),
+    settingsClose: document.getElementById('reader-settings-close'),
+    settingsToggle: document.getElementById('reader-settings-toggle'),
+    spreadToggle: document.getElementById('reader-spread-toggle')
+};
+
+const state = {
+    chapterId: '',
+    source: '',
+    mangaId: '',
+    mangaTitle: '',
+    chapterName: '',
+    chapterNumber: null,
+    totalChapters: null,
+    libraryKey: '',
+    cover: '',
+    pages: [],
+    currentPage: 0,
+    startPage: 0,
+    readerMode: 'strip',
+    readerFit: 'fit-width',
+    readerDirection: 'ltr',
+    readerBackground: 'dark',
+    readerSpread: false,
+    spreadPages: new Set(),
+    readerObserver: null,
+    progressTimer: null,
+    csrfToken: null,
+    dataSaver: false,
+    chapterList: [],
+    chapterIndex: -1,
+    sessionStart: Date.now(),
+    sessionStartPage: 0,
+    settingsOpen: false,
+    renderGeneration: 0,
+    initialScrollDone: false,
+    isNavigating: false,
+    virtualEnabled: false,
+    virtualStart: 0,
+    virtualEnd: -1,
+    virtualHeights: [],
+    virtualAvgHeight: 0,
+    virtualNodes: new Map(),
+    virtualTopSpacer: null,
+    virtualBottomSpacer: null,
+    virtualContainer: null,
+    virtualScrollRaf: null,
+    virtualGap: 20
+};
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function parseParams() {
+    const params = new URLSearchParams(window.location.search);
+    state.chapterId = params.get('chapter_id') || '';
+    state.source = params.get('source') || '';
+    state.mangaId = params.get('manga_id') || '';
+    state.mangaTitle = params.get('manga_title') || 'Manga';
+    state.chapterName = params.get('chapter_title') || 'Chapter';
+    state.cover = params.get('cover') || '';
+    state.libraryKey = params.get('library_key') || '';
+    state.startPage = parseInt(params.get('start_page') || '0', 10);
+    state.chapterNumber = params.get('chapter_number');
+    if (state.chapterNumber !== null) {
+        const num = parseFloat(state.chapterNumber);
+        state.chapterNumber = Number.isNaN(num) ? state.chapterNumber : num;
+    }
+    const total = parseInt(params.get('total_chapters') || '', 10);
+    state.totalChapters = Number.isNaN(total) ? null : total;
+}
+
+function loadReaderPreferences() {
+    const mode = localStorage.getItem('manganegus.readerMode');
+    if (mode === 'strip' || mode === 'paged' || mode === 'webtoon') {
+        state.readerMode = mode;
+    }
+    const fit = localStorage.getItem('manganegus.readerFitMode');
+    if (fit && ['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(fit)) {
+        state.readerFit = fit;
+    }
+    const direction = localStorage.getItem('manganegus.readerDirection');
+    if (direction === 'rtl' || direction === 'ltr') {
+        state.readerDirection = direction;
+    }
+    const background = localStorage.getItem('manganegus.readerBackground');
+    if (background && ['dark', 'light', 'sepia', 'black', 'white'].includes(background)) {
+        state.readerBackground = background;
+    }
+    state.readerSpread = localStorage.getItem('manganegus.readerSpread') === '1';
+
+    try {
+        const raw = localStorage.getItem('manganegus.filters');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            state.dataSaver = !!parsed.dataSaver;
+        }
+    } catch {
+        state.dataSaver = false;
+    }
+}
+
+function applySettings() {
+    document.body.dataset.readerMode = state.readerMode;
+    document.body.dataset.readerFit = state.readerFit;
+    document.body.dataset.readerBg = state.readerBackground;
+    document.body.dataset.readerDirection = state.readerDirection;
+    updateSettingsUI();
+}
+
+function updateSettingsUI() {
+    document.querySelectorAll('.settings-options').forEach(group => {
+        const setting = group.dataset.setting;
+        let value = '';
+        if (setting === 'mode') value = state.readerMode;
+        if (setting === 'fit') value = state.readerFit;
+        if (setting === 'direction') value = state.readerDirection;
+        if (setting === 'background') value = state.readerBackground;
+        group.querySelectorAll('button[data-value]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.value === value);
+        });
+    });
+    if (els.spreadToggle) {
+        els.spreadToggle.checked = state.readerSpread;
+    }
+}
+
+function setReaderMode(mode) {
+    if (!['strip', 'paged', 'webtoon'].includes(mode)) return;
+    state.readerMode = mode;
+    localStorage.setItem('manganegus.readerMode', mode);
+    applySettings();
+    if (state.pages.length) {
+        void renderPages();
+        return;
+    }
+    updatePageVisibility({ scroll: true });
+    setupReaderObserver();
+}
+
+function setReaderFit(mode) {
+    if (!['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(mode)) return;
+    state.readerFit = mode;
+    localStorage.setItem('manganegus.readerFitMode', mode);
+    applySettings();
+}
+
+function setReaderDirection(direction) {
+    state.readerDirection = direction === 'rtl' ? 'rtl' : 'ltr';
+    localStorage.setItem('manganegus.readerDirection', state.readerDirection);
+    applySettings();
+}
+
+function setReaderBackground(bg) {
+    if (!['dark', 'light', 'sepia', 'black', 'white'].includes(bg)) return;
+    state.readerBackground = bg;
+    localStorage.setItem('manganegus.readerBackground', bg);
+    applySettings();
+}
+
+function setReaderSpread(enabled) {
+    state.readerSpread = !!enabled;
+    localStorage.setItem('manganegus.readerSpread', state.readerSpread ? '1' : '0');
+    if (state.readerMode === 'paged') {
+        renderPagedWindow(state.currentPage);
+    }
+    updatePageVisibility({ scroll: true });
+    updateSettingsUI();
+}
+
+async function apiRequest(endpoint, options = {}) {
+    const headers = {
+        ...(options.headers || {})
+    };
+    if (options.method === 'POST' && state.csrfToken) {
+        headers['X-CSRF-Token'] = state.csrfToken;
+    }
+    if (options.body && !headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+    }
+
+    const response = await fetch(endpoint, {
+        ...options,
+        headers
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const data = isJson ? await response.json() : null;
+    if (!response.ok) {
+        const message = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(message);
+    }
+    return data;
+}
+
+async function ensureCsrfToken() {
+    if (state.csrfToken) return state.csrfToken;
+    const data = await apiRequest('/api/csrf-token');
+    state.csrfToken = data?.csrf_token || null;
+    return state.csrfToken;
+}
+
+async function getChapterPages() {
+    await ensureCsrfToken();
+    const data = await apiRequest('/api/chapter_pages', {
+        method: 'POST',
+        body: JSON.stringify({
+            chapter_id: state.chapterId,
+            source: state.source
+        })
+    });
+    return data?.pages_data || data?.pages || [];
+}
+
+async function getAllChapters() {
+    if (!state.mangaId || !state.source) return null;
+    await ensureCsrfToken();
+    const data = await apiRequest('/api/all_chapters', {
+        method: 'POST',
+        body: JSON.stringify({
+            id: state.mangaId,
+            source: state.source
+        })
+    });
+    return data;
+}
+
+function buildProxyUrl(page) {
+    const pageUrl = typeof page === 'string' ? page : page.url;
+    const referer = typeof page === 'object'
+        ? (page.referer || page.headers?.Referer || page.headers?.referer || '')
+        : '';
+    const optimizeParams = state.dataSaver ? '&format=webp&quality=55' : '&format=webp&quality=85';
+    const base = `/api/proxy/image?url=${encodeURIComponent(pageUrl)}`;
+    if (referer) {
+        return `${base}&referer=${encodeURIComponent(referer)}${optimizeParams}`;
+    }
+    return `${base}${optimizeParams}`;
+}
+
+function showLoading(show) {
+    if (!els.loading) return;
+    els.loading.classList.toggle('hidden', !show);
+}
+
+function showError(message) {
+    if (!els.pages) return;
+    els.pages.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'loading-state';
+    const text = document.createElement('span');
+    text.textContent = message;
+    wrapper.appendChild(text);
+    els.pages.appendChild(wrapper);
+}
+
+const VIRTUAL_MIN_BUFFER = 6;
+const VIRTUAL_MAX_BUFFER = 20;
+
+function getPageGap() {
+    return state.readerMode === 'webtoon' ? 12 : 20;
+}
+
+function estimateAverageHeight() {
+    const width = els.pages?.clientWidth || window.innerWidth;
+    const ratio = state.readerMode === 'webtoon' ? 1.4 : 1.25;
+    return Math.max(360, Math.round(width * ratio)) + state.virtualGap;
+}
+
+function resetVirtualState() {
+    state.virtualEnabled = false;
+    state.virtualStart = 0;
+    state.virtualEnd = -1;
+    state.virtualHeights = [];
+    state.virtualAvgHeight = 0;
+    state.virtualNodes = new Map();
+    state.virtualTopSpacer = null;
+    state.virtualBottomSpacer = null;
+    state.virtualContainer = null;
+    state.virtualScrollRaf = null;
+}
+
+function getVirtualBuffer() {
+    const viewport = els.pages?.clientHeight || window.innerHeight;
+    const visible = Math.ceil(viewport / Math.max(1, state.virtualAvgHeight));
+    return Math.min(VIRTUAL_MAX_BUFFER, Math.max(VIRTUAL_MIN_BUFFER, visible + 2));
+}
+
+function getEstimatedHeight(index) {
+    return state.virtualHeights[index] || state.virtualAvgHeight;
+}
+
+function calculateHeightRange(start, end) {
+    let total = 0;
+    for (let i = start; i < end; i += 1) {
+        total += getEstimatedHeight(i);
+    }
+    return total;
+}
+
+function updateVirtualAverage() {
+    const known = state.virtualHeights.filter(height => height > 0);
+    if (!known.length) return;
+    const sum = known.reduce((acc, height) => acc + height, 0);
+    state.virtualAvgHeight = Math.max(300, Math.round(sum / known.length));
+}
+
+function updateVirtualSpacers() {
+    if (!state.virtualTopSpacer || !state.virtualBottomSpacer) return;
+    const total = state.pages.length;
+    const topHeight = calculateHeightRange(0, state.virtualStart);
+    const bottomHeight = calculateHeightRange(state.virtualEnd + 1, total);
+    state.virtualTopSpacer.style.height = `${topHeight}px`;
+    state.virtualBottomSpacer.style.height = `${bottomHeight}px`;
+}
+
+function ensureVirtualElements() {
+    if (state.virtualTopSpacer && state.virtualBottomSpacer && state.virtualContainer) return;
+    const top = document.createElement('div');
+    top.className = 'reader-spacer';
+    const container = document.createElement('div');
+    container.className = 'reader-window';
+    const bottom = document.createElement('div');
+    bottom.className = 'reader-spacer';
+    els.pages.append(top, container, bottom);
+    state.virtualTopSpacer = top;
+    state.virtualContainer = container;
+    state.virtualBottomSpacer = bottom;
+}
+
+function getPageNode(index) {
+    let node = state.virtualNodes.get(index);
+    if (node) return node;
+    const page = state.pages[index];
+    node = document.createElement('img');
+    node.className = 'reader-page';
+    node.dataset.pageIndex = String(index);
+    node.loading = 'lazy';
+    node.alt = `Page ${index + 1}`;
+    node.src = buildProxyUrl(page);
+    node.addEventListener('load', () => {
+        node.classList.add('loaded');
+        if (!node.naturalWidth || !node.naturalHeight) return;
+        const ratio = node.naturalWidth / node.naturalHeight;
+        if (ratio > 1.25) {
+            state.spreadPages.add(index);
+        } else {
+            state.spreadPages.delete(index);
+        }
+        const measured = Math.round(node.getBoundingClientRect().height) + state.virtualGap;
+        if (measured > 0) {
+            state.virtualHeights[index] = measured;
+            updateVirtualAverage();
+            if (state.virtualEnabled) {
+                updateVirtualSpacers();
+            }
+            if (state.readerMode === 'paged' && state.readerSpread) {
+                updatePageVisibility({ scroll: false, behavior: 'auto' });
+            }
+        }
+    }, { once: true });
+    node.addEventListener('error', () => {
+        node.classList.add('load-error');
+        node.alt = `Page ${index + 1} failed to load`;
+    }, { once: true });
+    state.virtualNodes.set(index, node);
+    return node;
+}
+
+function renderVirtualWindow(startIndex, endIndex) {
+    const total = state.pages.length;
+    if (!total) return;
+    const start = clamp(startIndex, 0, total - 1);
+    const end = clamp(endIndex, 0, total - 1);
+    if (start > end) return;
+    if (state.virtualStart === start && state.virtualEnd === end) return;
+    state.virtualStart = start;
+    state.virtualEnd = end;
+    updateVirtualSpacers();
+    const fragment = document.createDocumentFragment();
+    for (let i = start; i <= end; i += 1) {
+        fragment.appendChild(getPageNode(i));
+    }
+    if (state.virtualContainer) {
+        state.virtualContainer.replaceChildren(fragment);
+    }
+    setupReaderObserver();
+}
+
+function updateVirtualWindowForIndex(index) {
+    if (!state.virtualEnabled) return;
+    const total = state.pages.length;
+    if (!total) return;
+    const buffer = getVirtualBuffer();
+    const start = clamp(index - buffer, 0, total - 1);
+    const end = clamp(index + buffer, 0, total - 1);
+    renderVirtualWindow(start, end);
+}
+
+function renderPagedWindow(index) {
+    const total = state.pages.length;
+    if (!total) return;
+    const buffer = state.readerSpread ? 3 : 2;
+    const start = clamp(index - buffer, 0, total - 1);
+    const end = clamp(index + buffer, 0, total - 1);
+    if (state.virtualStart === start && state.virtualEnd === end) return;
+    state.virtualStart = start;
+    state.virtualEnd = end;
+    const fragment = document.createDocumentFragment();
+    for (let i = start; i <= end; i += 1) {
+        fragment.appendChild(getPageNode(i));
+    }
+    els.pages.replaceChildren(fragment);
+    setupReaderObserver();
+}
+
+function handleVirtualScroll() {
+    if (!state.virtualEnabled || state.readerMode === 'paged') return;
+    if (state.virtualScrollRaf) return;
+    state.virtualScrollRaf = requestAnimationFrame(() => {
+        state.virtualScrollRaf = null;
+        const scrollTop = els.pages.scrollTop;
+        const estimatedIndex = Math.floor(scrollTop / Math.max(1, state.virtualAvgHeight));
+        updateVirtualWindowForIndex(clamp(estimatedIndex, 0, state.pages.length - 1));
+    });
+}
+
+async function renderPages() {
+    if (!els.pages) return;
+    state.renderGeneration += 1;
+    state.initialScrollDone = false;
+    clearReaderObserver();
+    resetVirtualState();
+    els.pages.innerHTML = '';
+    state.spreadPages.clear();
+
+    const total = state.pages.length;
+    state.currentPage = clamp(state.startPage, 0, Math.max(0, total - 1));
+    state.sessionStartPage = state.currentPage;
+    updatePageIndicator();
+
+    state.virtualGap = getPageGap();
+    state.virtualHeights = new Array(total).fill(0);
+    state.virtualAvgHeight = estimateAverageHeight();
+
+    if (state.readerMode === 'paged') {
+        els.pages.style.gap = '';
+        renderPagedWindow(state.currentPage);
+        showLoading(false);
+        updatePageVisibility({ scroll: false, behavior: 'auto' });
+        scheduleProgressSave(true);
+        return;
+    }
+
+    state.virtualEnabled = true;
+    els.pages.style.gap = '0px';
+    ensureVirtualElements();
+    updateVirtualWindowForIndex(state.currentPage);
+    showLoading(false);
+    updatePageVisibility({ scroll: true, behavior: 'auto' });
+    state.initialScrollDone = true;
+    scheduleProgressSave(true);
+}
+
+function updatePageIndicator() {
+    if (!els.pageIndicator) return;
+    const total = state.pages.length;
+    if (!total) {
+        els.pageIndicator.textContent = '0 / 0';
+        return;
+    }
+    if (state.readerMode === 'paged' && state.readerSpread) {
+        const start = state.currentPage + 1;
+        const showPair = !isSpreadPage(state.currentPage);
+        const end = showPair ? Math.min(total, start + 1) : start;
+        els.pageIndicator.textContent = showPair ? `${start}-${end} / ${total}` : `${start} / ${total}`;
+    } else {
+        els.pageIndicator.textContent = `${state.currentPage + 1} / ${total}`;
+    }
+    if (els.prevBtn) {
+        els.prevBtn.disabled = state.currentPage === 0;
+    }
+    if (els.nextBtn) {
+        els.nextBtn.disabled = state.currentPage >= total - 1;
+    }
+}
+
+function updatePageVisibility(options = {}) {
+    if (!els.pages) return;
+    const pages = els.pages.querySelectorAll('.reader-page');
+    const behavior = options.behavior || (state.readerMode === 'paged' ? 'auto' : 'smooth');
+    if (state.readerMode === 'paged') {
+        const showPair = state.readerSpread && !isSpreadPage(state.currentPage);
+        pages.forEach((page, index) => {
+            const isActive = index === state.currentPage
+                || (showPair && index === state.currentPage + 1);
+            page.classList.toggle('is-hidden', !isActive);
+            page.classList.toggle('is-active', isActive);
+        });
+        if (options.scroll !== false && pages[state.currentPage]) {
+            pages[state.currentPage].scrollIntoView({ behavior, block: 'center' });
+        }
+    } else {
+        pages.forEach((page, index) => {
+            page.classList.toggle('is-hidden', false);
+            page.classList.toggle('is-active', index === state.currentPage);
+        });
+        if (options.scroll !== false && pages[state.currentPage]) {
+            pages[state.currentPage].scrollIntoView({
+                behavior,
+                block: state.readerMode === 'webtoon' ? 'start' : 'center'
+            });
+        }
+    }
+    updatePageIndicator();
+}
+
+function isSpreadPage(index) {
+    return state.spreadPages.has(index);
+}
+
+function getReaderDelta(direction) {
+    if (!(state.readerSpread && state.readerMode === 'paged')) {
+        const step = 1;
+        return direction === 'next' ? step : -step;
+    }
+
+    let step = 1;
+    if (direction === 'next') {
+        step = isSpreadPage(state.currentPage) ? 1 : 2;
+    } else {
+        const prevIndex = state.currentPage - 1;
+        step = prevIndex >= 0 && isSpreadPage(prevIndex) ? 1 : 2;
+    }
+
+    return direction === 'next' ? step : -step;
+}
+
+function setReaderPage(index, options = {}) {
+    const total = state.pages.length;
+    if (!total) return;
+    const clamped = clamp(index, 0, total - 1);
+    if (clamped === state.currentPage && !options.force) return;
+    state.currentPage = clamped;
+    if (state.readerMode === 'paged') {
+        renderPagedWindow(state.currentPage);
+    } else {
+        updateVirtualWindowForIndex(state.currentPage);
+    }
+    updatePageVisibility({ scroll: options.scroll !== false, behavior: options.behavior });
+    scheduleProgressSave();
+}
+
+function moveReader(direction, options = {}) {
+    const total = state.pages.length;
+    if (!total) return;
+    const delta = getReaderDelta(direction);
+    const nextIndex = state.currentPage + delta;
+    if (direction === 'next' && nextIndex >= total) {
+        void advanceChapter('next');
+        return;
+    }
+    if (direction === 'prev' && nextIndex < 0) {
+        void advanceChapter('prev');
+        return;
+    }
+    setReaderPage(nextIndex, { behavior: options.behavior });
+}
+
+function clearReaderObserver() {
+    if (state.readerObserver) {
+        state.readerObserver.disconnect();
+        state.readerObserver = null;
+    }
+}
+
+function setupReaderObserver() {
+    clearReaderObserver();
+    if (!('IntersectionObserver' in window)) return;
+    if (state.readerMode === 'paged') return;
+    const pages = els.pages.querySelectorAll('.reader-page');
+    if (pages.length === 0) return;
+
+    state.readerObserver = new IntersectionObserver((entries) => {
+        const visible = entries
+            .filter(entry => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (!visible.length) return;
+        const index = Number(visible[0].target.dataset.pageIndex || 0);
+        if (!Number.isNaN(index)) {
+            setReaderPage(index, { scroll: false });
+        }
+    }, {
+        root: els.pages,
+        threshold: [0.6]
+    });
+
+    pages.forEach(page => state.readerObserver.observe(page));
+}
+
+function handleReaderTap(event) {
+    if (state.readerMode === 'webtoon') return;
+    if (event.target.closest('.reader-settings') || event.target.closest('.reader-topbar')) return;
+    const rect = els.pages.getBoundingClientRect();
+    if (!rect.width) return;
+    const x = event.clientX - rect.left;
+    const ratio = x / rect.width;
+    const isRtl = state.readerDirection === 'rtl';
+    if (ratio < 0.33) {
+        moveReader(isRtl ? 'next' : 'prev');
+    } else if (ratio > 0.66) {
+        moveReader(isRtl ? 'prev' : 'next');
+    }
+}
+
+function handleKeydown(event) {
+    if (event.target.matches('input, textarea, select')) return;
+    if (event.target.closest('#reader-settings')) return;
+    if (state.settingsOpen && window.innerWidth <= 960) return;
+    switch (event.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+            event.preventDefault();
+            if (event.key === 'ArrowLeft') {
+                moveReader(state.readerDirection === 'rtl' ? 'next' : 'prev', { behavior: 'auto' });
+            } else {
+                moveReader('prev', { behavior: 'auto' });
+            }
+            break;
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case ' ':
+        case 'Enter':
+            event.preventDefault();
+            if (event.key === 'ArrowRight') {
+                moveReader(state.readerDirection === 'rtl' ? 'prev' : 'next', { behavior: 'auto' });
+            } else {
+                moveReader('next', { behavior: 'auto' });
+            }
+            break;
+        case 'Escape':
+            event.preventDefault();
+            goBack();
+            break;
+        case 's':
+        case 'S':
+            event.preventDefault();
+            setReaderSpread(!state.readerSpread);
+            break;
+        default:
+            break;
+    }
+}
+
+function inferChapterOrder(chapters) {
+    if (!chapters || chapters.length < 2) return 'desc';
+    const first = parseFloat(chapters[0]?.chapter);
+    const last = parseFloat(chapters[chapters.length - 1]?.chapter);
+    if (!Number.isNaN(first) && !Number.isNaN(last)) {
+        if (first > last) return 'desc';
+        if (first < last) return 'asc';
+    }
+    return 'desc';
+}
+
+function getChapterNumber(chapter, index, total, order) {
+    const parsed = parseFloat(chapter?.chapter);
+    if (!Number.isNaN(parsed)) {
+        return parsed;
+    }
+    if (!total) return null;
+    if (order === 'desc') {
+        return Math.max(1, total - index);
+    }
+    return index + 1;
+}
+
+async function ensureChapterList() {
+    if (state.chapterList.length) return true;
+    try {
+        const data = await getAllChapters();
+        const chapters = data?.chapters || [];
+        if (!chapters.length) return false;
+        state.chapterList = chapters;
+        state.totalChapters = data.total || state.totalChapters || chapters.length;
+        state.chapterIndex = chapters.findIndex(chapter => chapter.id === state.chapterId);
+        return state.chapterIndex >= 0;
+    } catch (error) {
+        console.warn('[Reader] Failed to load chapter list:', error);
+        return false;
+    }
+}
+
+async function advanceChapter(direction) {
+    if (state.isNavigating) return;
+    state.isNavigating = true;
+    try {
+        const ready = await ensureChapterList();
+        if (!ready) return;
+        const order = inferChapterOrder(state.chapterList);
+        const delta = order === 'desc' ? -1 : 1;
+        const targetIndex = direction === 'next'
+            ? state.chapterIndex + delta
+            : state.chapterIndex - delta;
+        if (targetIndex < 0 || targetIndex >= state.chapterList.length) return;
+        const chapter = state.chapterList[targetIndex];
+        const nextNumber = getChapterNumber(chapter, targetIndex, state.totalChapters, order);
+        const params = new URLSearchParams();
+        params.set('chapter_id', chapter.id);
+        params.set('source', state.source);
+        if (state.mangaId) params.set('manga_id', state.mangaId);
+        if (state.mangaTitle) params.set('manga_title', state.mangaTitle);
+        if (chapter.title) params.set('chapter_title', chapter.title);
+        if (state.cover) params.set('cover', state.cover);
+        if (state.libraryKey) params.set('library_key', state.libraryKey);
+        if (nextNumber !== null && nextNumber !== undefined) {
+            params.set('chapter_number', String(nextNumber));
+        }
+        if (state.totalChapters) params.set('total_chapters', String(state.totalChapters));
+        params.set('start_page', '0');
+        window.location.assign(`/reader?${params.toString()}`);
+    } finally {
+        state.isNavigating = false;
+    }
+}
+
+function scheduleProgressSave(immediate = false) {
+    if (state.progressTimer) {
+        clearTimeout(state.progressTimer);
+        state.progressTimer = null;
+    }
+    if (immediate) {
+        void saveReadingProgress();
+        return;
+    }
+    state.progressTimer = setTimeout(() => {
+        state.progressTimer = null;
+        void saveReadingProgress();
+    }, 1200);
+}
+
+function buildLastReadEntry() {
+    const pageValue = state.currentPage + 1;
+    return {
+        id: state.mangaId,
+        manga_id: state.mangaId,
+        source: state.source,
+        title: state.mangaTitle,
+        cover: state.cover,
+        last_chapter: String(state.chapterNumber || state.chapterName || '0'),
+        last_chapter_id: state.chapterId,
+        last_page: pageValue,
+        last_page_total: state.pages.length || null,
+        total_chapters: state.totalChapters,
+        last_read_at: new Date().toISOString()
+    };
+}
+
+function saveLastRead(entry) {
+    try {
+        localStorage.setItem('manganegus.lastRead', JSON.stringify(entry));
+    } catch {
+        // Ignore storage errors
+    }
+}
+
+async function saveReadingProgress() {
+    if (!state.chapterId) return;
+    const pageValue = state.currentPage + 1;
+    const pageTotal = state.pages.length || null;
+    const chapterValue = state.chapterNumber || state.chapterName || '';
+
+    if (!state.libraryKey) {
+        saveLastRead(buildLastReadEntry());
+        return;
+    }
+
+    try {
+        await ensureCsrfToken();
+        await apiRequest('/api/library/update_progress', {
+            method: 'POST',
+            body: JSON.stringify({
+                key: state.libraryKey,
+                chapter: String(chapterValue),
+                page: pageValue,
+                chapter_id: state.chapterId,
+                total_chapters: state.totalChapters,
+                page_total: pageTotal
+            })
+        });
+        saveLastRead(buildLastReadEntry());
+    } catch (error) {
+        console.warn('[Reader] Progress save failed:', error);
+        saveLastRead(buildLastReadEntry());
+    }
+}
+
+function recordReadingSession() {
+    const elapsed = Date.now() - state.sessionStart;
+    const minutes = Math.max(0, Math.round(elapsed / 60000));
+    const pagesRead = Math.max(0, state.currentPage - state.sessionStartPage + 1);
+    if (!minutes && !pagesRead) return;
+    try {
+        const raw = localStorage.getItem('manganegus.readingStats');
+        const parsed = raw ? JSON.parse(raw) : { totalMinutes: 0, daily: {} };
+        parsed.totalMinutes = (parsed.totalMinutes || 0) + minutes;
+        const dayKey = new Date().toDateString();
+        if (!parsed.daily[dayKey]) {
+            parsed.daily[dayKey] = { minutes: 0, pages: 0 };
+        }
+        parsed.daily[dayKey].minutes += minutes;
+        parsed.daily[dayKey].pages += pagesRead;
+        localStorage.setItem('manganegus.readingStats', JSON.stringify(parsed));
+    } catch {
+        // Ignore storage errors
+    }
+}
+
+function goBack() {
+    if (window.history.length > 1) {
+        window.history.back();
+    } else {
+        window.location.assign('/');
+    }
+}
+
+function setSettingsOpen(open) {
+    state.settingsOpen = open;
+    if (els.settings) {
+        els.settings.classList.toggle('open', open);
+    }
+    document.body.classList.toggle('settings-collapsed', !open);
+}
+
+function bindEvents() {
+    if (els.backBtn) {
+        els.backBtn.addEventListener('click', goBack);
+    }
+    if (els.prevBtn) {
+        els.prevBtn.addEventListener('click', () => moveReader('prev'));
+    }
+    if (els.nextBtn) {
+        els.nextBtn.addEventListener('click', () => moveReader('next'));
+    }
+    if (els.pages) {
+        els.pages.addEventListener('click', handleReaderTap);
+        els.pages.addEventListener('scroll', handleVirtualScroll, { passive: true });
+    }
+    if (els.settingsToggle) {
+        els.settingsToggle.addEventListener('click', () => setSettingsOpen(!state.settingsOpen));
+    }
+    if (els.settingsClose) {
+        els.settingsClose.addEventListener('click', () => setSettingsOpen(false));
+    }
+    if (els.spreadToggle) {
+        els.spreadToggle.addEventListener('change', () => setReaderSpread(els.spreadToggle.checked));
+    }
+
+    document.querySelectorAll('.settings-options').forEach(group => {
+        group.addEventListener('click', (event) => {
+            const btn = event.target.closest('button[data-value]');
+            if (!btn) return;
+            const setting = group.dataset.setting;
+            const value = btn.dataset.value;
+            if (setting === 'mode') setReaderMode(value);
+            if (setting === 'fit') setReaderFit(value);
+            if (setting === 'direction') setReaderDirection(value);
+            if (setting === 'background') setReaderBackground(value);
+        });
+    });
+
+    document.addEventListener('keydown', handleKeydown);
+    document.addEventListener('click', (event) => {
+        if (!state.settingsOpen) return;
+        if (window.innerWidth > 960) return;
+        if (event.target.closest('#reader-settings') || event.target.closest('#reader-settings-toggle')) return;
+        setSettingsOpen(false);
+    });
+
+    window.addEventListener('beforeunload', () => {
+        void saveReadingProgress();
+        recordReadingSession();
+    });
+}
+
+async function init() {
+    parseParams();
+    loadReaderPreferences();
+    applySettings();
+    state.settingsOpen = window.innerWidth > 960;
+    setSettingsOpen(state.settingsOpen);
+
+    if (els.mangaTitle) els.mangaTitle.textContent = state.mangaTitle || 'Manga';
+    if (els.chapterTitle) els.chapterTitle.textContent = state.chapterName || 'Chapter';
+    if (state.chapterName) {
+        document.title = state.mangaTitle ? `${state.chapterName} • ${state.mangaTitle}` : state.chapterName;
+    }
+    bindEvents();
+
+    if (!state.chapterId || !state.source) {
+        showError('Missing chapter or source.');
+        return;
+    }
+
+    showLoading(true);
+    try {
+        state.pages = await getChapterPages();
+        if (!state.pages.length) {
+            showError('No pages available for this chapter.');
+            return;
+        }
+        await renderPages();
+    } catch (error) {
+        console.error('[Reader] Failed to load pages:', error);
+        showError(`Failed to load pages: ${error.message}`);
+    } finally {
+        showLoading(false);
+    }
+
+    if (window.lucide && window.lucide.createIcons) {
+        window.lucide.createIcons();
+    }
+}
+
+init();

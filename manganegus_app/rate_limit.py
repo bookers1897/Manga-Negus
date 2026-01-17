@@ -12,7 +12,7 @@ Rate Limit Tiers:
 
 import os
 from functools import wraps
-from flask import request, jsonify, g
+from flask import request, jsonify, g, make_response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -80,12 +80,113 @@ def limit_download(f):
 # ==============================================================================
 
 def rate_limit_exceeded_handler(e):
-    """Custom handler for rate limit exceeded errors."""
-    return jsonify({
-        "error": "Rate limit exceeded",
-        "message": str(e.description),
-        "retry_after": e.retry_after if hasattr(e, 'retry_after') else 60
-    }), 429
+    """
+    Custom handler for rate limit exceeded errors.
+
+    Returns JSON for API requests, HTML error page for browser navigations.
+    This prevents raw JSON from filling the screen when users hit rate limits
+    on page loads.
+    """
+    retry_after = e.retry_after if hasattr(e, 'retry_after') else 60
+
+    # Check if this is an API request (wants JSON) vs page navigation (wants HTML)
+    # API requests typically have Accept: application/json or are to /api/ endpoints
+    is_api_request = (
+        request.path.startswith('/api/') or
+        'application/json' in request.headers.get('Accept', '') or
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+    )
+
+    if is_api_request:
+        return jsonify({
+            "error": "Rate limit exceeded",
+            "message": str(e.description),
+            "retry_after": retry_after
+        }), 429
+
+    # Return a styled HTML error page for browser navigations
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate Limited - MangaNegus</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 20px;
+        }}
+        .error-container {{
+            max-width: 480px;
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+        .error-icon {{
+            font-size: 64px;
+            margin-bottom: 20px;
+        }}
+        h1 {{
+            font-size: 24px;
+            margin-bottom: 12px;
+            color: #dc2626;
+        }}
+        p {{
+            color: #a3a3a3;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }}
+        .retry-info {{
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }}
+        .retry-info strong {{
+            color: #dc2626;
+        }}
+        .btn {{
+            display: inline-block;
+            padding: 12px 24px;
+            background: #dc2626;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }}
+        .btn:hover {{
+            background: #b91c1c;
+        }}
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-icon">⏱️</div>
+        <h1>Rate Limited</h1>
+        <p>You've made too many requests. Please wait a moment before trying again.</p>
+        <div class="retry-info">
+            <strong>Retry after:</strong> {retry_after} seconds
+        </div>
+        <a href="/" class="btn">Go Home</a>
+    </div>
+</body>
+</html>'''
+
+    response = make_response(html, 429)
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    response.headers['Retry-After'] = str(retry_after)
+    return response
 
 
 # ==============================================================================

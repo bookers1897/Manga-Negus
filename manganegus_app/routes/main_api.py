@@ -91,6 +91,11 @@ def redesign():
     """Serve new redesign interface (alias for /)."""
     return render_template('index.html')
 
+@main_bp.route('/reader')
+def reader():
+    """Serve standalone reader page."""
+    return render_template('reader.html')
+
 @main_bp.route('/legacy')
 def legacy():
     """Serve legacy glassmorphism UI."""

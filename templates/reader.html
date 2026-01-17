@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Reader</title>
+    <meta name="theme-color" content="#0b0b0f" />
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+    <link rel="stylesheet" href="/static/css/reader.css" />
+</head>
+<body class="reader-page" data-reader-bg="dark" data-reader-fit="fit-width" data-reader-mode="strip">
+    <div class="reader-shell">
+        <header class="reader-topbar">
+            <button id="reader-back-btn" class="reader-back-btn" aria-label="Back">
+                <i data-lucide="arrow-left" width="18"></i>
+                <span>Back</span>
+            </button>
+            <div class="reader-title-stack">
+                <div id="reader-manga-title" class="reader-manga-title">Manga</div>
+                <div id="reader-chapter-title" class="reader-chapter-title">Chapter</div>
+            </div>
+            <div class="reader-top-actions">
+                <button id="reader-prev-btn" class="reader-nav-btn" type="button">Prev</button>
+                <span id="reader-page-indicator" class="reader-page-indicator">1 / 1</span>
+                <button id="reader-next-btn" class="reader-nav-btn" type="button">Next</button>
+            </div>
+        </header>
+
+        <div class="reader-layout">
+            <main class="reader-main">
+                <div id="reader-pages" class="reader-pages"></div>
+                <div id="reader-loading" class="reader-loading">
+                    <div class="spinner"></div>
+                    <span>Loading pages...</span>
+                </div>
+            </main>
+
+            <aside id="reader-settings" class="reader-settings">
+                <div class="reader-settings-header">
+                    <div class="reader-settings-title">Reader Settings</div>
+                    <button id="reader-settings-close" class="reader-settings-close" aria-label="Close settings">
+                        <i data-lucide="x" width="16"></i>
+                    </button>
+                </div>
+
+                <div class="reader-settings-section">
+                    <div class="settings-label">Mode</div>
+                    <div class="settings-options" data-setting="mode">
+                        <button type="button" data-value="strip">Strip</button>
+                        <button type="button" data-value="webtoon">Webtoon</button>
+                        <button type="button" data-value="paged">Paged</button>
+                    </div>
+                </div>
+
+                <div class="reader-settings-section">
+                    <div class="settings-label">Fit</div>
+                    <div class="settings-options" data-setting="fit">
+                        <button type="button" data-value="fit-width">Fit Width</button>
+                        <button type="button" data-value="fit-height">Fit Height</button>
+                        <button type="button" data-value="fit-screen">Fit Screen</button>
+                        <button type="button" data-value="fit-original">Original</button>
+                    </div>
+                </div>
+
+                <div class="reader-settings-section">
+                    <div class="settings-label">Direction</div>
+                    <div class="settings-options" data-setting="direction">
+                        <button type="button" data-value="ltr">Left to Right</button>
+                        <button type="button" data-value="rtl">Right to Left</button>
+                    </div>
+                </div>
+
+                <div class="reader-settings-section">
+                    <div class="settings-label">Background</div>
+                    <div class="settings-options" data-setting="background">
+                        <button type="button" data-value="dark">Dark</button>
+                        <button type="button" data-value="light">Light</button>
+                        <button type="button" data-value="sepia">Sepia</button>
+                        <button type="button" data-value="black">Black</button>
+                        <button type="button" data-value="white">White</button>
+                    </div>
+                </div>
+
+                <div class="reader-settings-section">
+                    <label class="settings-toggle">
+                        <input id="reader-spread-toggle" type="checkbox" />
+                        <span>Spread Pages (Paged)</span>
+                    </label>
+                </div>
+            </aside>
+        </div>
+
+        <button id="reader-settings-toggle" class="reader-settings-toggle" aria-label="Reader settings">
+            <i data-lucide="sliders" width="18"></i>
+        </button>
+    </div>
+
+    <script type="module" src="/static/js/reader.js"></script>
+</body>
+</html>

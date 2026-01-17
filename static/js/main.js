@@ -6397,6 +6397,10 @@ async function advanceToNextChapter() {
 
 function handleReaderKeydown(event) {
     if (!els.readerContainer?.classList.contains('active')) return;
+    
+    // Check if any modal is open to prevent accidental navigation
+    if (document.querySelector('.modal-overlay.active')) return;
+
     const activeTag = document.activeElement?.tagName;
     if (activeTag && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag)) return;
     if (!state.readerPages.length) return;
@@ -6508,29 +6512,6 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
     closeSidebar();
     closeAllMenus();
 
-    // Save scroll position before locking body scroll
-    state.readerPreviousScrollY = window.scrollY;
-
-    // IMPORTANT: Show reader container FIRST, then lock body scroll
-    // This prevents the scroll lock from interfering with the reader's visibility
-    els.readerContainer.classList.add('active');
-
-    // Use requestAnimationFrame to ensure the reader is painted before locking scroll
-    await new Promise(resolve => requestAnimationFrame(() => {
-        // Now lock body scroll AFTER reader is visible
-        document.body.classList.add('reader-active');
-
-        // Scroll the reader content to top (not the window)
-        if (els.readerContent) {
-            els.readerContent.scrollTop = 0;
-        }
-
-        // Also reset window scroll for safety
-        window.scrollTo(0, 0);
-
-        resolve();
-    }));
-
     state.currentChapterId = chapterId;
     state.currentChapterTitle = chapterTitle;
     state.currentChapterNumber = chapterNumberOverride;
@@ -6560,136 +6541,90 @@ async function openReader(chapterId, chapterTitle, startPage = 0, chapterNumberO
     if (!state.currentManga?.source || state.currentManga.source === 'jikan') {
         showToast('Could not find chapter source - try selecting a different source');
         log(`❌ Failed to resolve source - still '${state.currentManga?.source || 'undefined'}'`);
-        document.body.classList.remove('reader-active');
-        if (state.readerPreviousScrollY > 0) {
-            window.scrollTo(0, state.readerPreviousScrollY);
-            state.readerPreviousScrollY = 0;
-        }
         return;
     }
     log(`✅ Using source: ${state.currentManga.source}`);
 
-    els.readerTitle.textContent = chapterTitle;
-    els.readerContent.innerHTML = `
-        <div class="loading-state">
-            <div class="spinner"></div>
-            <span class="loading-text">Loading pages...</span>
-        </div>
-    `;
-    // Reader container already made active at the start of openReader()
-    state.readerCurrentPage = 0;
-    state.readerSessionStart = Date.now();
-    state.readerSessionPageStart = startPage || 0;
+    const totalChapters = totalChaptersOverride || state.totalChaptersCount || state.currentChapters.length || null;
+    const chapterNumber = state.currentChapterNumber ?? chapterNumberOverride;
+    const cover = state.currentManga.cover
+        || state.currentManga.data?.cover_url
+        || state.currentManga.data?.cover
+        || '';
+    const libraryKey = resolveCurrentLibraryKey();
 
-    log(`📖 Opening reader: ${chapterTitle}`);
-    console.log('[READER DEBUG] Current manga:', state.currentManga);
-
-    try {
-        console.log('[READER DEBUG] Calling API.getChapterPages...');
-        let pages = null;
-        const prefetched = state.prefetchedChapters?.get(chapterId);
-        if (prefetched && Array.isArray(prefetched)) {
-            pages = prefetched;
-            state.prefetchedChapters.delete(chapterId);
-        } else if (state.prefetchedChapterId === chapterId && Array.isArray(state.prefetchedPages)) {
-            pages = state.prefetchedPages;
-            state.prefetchedChapterId = null;
-            state.prefetchedChapterTitle = null;
-            state.prefetchedPages = null;
-        } else {
-            pages = await API.getChapterPages(chapterId, state.currentManga.source);
-        }
-        console.log('[READER DEBUG] Pages received:', pages, 'Type:', typeof pages, 'IsArray:', Array.isArray(pages));
-
-        state.readerPages = pages;
-        state.readerSpreadPages.clear();
-
-        if (pages.length === 0) {
-            console.error('[READER DEBUG] No pages returned!');
-            els.readerContent.innerHTML = '<p style="padding: 24px; text-align: center; color: var(--text-muted);">No pages available</p>';
-            // Remove reader-active and restore scroll to allow sidebar to work
-            document.body.classList.remove('reader-active');
-            if (state.readerPreviousScrollY > 0) {
-                window.scrollTo(0, state.readerPreviousScrollY);
-                state.readerPreviousScrollY = 0;
-            }
-            return;
-        }
-
-        console.log('[READER DEBUG] Rendering', pages.length, 'pages');
-        state.readerCurrentPage = Math.max(0, Math.min(startPage, pages.length - 1));
-        renderReaderPages();
-        applyReaderMode();
-
-        // Ensure reader content is scrolled to top after rendering
-        requestAnimationFrame(() => {
-            if (els.readerContent) {
-                els.readerContent.scrollTop = 0;
-            }
-        });
-
-        log(`✅ Loaded ${pages.length} pages`);
-        scheduleProgressSave(true);
-        prefetchNextChapter();
-    } catch (error) {
-        console.error('[READER DEBUG] Error:', error);
-        els.readerContent.innerHTML = `<p style="padding: 24px; text-align: center; color: var(--text-muted);">Failed to load pages<br/>${escapeHtml(error.message)}</p>`;
-        log(`❌ Reader error: ${error.message}`);
-        // Remove reader-active and restore scroll to allow sidebar to work
-        document.body.classList.remove('reader-active');
-        if (state.readerPreviousScrollY > 0) {
-            window.scrollTo(0, state.readerPreviousScrollY);
-            state.readerPreviousScrollY = 0;
-        }
+    const params = new URLSearchParams();
+    params.set('chapter_id', chapterId);
+    params.set('source', state.currentManga.source);
+    if (state.currentManga.id) params.set('manga_id', state.currentManga.id);
+    if (state.currentManga.title) params.set('manga_title', state.currentManga.title);
+    if (chapterTitle) params.set('chapter_title', chapterTitle);
+    if (cover) params.set('cover', cover);
+    if (libraryKey) params.set('library_key', libraryKey);
+    if (startPage) params.set('start_page', String(startPage));
+    if (chapterNumber !== null && chapterNumber !== undefined) {
+        params.set('chapter_number', String(chapterNumber));
     }
+    if (totalChapters) params.set('total_chapters', String(totalChapters));
+
+    window.location.assign(`/reader?${params.toString()}`);
 }
 
 function renderReaderPages() {
     console.log('[READER DEBUG] renderReaderPages called, state.readerPages:', state.readerPages);
 
-    const html = state.readerPages.map((page, index) => {
+    els.readerContent.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    state.readerPages.forEach((page, index) => {
         // Handle both string URLs and object with url property
         const pageUrl = typeof page === 'string' ? page : page.url;
         const referer = typeof page === 'object'
             ? (page.referer || page.headers?.Referer || page.headers?.referer || '')
             : '';
-        console.log(`[READER DEBUG] Page ${index + 1}:`, { page, pageUrl });
-
+        
         const optimizeParams = state.filters.dataSaver ? '&format=webp&quality=55' : '&format=webp&quality=85';
         const proxyUrl = referer
             ? `/api/proxy/image?url=${encodeURIComponent(pageUrl)}&referer=${encodeURIComponent(referer)}${optimizeParams}`
             : `/api/proxy/image?url=${encodeURIComponent(pageUrl)}${optimizeParams}`;
-        return `<img src="${escapeHtml(proxyUrl)}" alt="Page ${index + 1}" class="reader-page lazy-image" data-page-index="${index}" data-original-url="${escapeHtml(pageUrl)}" loading="lazy" />`;
-    }).join('');
 
-    console.log('[READER DEBUG] Generated HTML length:', html.length);
-    els.readerContent.innerHTML = html;
-    els.readerContent.querySelectorAll('.reader-page').forEach((img) => {
+        const img = document.createElement('img');
+        img.src = proxyUrl;
+        img.alt = `Page ${index + 1}`;
+        img.className = 'reader-page lazy-image';
+        img.dataset.pageIndex = index;
+        img.dataset.originalUrl = pageUrl;
+        img.loading = 'lazy';
+
         // Handle successful load
         img.addEventListener('load', () => {
             img.classList.add('loaded');
-            const index = Number(img.dataset.pageIndex || 0);
-            if (Number.isNaN(index) || !img.naturalWidth || !img.naturalHeight) return;
+            const idx = Number(img.dataset.pageIndex || 0);
+            if (Number.isNaN(idx) || !img.naturalWidth || !img.naturalHeight) return;
             const ratio = img.naturalWidth / img.naturalHeight;
             if (ratio > 1.25) {
-                state.readerSpreadPages.add(index);
+                state.readerSpreadPages.add(idx);
             } else {
-                state.readerSpreadPages.delete(index);
+                state.readerSpreadPages.delete(idx);
             }
         }, { once: true });
 
-        // Handle load errors - show error state and log
+        // Handle load errors
         img.addEventListener('error', () => {
-            const index = img.dataset.pageIndex || '?';
+            const idx = img.dataset.pageIndex || '?';
             const originalUrl = img.dataset.originalUrl || 'unknown';
-            console.error(`[READER] Failed to load page ${index}:`, originalUrl);
+            console.error(`[READER] Failed to load page ${idx}:`, originalUrl);
             img.classList.add('load-error');
-            img.alt = `Page ${index} failed to load`;
+            img.alt = `Page ${idx} failed to load`;
             img.style.minHeight = '200px';
             img.style.background = 'repeating-linear-gradient(45deg, #1a1a1a, #1a1a1a 10px, #222 10px, #222 20px)';
-            log(`⚠️ Page ${index} failed to load`);
+            log(`⚠️ Page ${idx} failed to load`);
         }, { once: true });
+
+        fragment.appendChild(img);
     });
+
+    els.readerContent.appendChild(fragment);
     console.log('[READER DEBUG] Rendered', state.readerPages.length, 'page elements');
     setupReaderObserver();
     applyReaderEnhancements();
@@ -6716,6 +6651,8 @@ function updateReaderControls(options = {}) {
 
     // Scroll to current page
     const pages = els.readerContent.querySelectorAll('.reader-page');
+    const scrollBehavior = options.smooth ? 'smooth' : 'auto';
+
     if (state.readerMode === 'paged') {
         const showPair = state.readerSpread && !isSpreadPage(state.readerCurrentPage);
         pages.forEach((page, index) => {
@@ -6724,11 +6661,11 @@ function updateReaderControls(options = {}) {
             page.classList.toggle('active', isActive);
         });
         if (options.scroll !== false && pages[state.readerCurrentPage]) {
-            pages[state.readerCurrentPage].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            pages[state.readerCurrentPage].scrollIntoView({ behavior: scrollBehavior, block: 'center' });
         }
     } else if (options.scroll !== false && pages[state.readerCurrentPage]) {
         pages[state.readerCurrentPage].scrollIntoView({
-            behavior: 'smooth',
+            behavior: scrollBehavior,
             block: 'start'
         });
     }

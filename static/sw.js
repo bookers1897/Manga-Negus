@@ -1,13 +1,16 @@
-const VERSION = 'v2';
+const VERSION = 'v4';
 const STATIC_CACHE = `manganegus-static-${VERSION}`;
 const DATA_CACHE = `manganegus-data-${VERSION}`;
 const IMAGE_CACHE = `manganegus-images-${VERSION}`;
 
 const STATIC_ASSETS = [
   '/',
+  '/reader',
   '/static/manifest.json',
   '/static/css/styles.css',
+  '/static/css/reader.css',
   '/static/js/main.js',
+  '/static/js/reader.js',
   '/static/images/sharingan.png',
   '/static/images/placeholder.png'
 ];
@@ -41,8 +44,12 @@ async function cacheFirst(request, cacheName = STATIC_CACHE) {
 async function networkFirst(request) {
   try {
     const response = await fetch(request);
-    const cache = await caches.open(DATA_CACHE);
-    cache.put(request, response.clone());
+    // Only cache successful responses (2xx status codes)
+    // Don't cache errors like 429 rate limit, 403 forbidden, etc.
+    if (response.ok) {
+      const cache = await caches.open(DATA_CACHE);
+      cache.put(request, response.clone());
+    }
     return response;
   } catch (error) {
     const cached = await caches.match(request);
@@ -67,8 +74,9 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
+    const path = url.pathname === '/reader' ? '/reader' : '/';
     event.respondWith(
-      cacheFirst('/').catch(() => caches.match('/'))
+      cacheFirst(path).catch(() => caches.match(path) || caches.match('/'))
     );
     return;
   }

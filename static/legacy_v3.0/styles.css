@@ -727,22 +727,6 @@ body {
 
 .console-panel.active { transform: translateY(0); }
 
-.console-resize-handle {
-    height: 20px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: var(--bg-tertiary);
-    border-bottom: 0.5px solid var(--border-color);
-}
-
-.resize-bar {
-    width: 36px;
-    height: 4px;
-    background: var(--text-tertiary);
-    border-radius: 2px;
-}
-
 .console-content {
     height: 140px;
     overflow-y: auto;
