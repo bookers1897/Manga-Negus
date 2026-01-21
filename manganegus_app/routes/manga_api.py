@@ -7,6 +7,7 @@ from manganegus_app.rate_limit import limit_heavy, limit_medium, limit_light
 from manganegus_app.search.smart_search import SmartSearch
 from manganegus_app.jikan_api import get_jikan_client
 from .validators import validate_fields, validate_pagination, validate_source_id, sanitize_string
+from .auth_api import admin_required
 
 manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 
@@ -400,6 +401,18 @@ def get_chapters():
     data = request.get_json(silent=True) or {}
     offset = data.get('offset', 0)
     limit = data.get('limit', 100)
+    try:
+        offset = max(0, int(offset))
+    except (ValueError, TypeError):
+        offset = 0
+    try:
+        limit = int(limit)
+    except (ValueError, TypeError):
+        limit = 100
+    if limit < 1:
+        limit = 1
+    elif limit > 500:
+        limit = 500
     manga_title = data.get('title')
     mal_id = data.get('mal_id')
     manga_id = data.get('id')
@@ -466,42 +479,35 @@ def get_chapters():
 
 @manga_bp.route('/chapter_pages', methods=['POST'])
 @csrf_protect
-@limit_medium
+@limit_light  # 60/min for smooth reading experience
 def get_chapter_pages():
     """Get page images for a chapter."""
     manager = get_source_manager()
     data = request.get_json(silent=True) or {}
-    log(f"📖 [READER API] Request data: {data}")
 
     error = validate_fields(data, [
         ('chapter_id', str, 500),
         ('source', str, 100)
     ])
     if error:
-        log(f"❌ [READER API] Validation error: {error}")
         return jsonify({'error': error}), 400
 
     chapter_id = data['chapter_id']
     source_id = data['source']
-    log(f"📖 [READER API] Fetching pages for chapter_id={chapter_id}, source={source_id}")
 
     pages = manager.get_pages(chapter_id, source_id)
-    log(f"📖 [READER API] Got {len(pages) if pages else 0} pages from manager")
 
     if not pages:
-        log(f"❌ [READER API] No pages returned from source {source_id}")
+        log(f"⚠️ No pages for chapter {chapter_id} from {source_id}")
         return jsonify({'error': 'Failed to fetch pages'}), 500
 
-    page_urls = [p.url for p in pages]
-    log(f"✅ [READER API] Returning {len(page_urls)} page URLs")
-    log(f"📖 [READER API] First page URL sample: {page_urls[0] if page_urls else 'N/A'}")
-
     return jsonify({
-        'pages': page_urls,
+        'pages': [p.url for p in pages],
         'pages_data': [p.to_dict() for p in pages]
     })
 
 @manga_bp.route('/search/cache/stats')
+@admin_required
 def cache_stats():
     """
     Get search cache statistics.
@@ -519,6 +525,7 @@ def cache_stats():
     return jsonify(_smart_search.cache.stats())
 
 @manga_bp.route('/search/cache/clear', methods=['POST'])
+@admin_required
 @csrf_protect
 def clear_cache():
     """
@@ -554,6 +561,7 @@ def get_all_chapters():
     })
 
 @manga_bp.route('/search/cache/evict', methods=['POST'])
+@admin_required
 @csrf_protect
 def evict_expired():
     """

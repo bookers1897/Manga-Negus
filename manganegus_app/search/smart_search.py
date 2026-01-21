@@ -38,11 +38,11 @@ class SmartSearch:
 
     # Top sources to query (based on speed and coverage)
     DEFAULT_SOURCES = [
-        'lua-weebcentral',  # Fast, 1170 chapters
+        'weebcentral-v2',   # Fast, 1100+ chapters
+        'mangafreak',       # Reliable coverage
         'mangadex',         # Official API, reliable
-        'manganato',        # Good coverage
-        'mangafire',        # Cloudflare bypass working
-        'mangasee',         # Fast scraper
+        'mangasee-v2',      # Curl-based bypass
+        'manganato-v2'      # Curl-based bypass
     ]
 
     def __init__(self):

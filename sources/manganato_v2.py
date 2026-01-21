@@ -47,7 +47,7 @@ class MangaNatoV2Connector(BaseConnector):
         r'https?://(?:www\.)?(?:manganato|manganelo|chapmanganato)\.(?:com|gg|to)/read-([a-z0-9]+)',
     ]
     
-    rate_limit = 1.0
+    rate_limit = 2.0  # Increased for faster downloads
     rate_limit_burst = 5
     request_timeout = 30
     

@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -32,7 +33,9 @@ wheels/
 
 # User data
 library.json
+history.json
 static/downloads/
+static/downloads
 *.cbz
 
 # SSH and credentials
@@ -54,6 +57,8 @@ archives/
 # Logs
 *.log
 logs/
+debugging/
+instance/
 
 # Temporary files
 *.tmp

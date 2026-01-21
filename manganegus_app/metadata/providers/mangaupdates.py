@@ -256,7 +256,7 @@ class MangaUpdatesProvider(BaseMetadataProvider):
                     if 'anime-planet' in related.get('url', '').lower():
                         try:
                             anime_planet_id = related['url'].split('/')[-1]
-                        except:
+                        except (ValueError, IndexError, AttributeError):
                             pass
 
             # Mappings

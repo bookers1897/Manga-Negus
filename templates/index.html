@@ -57,7 +57,43 @@
                 <i data-lucide="filter"></i>
             </button>
             <div class="divider-v"></div>
-            <button class="login-btn">LOGIN</button>
+
+            <!-- Guest: Login Button -->
+            <button class="login-btn" id="login-btn-guest">LOGIN</button>
+
+            <!-- Logged In: Account Button with Dropdown -->
+            <div class="account-menu-container hidden" id="account-menu-container">
+                <button class="account-btn" id="account-btn" aria-haspopup="true" aria-expanded="false">
+                    <img id="account-avatar" class="account-avatar" src="/static/images/default-avatar.png" alt="" />
+                    <span id="account-name" class="account-name">User</span>
+                    <i data-lucide="chevron-down" class="account-chevron"></i>
+                </button>
+
+                <!-- Account Dropdown Menu -->
+                <div id="account-dropdown" class="account-dropdown" role="menu" aria-label="Account menu">
+                    <div class="account-dropdown-header">
+                        <img id="dropdown-avatar" class="dropdown-avatar" src="/static/images/default-avatar.png" alt="" />
+                        <div class="dropdown-user-info">
+                            <span id="dropdown-name" class="dropdown-name">Display Name</span>
+                            <span id="dropdown-email" class="dropdown-email">email@example.com</span>
+                        </div>
+                    </div>
+                    <div class="account-dropdown-divider"></div>
+                    <button class="account-dropdown-item" data-action="profile" role="menuitem">
+                        <i data-lucide="user"></i>
+                        <span>Profile</span>
+                    </button>
+                    <button class="account-dropdown-item" data-action="settings" role="menuitem">
+                        <i data-lucide="settings"></i>
+                        <span>Account Settings</span>
+                    </button>
+                    <div class="account-dropdown-divider"></div>
+                    <button class="account-dropdown-item danger" data-action="logout" role="menuitem">
+                        <i data-lucide="log-out"></i>
+                        <span>Log Out</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </header>
 
@@ -920,6 +956,132 @@
             <div style="margin-top: 20px; text-align: center; font-size: 14px; color: var(--text-secondary);">
                 <span id="auth-toggle-text">Don't have an account?</span>
                 <button id="auth-toggle-btn" style="background: none; border: none; color: var(--accent); cursor: pointer; font-weight: 600; margin-left: 4px;">Register</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Settings Modal -->
+    <div id="account-settings-modal" class="modal-overlay">
+        <div class="modal-panel account-settings-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Account Settings</h3>
+                <button class="modal-close" id="close-account-settings">
+                    <i data-lucide="x" width="18"></i>
+                </button>
+            </div>
+
+            <!-- Settings Tabs -->
+            <div class="settings-tabs" role="tablist">
+                <button class="settings-tab active" data-tab="profile" role="tab" aria-selected="true">Profile</button>
+                <button class="settings-tab" data-tab="security" role="tab" aria-selected="false">Security</button>
+                <button class="settings-tab" data-tab="preferences" role="tab" aria-selected="false">Preferences</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Profile Tab -->
+                <div id="settings-tab-profile" class="settings-tab-content active" role="tabpanel">
+                    <div class="settings-section">
+                        <h4>Profile Information</h4>
+                        <div class="profile-avatar-section">
+                            <img id="settings-avatar-preview" class="settings-avatar-preview" src="/static/images/default-avatar.png" alt="Avatar preview" />
+                            <div class="avatar-actions">
+                                <div class="input-wrap">
+                                    <label for="settings-avatar-url">Avatar URL</label>
+                                    <input id="settings-avatar-url" type="url" placeholder="https://example.com/avatar.png" />
+                                </div>
+                                <button class="control-btn" id="preview-avatar-btn" type="button">Preview</button>
+                            </div>
+                        </div>
+                        <div class="input-wrap">
+                            <label for="settings-display-name">Display Name</label>
+                            <input id="settings-display-name" type="text" placeholder="Your display name" maxlength="100" />
+                        </div>
+                        <div class="input-wrap">
+                            <label for="settings-email">Email</label>
+                            <input id="settings-email" type="email" disabled readonly />
+                            <span class="input-hint">Email cannot be changed</span>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-actions">
+                            <button class="control-btn primary" id="save-profile-btn" type="button">Save Profile</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Security Tab -->
+                <div id="settings-tab-security" class="settings-tab-content" role="tabpanel">
+                    <div class="settings-section">
+                        <h4>Change Password</h4>
+                        <div id="password-change-error" class="settings-error hidden"></div>
+                        <div id="password-change-success" class="settings-success hidden"></div>
+                        <div class="input-wrap">
+                            <label for="current-password">Current Password</label>
+                            <input id="current-password" type="password" autocomplete="current-password" />
+                        </div>
+                        <div class="input-wrap">
+                            <label for="new-password">New Password</label>
+                            <input id="new-password" type="password" autocomplete="new-password" minlength="8" />
+                            <span class="input-hint">Minimum 8 characters</span>
+                        </div>
+                        <div class="input-wrap">
+                            <label for="confirm-password">Confirm New Password</label>
+                            <input id="confirm-password" type="password" autocomplete="new-password" />
+                        </div>
+                        <div class="settings-actions">
+                            <button class="control-btn primary" id="change-password-btn" type="button">Change Password</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-section">
+                        <h4>Active Sessions</h4>
+                        <p class="settings-note">Devices where you're currently logged in.</p>
+                        <div id="active-sessions-list" class="active-sessions-list">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span class="loading-text">Loading sessions...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preferences Tab -->
+                <div id="settings-tab-preferences" class="settings-tab-content" role="tabpanel">
+                    <div class="settings-section">
+                        <h4>Reading Preferences</h4>
+                        <p class="settings-note">These settings sync with your account across devices.</p>
+                        <div class="preferences-grid">
+                            <div class="select-wrap">
+                                <label for="pref-default-reader-mode">Default Reader Mode</label>
+                                <select id="pref-default-reader-mode">
+                                    <option value="strip">Vertical (Strip)</option>
+                                    <option value="paged">Paged</option>
+                                </select>
+                            </div>
+                            <div class="select-wrap">
+                                <label for="pref-reading-direction">Reading Direction</label>
+                                <select id="pref-reading-direction">
+                                    <option value="ltr">Left to Right</option>
+                                    <option value="rtl">Right to Left</option>
+                                </select>
+                            </div>
+                            <div class="select-wrap">
+                                <label for="pref-image-fit">Image Fit Mode</label>
+                                <select id="pref-image-fit">
+                                    <option value="fit-width">Fit Width</option>
+                                    <option value="fit-height">Fit Height</option>
+                                    <option value="fit-screen">Fit Screen</option>
+                                    <option value="fit-original">Original Size</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-actions">
+                            <button class="control-btn primary" id="save-preferences-btn" type="button">Save Preferences</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

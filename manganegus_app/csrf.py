@@ -12,7 +12,8 @@ def csrf_protect(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if request.method == 'POST':
-            token = request.headers.get('X-CSRF-Token') or (request.json or {}).get('_csrf_token')
+            data = request.get_json(silent=True) or {}
+            token = request.headers.get('X-CSRF-Token') or data.get('_csrf_token')
             stored_token = session.get('csrf_token', '')
 
             # Both tokens must exist and match (constant-time comparison)

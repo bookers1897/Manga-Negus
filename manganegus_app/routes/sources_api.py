@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from sources import get_source_manager
 from manganegus_app.log import log
 from manganegus_app.csrf import csrf_protect
+from .auth_api import admin_required
 
 sources_bp = Blueprint('sources_api', __name__, url_prefix='/api/sources')
 
@@ -12,6 +13,7 @@ def get_sources():
     return jsonify(manager.get_available_sources())
 
 @sources_bp.route('/active', methods=['GET', 'POST'])
+@admin_required
 @csrf_protect
 def active_source():
     """Get or set active source."""
@@ -31,12 +33,14 @@ def active_source():
     })
 
 @sources_bp.route('/health')
+@admin_required
 def sources_health():
     """Get health status of all sources."""
     manager = get_source_manager()
     return jsonify(manager.get_health_report())
 
 @sources_bp.route('/<source_id>/reset', methods=['POST'])
+@admin_required
 @csrf_protect
 def reset_source(source_id: str):
     """Reset a source's error state."""

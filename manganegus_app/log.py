@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import queue
+import json
 import logging
 from logging.handlers import RotatingFileHandler
 
@@ -33,6 +34,22 @@ stream_handler = logging.StreamHandler(sys.stdout)
 stream_handler.setFormatter(logging.Formatter('%(message)s'))  # Keep stdout clean
 logger.addHandler(stream_handler)
 
+# Debug logging (local-only file)
+DEBUG_LOGGING = os.environ.get('DEBUG_LOGGING', 'true').lower() in ('1', 'true', 'yes', 'on')
+DEBUG_LOG_DIR = os.path.join(BASE_DIR, 'debugging')
+os.makedirs(DEBUG_LOG_DIR, exist_ok=True)
+DEBUG_LOG_FILE = os.path.join(DEBUG_LOG_DIR, 'debug.log')
+
+debug_logger = logging.getLogger("manganegus.debug")
+debug_logger.setLevel(logging.INFO)
+debug_logger.propagate = False
+if not any(getattr(h, "baseFilename", None) == DEBUG_LOG_FILE for h in debug_logger.handlers):
+    debug_handler = RotatingFileHandler(DEBUG_LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=10)
+    debug_handler.setFormatter(logging.Formatter('%(message)s'))
+    debug_logger.addHandler(debug_handler)
+if not DEBUG_LOGGING:
+    debug_logger.disabled = True
+
 
 def _request_prefix() -> str:
     """Return request id prefix if available."""
@@ -56,3 +73,13 @@ def log(msg: str) -> None:
     # Add to queue for frontend
     timestamp = time.strftime("[%H:%M:%S]")
     msg_queue.put(f"{timestamp} {full}")
+
+
+def debug_log_event(event: dict) -> None:
+    """Write structured debug events to a local file."""
+    if debug_logger.disabled:
+        return
+    try:
+        debug_logger.info(json.dumps(event, ensure_ascii=True, separators=(',', ':')))
+    except Exception as exc:
+        logger.info(f"⚠️ Debug log failure: {exc}")

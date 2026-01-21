@@ -239,7 +239,7 @@ class JikanProvider(BaseMetadataProvider):
                 start_date = datetime.fromisoformat(
                     manga['published']['from'].replace('Z', '+00:00')
                 )
-            except:
+            except (ValueError, TypeError):
                 pass
 
         end_date = None
@@ -248,7 +248,7 @@ class JikanProvider(BaseMetadataProvider):
                 end_date = datetime.fromisoformat(
                     manga['published']['to'].replace('Z', '+00:00')
                 )
-            except:
+            except (ValueError, TypeError):
                 pass
 
         # Year (from aired object)

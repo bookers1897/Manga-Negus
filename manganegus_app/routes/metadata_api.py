@@ -22,6 +22,7 @@ import logging
 # Import metadata manager
 from ..metadata.manager import get_metadata_manager
 from ..csrf import csrf_protect
+from .auth_api import admin_required
 
 logger = logging.getLogger(__name__)
 
@@ -296,6 +297,7 @@ def get_by_id():
 
 
 @metadata_api_bp.route('/api/metadata/health', methods=['GET'])
+@admin_required
 def health_check():
     """
     Check health of all metadata providers.

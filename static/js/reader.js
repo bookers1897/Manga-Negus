@@ -491,8 +491,8 @@ function showError(message) {
     els.pages.appendChild(wrapper);
 }
 
-const VIRTUAL_MIN_BUFFER = 6;
-const VIRTUAL_MAX_BUFFER = 20;
+const VIRTUAL_MIN_BUFFER = 10;
+const VIRTUAL_MAX_BUFFER = 30;
 
 function getPageGap() {
     return state.readerMode === 'webtoon' ? 12 : 20;
@@ -689,6 +689,26 @@ async function renderPages() {
         return;
     }
 
+    // For shorter chapters (< 60 pages), render all pages without virtual scrolling
+    // This is more reliable and most manga chapters have 15-40 pages
+    const VIRTUAL_THRESHOLD = 60;
+    if (total <= VIRTUAL_THRESHOLD) {
+        state.virtualEnabled = false;
+        els.pages.style.gap = `${state.virtualGap}px`;
+        const fragment = document.createDocumentFragment();
+        for (let i = 0; i < total; i++) {
+            fragment.appendChild(getPageNode(i));
+        }
+        els.pages.appendChild(fragment);
+        showLoading(false);
+        setupReaderObserver();
+        updatePageVisibility({ scroll: true, behavior: 'auto' });
+        state.initialScrollDone = true;
+        scheduleProgressSave(true);
+        return;
+    }
+
+    // For longer chapters, use virtual scrolling
     state.virtualEnabled = true;
     els.pages.style.gap = '0px';
     ensureVirtualElements();
@@ -726,24 +746,37 @@ function updatePageVisibility(options = {}) {
     if (!els.pages) return;
     const pages = els.pages.querySelectorAll('.reader-page');
     const behavior = options.behavior || (state.readerMode === 'paged' ? 'auto' : 'smooth');
+
+    // Find the current page element by data-page-index (fixes paged mode bug)
+    let currentPageEl = null;
+
     if (state.readerMode === 'paged') {
         const showPair = state.readerSpread && !isSpreadPage(state.currentPage);
-        pages.forEach((page, index) => {
-            const isActive = index === state.currentPage
-                || (showPair && index === state.currentPage + 1);
+        pages.forEach((page) => {
+            // Use data-page-index instead of DOM index for correct page identification
+            const pageIndex = parseInt(page.dataset.pageIndex, 10);
+            const isActive = pageIndex === state.currentPage
+                || (showPair && pageIndex === state.currentPage + 1);
             page.classList.toggle('is-hidden', !isActive);
             page.classList.toggle('is-active', isActive);
+            if (pageIndex === state.currentPage) {
+                currentPageEl = page;
+            }
         });
-        if (options.scroll !== false && pages[state.currentPage]) {
-            pages[state.currentPage].scrollIntoView({ behavior, block: 'center' });
+        if (options.scroll !== false && currentPageEl) {
+            currentPageEl.scrollIntoView({ behavior, block: 'center' });
         }
     } else {
-        pages.forEach((page, index) => {
+        pages.forEach((page) => {
+            const pageIndex = parseInt(page.dataset.pageIndex, 10);
             page.classList.toggle('is-hidden', false);
-            page.classList.toggle('is-active', index === state.currentPage);
+            page.classList.toggle('is-active', pageIndex === state.currentPage);
+            if (pageIndex === state.currentPage) {
+                currentPageEl = page;
+            }
         });
-        if (options.scroll !== false && pages[state.currentPage]) {
-            pages[state.currentPage].scrollIntoView({
+        if (options.scroll !== false && currentPageEl) {
+            currentPageEl.scrollIntoView({
                 behavior,
                 block: state.readerMode === 'webtoon' ? 'start' : 'center'
             });

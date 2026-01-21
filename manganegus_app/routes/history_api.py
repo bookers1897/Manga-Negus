@@ -1,13 +1,15 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, g
 from manganegus_app.csrf import csrf_protect
 from manganegus_app.extensions import history
 from manganegus_app.log import log
+from .auth_api import login_required
 from .validators import validate_fields
 
 history_bp = Blueprint('history_api', __name__, url_prefix='/api/history')
 
 
 @history_bp.route('', methods=['GET'])
+@login_required
 def get_history():
     """Return recently viewed manga (persisted across sessions)."""
     try:
@@ -17,10 +19,12 @@ def get_history():
     except ValueError:
         return jsonify({'error': 'Invalid limit'}), 400
 
-    return jsonify(history.load(limit=limit))
+    user_id = str(g.current_user.id)
+    return jsonify(history.load(user_id=user_id, limit=limit))
 
 
 @history_bp.route('', methods=['POST'])
+@login_required
 @csrf_protect
 def add_history():
     """Add or bump a history entry."""
@@ -33,7 +37,9 @@ def add_history():
     if error:
         return jsonify({'error': error}), 400
 
+    user_id = str(g.current_user.id)
     history.add(
+        user_id=user_id,
         manga_id=data['id'],
         title=data['title'],
         source=data['source'],
@@ -46,6 +52,7 @@ def add_history():
 
 
 @history_bp.route('/import', methods=['POST'])
+@login_required
 @csrf_protect
 def import_history():
     """Import history entries from backup."""
@@ -57,6 +64,7 @@ def import_history():
         return jsonify({'error': 'Invalid history import payload'}), 400
 
     imported = 0
+    user_id = str(g.current_user.id)
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -66,6 +74,7 @@ def import_history():
         if not (manga_id and title and source):
             continue
         history.add(
+            user_id=user_id,
             manga_id=manga_id,
             title=title,
             source=source,

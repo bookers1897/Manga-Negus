@@ -10,6 +10,7 @@ import shutil
 import zipfile
 import threading
 import secrets
+from datetime import timedelta
 from typing import Dict, List, Optional, Any
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask import g
@@ -46,6 +47,26 @@ def create_app():
         SECRET_KEY=get_or_create_secret_key(),
     )
 
+    # =============================================================================
+    # SESSION SECURITY CONFIGURATION
+    # =============================================================================
+    # Check if running in production (via Cloudflare/HTTPS)
+    is_production = os.environ.get('FLASK_ENV', 'production') == 'production'
+    is_debug = os.environ.get('FLASK_DEBUG', 'false').lower() in ('true', '1', 'yes')
+
+    app.config.update(
+        # Cookie security - only send over HTTPS in production
+        SESSION_COOKIE_SECURE=is_production and not is_debug,
+        # Prevent JavaScript access to session cookie (XSS protection)
+        SESSION_COOKIE_HTTPONLY=True,
+        # CSRF protection - Lax allows normal navigation, blocks cross-origin POSTs
+        SESSION_COOKIE_SAMESITE='Lax',
+        # Session lifetime for "Remember me" (30 days)
+        PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        # Refresh session on each request (sliding window expiration)
+        SESSION_REFRESH_EACH_REQUEST=True,
+    )
+
     # Ensure instance folder exists
     try:
         os.makedirs(app.instance_path)
@@ -55,7 +76,7 @@ def create_app():
     # =============================================================================
     # LOGGING, CSRF, RATE LIMITING, and OTHER EXTENSIONS
     # =============================================================================
-    from .log import log, msg_queue
+    from .log import log, msg_queue, debug_log_event
     from .csrf import ensure_csrf_token, get_csrf_token
     from .rate_limit import init_rate_limiting
 
@@ -65,6 +86,50 @@ def create_app():
     @app.before_request
     def assign_request_id():
         g.request_id = uuid.uuid4().hex[:12]
+        g.request_start = time.time()
+
+    @app.after_request
+    def debug_request_log(response):
+        try:
+            path = request.path or ''
+            if path.startswith('/static') or path.startswith('/favicon'):
+                return response
+            duration_ms = None
+            start_time = getattr(g, 'request_start', None)
+            if start_time:
+                duration_ms = int((time.time() - start_time) * 1000)
+            user = getattr(g, 'current_user', None)
+            debug_log_event({
+                'event': 'request',
+                'request_id': getattr(g, 'request_id', None),
+                'method': request.method,
+                'path': path,
+                'query': request.query_string.decode('utf-8', errors='ignore'),
+                'status': response.status_code,
+                'duration_ms': duration_ms,
+                'remote_addr': request.remote_addr,
+                'user_id': str(user.id) if user else None,
+                'user_email': getattr(user, 'email', None) if user else None
+            })
+        except Exception as exc:
+            log(f"⚠️ Debug log error: {exc}")
+        return response
+
+    @app.teardown_request
+    def debug_exception_log(error=None):
+        if not error:
+            return
+        try:
+            debug_log_event({
+                'event': 'exception',
+                'request_id': getattr(g, 'request_id', None),
+                'method': request.method if request else None,
+                'path': request.path if request else None,
+                'error_type': error.__class__.__name__,
+                'error': str(error)
+            })
+        except Exception as exc:
+            log(f"⚠️ Debug exception log error: {exc}")
 
     app.before_request(ensure_csrf_token)
 

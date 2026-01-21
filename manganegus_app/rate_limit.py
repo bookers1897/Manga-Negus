@@ -40,7 +40,8 @@ MEDIUM_LIMIT = "30 per minute"
 LIGHT_LIMIT = "60 per minute"
 
 # Burst operations - high volume with caching (image proxy)
-BURST_LIMIT = "120 per minute"
+# Increased to 600/min (10/sec) for smooth manga page loading
+BURST_LIMIT = "600 per minute"
 
 # Download operations - resource intensive
 DOWNLOAD_LIMIT = "5 per minute"

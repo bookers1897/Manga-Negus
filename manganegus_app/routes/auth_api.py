@@ -6,17 +6,23 @@ Uses session-based authentication with PBKDF2-SHA256 password hashing.
 
 OAuth-ready: password_hash is nullable for future OAuth-only users.
 """
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
 import re
 import uuid
+import os
 
 from manganegus_app.log import log
-from manganegus_app.csrf import csrf_protect
+from manganegus_app.csrf import csrf_protect, regenerate_csrf_token
 from manganegus_app.models import User
 from manganegus_app.database import get_db_session
+from manganegus_app.rate_limit import limiter
 from .validators import validate_fields
+
+# Auth-specific rate limits (stricter to prevent brute force)
+AUTH_RATE_LIMIT = "5 per minute"
+AUTH_REGISTER_LIMIT = "3 per minute"
 
 auth_bp = Blueprint('auth_api', __name__, url_prefix='/api/auth')
 
@@ -27,6 +33,22 @@ MAX_DISPLAY_NAME_LENGTH = 100
 
 # Email regex pattern (RFC 5322 simplified)
 EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get('ADMIN_EMAILS', 'bookers1897@gmail.com').split(',')
+    if email.strip()
+}
+
+
+def is_admin_user(user: User) -> bool:
+    """Return True if a user is an admin via flag or allowed email list."""
+    if not user:
+        return False
+    if user.is_admin:
+        return True
+    if user.email and user.email.lower() in ADMIN_EMAILS:
+        return True
+    return False
 
 
 def get_current_user():
@@ -61,12 +83,13 @@ def user_to_dict(user):
         'avatar_url': user.avatar_url,
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'last_login': user.last_login.isoformat() if user.last_login else None,
-        'is_admin': user.is_admin,
+        'is_admin': is_admin_user(user),
         'oauth_provider': user.oauth_provider,  # Shows if OAuth-connected
     }
 
 
 @auth_bp.route('/register', methods=['POST'])
+@limiter.limit(AUTH_REGISTER_LIMIT)
 @csrf_protect
 def register():
     """Register a new user account.
@@ -118,7 +141,7 @@ def register():
                 display_name=display_name,
                 created_at=datetime.now(timezone.utc),
                 is_active=True,
-                is_admin=False,
+                is_admin=email in ADMIN_EMAILS,
             )
             db.add(user)
             db.flush()  # Get user.id before commit
@@ -127,6 +150,9 @@ def register():
             session['user_id'] = str(user.id)
             session.permanent = True  # Use permanent session (configurable expiry)
 
+            # SECURITY: Regenerate CSRF token to prevent session fixation attacks
+            new_csrf_token = regenerate_csrf_token()
+
             # Create user dict before commit closes session
             user_data = user_to_dict(user)
 
@@ -134,7 +160,8 @@ def register():
             return jsonify({
                 'status': 'ok',
                 'message': 'Registration successful',
-                'user': user_data
+                'user': user_data,
+                'csrf_token': new_csrf_token  # Frontend should update its stored token
             }), 201
 
     except Exception as e:
@@ -143,6 +170,7 @@ def register():
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit(AUTH_RATE_LIMIT)
 @csrf_protect
 def login():
     """Login with email and password.
@@ -192,10 +220,15 @@ def login():
 
             # Update last login
             user.last_login = datetime.now(timezone.utc)
+            if not user.is_admin and email in ADMIN_EMAILS:
+                user.is_admin = True
 
             # Set session
             session['user_id'] = str(user.id)
             session.permanent = remember  # Extended session if remember=True
+
+            # SECURITY: Regenerate CSRF token to prevent session fixation attacks
+            new_csrf_token = regenerate_csrf_token()
 
             # Create user dict before session closes
             user_data = user_to_dict(user)
@@ -204,7 +237,8 @@ def login():
             return jsonify({
                 'status': 'ok',
                 'message': 'Login successful',
-                'user': user_data
+                'user': user_data,
+                'csrf_token': new_csrf_token  # Frontend should update its stored token
             })
 
     except Exception as e:
@@ -335,5 +369,105 @@ def login_required(f):
         user = get_current_user()
         if not user:
             return jsonify({'error': 'Login required'}), 401
+        g.current_user = user
         return f(*args, **kwargs)
     return decorated_function
+
+
+def admin_required(f):
+    """Decorator to require admin access for a route."""
+    from functools import wraps
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'Login required'}), 401
+        if not is_admin_user(user):
+            return jsonify({'error': 'Admin access required'}), 403
+        g.current_user = user
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+@auth_bp.route('/sessions', methods=['GET'])
+def get_sessions():
+    """Get current user's active sessions.
+
+    Returns information about the current session for display in account settings.
+    Future enhancement: Store session metadata in database for multi-device management.
+
+    Returns:
+        - 200: List of active sessions with device info
+        - 401: Not logged in
+    """
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    # Parse user agent for friendly device name
+    user_agent = request.headers.get('User-Agent', 'Unknown')
+    device_name = _parse_user_agent(user_agent)
+
+    # For now, return current session only
+    # Future: Store session metadata in database for multi-device management
+    sessions = [{
+        'id': 'current',
+        'is_current': True,
+        'device': device_name,
+        'browser': _get_browser_name(user_agent),
+        'ip': request.remote_addr or 'Unknown',
+        'created_at': user.last_login.isoformat() if user.last_login else None,
+    }]
+
+    return jsonify({'sessions': sessions})
+
+
+def _parse_user_agent(ua: str) -> str:
+    """Parse user agent string to friendly device name."""
+    if not ua:
+        return 'Unknown Device'
+
+    ua_lower = ua.lower()
+
+    # Mobile devices
+    if 'iphone' in ua_lower:
+        return 'iPhone'
+    if 'ipad' in ua_lower:
+        return 'iPad'
+    if 'android' in ua_lower:
+        if 'mobile' in ua_lower:
+            return 'Android Phone'
+        return 'Android Tablet'
+
+    # Desktop OS
+    if 'macintosh' in ua_lower or 'mac os' in ua_lower:
+        return 'Mac'
+    if 'windows' in ua_lower:
+        return 'Windows PC'
+    if 'linux' in ua_lower:
+        return 'Linux'
+
+    return 'Unknown Device'
+
+
+def _get_browser_name(ua: str) -> str:
+    """Extract browser name from user agent."""
+    if not ua:
+        return 'Unknown'
+
+    ua_lower = ua.lower()
+
+    # Check in order of specificity
+    if 'edg/' in ua_lower or 'edge/' in ua_lower:
+        return 'Edge'
+    if 'opr/' in ua_lower or 'opera' in ua_lower:
+        return 'Opera'
+    if 'chrome' in ua_lower and 'safari' in ua_lower:
+        return 'Chrome'
+    if 'firefox' in ua_lower:
+        return 'Firefox'
+    if 'safari' in ua_lower:
+        return 'Safari'
+
+    return 'Browser'

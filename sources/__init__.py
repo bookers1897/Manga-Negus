@@ -28,6 +28,9 @@ import threading
 import time
 from typing import List, Dict, Optional, Any, Callable
 import requests
+from cachetools import TTLCache
+
+from .http_client import SmartSession
 
 from .base import (
     BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
@@ -105,10 +108,11 @@ class SourceManager:
         self._sources: Dict[str, BaseConnector] = {}
 
         # Shared HTTP session
-        self._session: Optional[requests.Session] = None
+        self._session: Optional[SmartSession] = None
 
         # Thread safety
         self._lock = threading.Lock()
+        self._cache_lock = threading.Lock()
 
         # Active source preference
         self._active_source_id: Optional[str] = None
@@ -152,6 +156,14 @@ class SourceManager:
         self._manga_source_cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl = 3600  # 1 hour cache TTL
 
+        # Result caches (search/chapters/pages) for speed and resilience
+        self._search_cache: Optional[TTLCache] = None
+        self._popular_cache: Optional[TTLCache] = None
+        self._latest_cache: Optional[TTLCache] = None
+        self._chapters_cache: Optional[TTLCache] = None
+        self._pages_cache: Optional[TTLCache] = None
+        self._details_cache: Optional[TTLCache] = None
+
         # Cooldown settings for failed sources (used alongside circuit breaker)
         self._base_cooldown = 30  # 30 seconds base cooldown
         self._max_cooldown = 600  # 10 minutes max cooldown
@@ -159,7 +171,9 @@ class SourceManager:
         # Initialize
         self._create_session()
         self._discover_sources()
+        self._apply_disabled_sources()
         self._init_source_metrics()
+        self._init_result_caches()
     
     # =========================================================================
     # INITIALIZATION
@@ -167,7 +181,7 @@ class SourceManager:
     
     def _create_session(self) -> None:
         """Create shared requests session with connection pooling."""
-        self._session = requests.Session()
+        self._session = SmartSession(timeout=20)
         
         # Default headers
         self._session.headers.update({
@@ -184,6 +198,47 @@ class SourceManager:
         )
         self._session.mount("http://", adapter)
         self._session.mount("https://", adapter)
+
+    def _init_result_caches(self) -> None:
+        """Initialize result caches with environment-configurable TTLs."""
+        self._search_cache = self._create_cache("SEARCH", ttl_default=300, max_default=512)
+        self._popular_cache = self._create_cache("POPULAR", ttl_default=300, max_default=256)
+        self._latest_cache = self._create_cache("LATEST", ttl_default=300, max_default=256)
+        self._chapters_cache = self._create_cache("CHAPTERS", ttl_default=900, max_default=2048)
+        self._pages_cache = self._create_cache("PAGES", ttl_default=300, max_default=4096)
+        self._details_cache = self._create_cache("DETAILS", ttl_default=900, max_default=1024)
+
+    def _create_cache(self, prefix: str, ttl_default: int, max_default: int) -> Optional[TTLCache]:
+        ttl = int(os.environ.get(f"{prefix}_CACHE_TTL", str(ttl_default)))
+        maxsize = int(os.environ.get(f"{prefix}_CACHE_MAX", str(max_default)))
+        if ttl <= 0 or maxsize <= 0:
+            return None
+        return TTLCache(maxsize=maxsize, ttl=ttl)
+
+    def _cache_get(self, cache: Optional[TTLCache], key: Any) -> Any:
+        if cache is None:
+            return None
+        with self._cache_lock:
+            return cache.get(key)
+
+    def _cache_set(self, cache: Optional[TTLCache], key: Any, value: Any) -> None:
+        if cache is None:
+            return
+        with self._cache_lock:
+            cache[key] = value
+
+    def _clear_result_caches(self) -> None:
+        """Clear all result caches (search/popular/latest/chapters/pages/details)."""
+        for cache in (
+            self._search_cache,
+            self._popular_cache,
+            self._latest_cache,
+            self._chapters_cache,
+            self._pages_cache,
+            self._details_cache
+        ):
+            if cache is not None:
+                cache.clear()
     
     def _discover_sources(self) -> None:
         """
@@ -210,7 +265,6 @@ class SourceManager:
             # Skip base module, __init__, and utility modules
             if module_name in ('base', '__init__', 'lua_runtime', 'async_base', 'async_utils'):
                 continue
-
             if skip_playwright and module_name in skip_playwright_modules:
                 print(f"⚠️ Skipping {module_name} (Playwright disabled via SKIP_PLAYWRIGHT_SOURCES)")
                 self._skipped_sources.append({
@@ -302,6 +356,20 @@ class SourceManager:
             # Fallback to first available
             if not self._active_source_id:
                 self._active_source_id = list(self._sources.keys())[0]
+
+    def _apply_disabled_sources(self) -> None:
+        """Remove disabled sources from the registry based on env var."""
+        raw = os.environ.get("DISABLED_SOURCES", "")
+        if not raw:
+            return
+        disabled = {item.strip() for item in raw.split(",") if item.strip()}
+        for source_id in list(self._sources.keys()):
+            if source_id in disabled:
+                self._sources.pop(source_id, None)
+                self._skipped_sources.append({
+                    "source": source_id,
+                    "reason": "disabled"
+                })
 
     def _init_source_metrics(self) -> None:
         """Initialize health metrics for all sources."""
@@ -727,16 +795,30 @@ class SourceManager:
         """
         # Use specific source if requested
         if source_id:
+            cache_key = ("search", source_id, query.lower().strip(), page)
+            cached = self._cache_get(self._search_cache, cache_key)
+            if cached is not None:
+                return cached
             source = self._sources.get(source_id)
             if source:
-                return source.search(query, page)
+                results = source.search(query, page)
+                self._cache_set(self._search_cache, cache_key, results)
+                return results
             return []
-        
+
         # Use fallback
+        cache_key = ("search", "*", query.lower().strip(), page)
+        cached = self._cache_get(self._search_cache, cache_key)
+        if cached is not None:
+            return cached
+
         def search_op(source: BaseConnector):
             return source.search(query, page)
-        
-        return self._with_fallback(search_op, f"search: {query}") or []
+
+        results = self._with_fallback(search_op, f"search: {query}") or []
+        if results:
+            self._cache_set(self._search_cache, cache_key, results)
+        return results
     
     def get_popular(
         self,
@@ -745,17 +827,32 @@ class SourceManager:
     ) -> List[MangaResult]:
         """Get popular manga with fallback."""
         if source_id:
+            cache_key = ("popular", source_id, page)
+            cached = self._cache_get(self._popular_cache, cache_key)
+            if cached is not None:
+                return cached
             source = self._sources.get(source_id)
             if source and source.supports_popular:
-                return source.get_popular(page)
+                results = source.get_popular(page)
+                if results:
+                    self._cache_set(self._popular_cache, cache_key, results)
+                return results
             return []
+
+        cache_key = ("popular", "*", page)
+        cached = self._cache_get(self._popular_cache, cache_key)
+        if cached is not None:
+            return cached
         
         def popular_op(source: BaseConnector):
             if source.supports_popular:
                 return source.get_popular(page)
             return None
-        
-        return self._with_fallback(popular_op, "get_popular") or []
+
+        results = self._with_fallback(popular_op, "get_popular") or []
+        if results:
+            self._cache_set(self._popular_cache, cache_key, results)
+        return results
     
     def get_latest(
         self,
@@ -764,17 +861,32 @@ class SourceManager:
     ) -> List[MangaResult]:
         """Get latest updates with fallback."""
         if source_id:
+            cache_key = ("latest", source_id, page)
+            cached = self._cache_get(self._latest_cache, cache_key)
+            if cached is not None:
+                return cached
             source = self._sources.get(source_id)
             if source and source.supports_latest:
-                return source.get_latest(page)
+                results = source.get_latest(page)
+                if results:
+                    self._cache_set(self._latest_cache, cache_key, results)
+                return results
             return []
+
+        cache_key = ("latest", "*", page)
+        cached = self._cache_get(self._latest_cache, cache_key)
+        if cached is not None:
+            return cached
         
         def latest_op(source: BaseConnector):
             if source.supports_latest:
                 return source.get_latest(page)
             return None
-        
-        return self._with_fallback(latest_op, "get_latest") or []
+
+        results = self._with_fallback(latest_op, "get_latest") or []
+        if results:
+            self._cache_set(self._latest_cache, cache_key, results)
+        return results
     
     def get_chapters(
         self,
@@ -791,8 +903,16 @@ class SourceManager:
         if not source:
             self._log(f"❌ Source '{source_id}' not found")
             return []
-        
-        return source.get_chapters(manga_id, language)
+
+        cache_key = ("chapters", source_id, manga_id, language)
+        cached = self._cache_get(self._chapters_cache, cache_key)
+        if cached is not None:
+            return cached
+
+        chapters = source.get_chapters(manga_id, language)
+        if chapters:
+            self._cache_set(self._chapters_cache, cache_key, chapters)
+        return chapters
     
     def get_pages(
         self,
@@ -807,8 +927,16 @@ class SourceManager:
         source = self._sources.get(source_id)
         if not source:
             return []
-        
-        return source.get_pages(chapter_id)
+
+        cache_key = ("pages", source_id, chapter_id)
+        cached = self._cache_get(self._pages_cache, cache_key)
+        if cached is not None:
+            return cached
+
+        pages = source.get_pages(chapter_id)
+        if pages:
+            self._cache_set(self._pages_cache, cache_key, pages)
+        return pages
     
     def get_manga_details(
         self,
@@ -819,8 +947,16 @@ class SourceManager:
         source = self._sources.get(source_id)
         if not source:
             return None
-        
-        return source.get_manga_details(manga_id)
+
+        cache_key = ("details", source_id, manga_id)
+        cached = self._cache_get(self._details_cache, cache_key)
+        if cached is not None:
+            return cached
+
+        details = source.get_manga_details(manga_id)
+        if details:
+            self._cache_set(self._details_cache, cache_key, details)
+        return details
     
     # =========================================================================
     # HEALTH & STATUS
@@ -873,6 +1009,14 @@ class SourceManager:
             "healthy_count": sum(1 for s in self._sources.values() if not self._is_source_on_cooldown(s.id)),
             "total_count": len(self._sources),
             "cache_size": len(self._manga_source_cache),
+            "result_cache_sizes": {
+                "search": len(self._search_cache) if self._search_cache else 0,
+                "popular": len(self._popular_cache) if self._popular_cache else 0,
+                "latest": len(self._latest_cache) if self._latest_cache else 0,
+                "chapters": len(self._chapters_cache) if self._chapters_cache else 0,
+                "pages": len(self._pages_cache) if self._pages_cache else 0,
+                "details": len(self._details_cache) if self._details_cache else 0
+            },
             # Circuit breaker summary
             "circuit_breakers": {
                 "open_count": cb_status.get("open_count", 0),
@@ -900,6 +1044,7 @@ class SourceManager:
                     'cooldown_until': 0,
                     'health_score': 100.0
                 }
+            self._clear_result_caches()
             self._log(f"🔄 Reset source: {source.name} (circuit breaker closed)")
             return True
         return False
@@ -914,6 +1059,7 @@ class SourceManager:
         self._init_source_metrics()
         # Clear manga-source cache
         self._manga_source_cache.clear()
+        self._clear_result_caches()
         self._log("🔄 Reset all sources and circuit breakers")
 
 

@@ -2,51 +2,47 @@
 # Install with: pip install -r requirements.txt
 
 # Core
-flask>=3.0.0
-flask-limiter>=3.5.0
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-lxml>=5.0.0
+flask>=3.1.2
+flask-limiter>=3.11.0
+requests>=2.32.3
+beautifulsoup4>=4.12.3
+lxml>=6.0.2
 
 # Cloudflare bypass - Industry standard TLS fingerprint bypass
-curl_cffi>=0.7.0
+curl_cffi>=0.13.0
 cloudscraper>=1.2.71
 
 # Async I/O for concurrent downloads (massive speed boost)
-aiofiles>=24.0.0
+aiofiles>=25.1.0
 
 # Selenium for JavaScript-heavy sites
-selenium>=4.15.0
-webdriver-manager>=4.0.0
+selenium>=4.36.0
+webdriver-manager>=4.0.2
 
 # Manga libraries (unified APIs)
-enma>=2.4.0
+enma>=2.4.4
 
 # Async support for hondana
-aiohttp>=3.9.0
-httpx>=0.28.0
+aiohttp>=3.13.3
+httpx>=0.28.1
 
 # Lua runtime for FMD module compatibility (590+ sources)
 lupa>=2.6
 
 # Metadata API clients (v3.1 MetaForge)
-jikanpy>=4.3.0
+jikanpy>=4.3.2
 
 # Utilities
-rapidfuzz>=3.14.0
-cachetools>=6.2.0
-Pillow>=10.0.0
+rapidfuzz>=3.13.0
+cachetools>=6.2.4
+Pillow>=11.3.0
 
 # PostgreSQL database
 psycopg2-binary>=2.9.11
 sqlalchemy>=2.0.45
-pytest>=7.4.0
-alembic>=1.17.0
+pytest>=8.4.2
+alembic>=1.16.5
 
 # Background job queue (optional - requires Redis server)
-celery>=5.3.0
-redis>=5.0.0
-
-# For iOS Code App, you may need specific versions:
-# pip install markupsafe==2.1.3
-# pip install werkzeug==3.0.1
+celery>=5.6.2
+redis>=7.0.1

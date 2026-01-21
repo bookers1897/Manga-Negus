@@ -255,7 +255,7 @@ class ShikimoriProvider(BaseMetadataProvider):
                         if '/manga/' in url:
                             try:
                                 mal_id = url.split('/manga/')[-1].split('/')[0]
-                            except:
+                            except (ValueError, IndexError):
                                 pass
 
             # Mappings

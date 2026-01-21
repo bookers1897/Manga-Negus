@@ -41,6 +41,10 @@ class MangaSeeConnector(BaseConnector):
     id = "mangasee"
     name = "MangaSee"
     base_url = "https://manga4life.com"
+    MIRRORS = [
+        "https://manga4life.com",
+        "https://mangasee123.com"
+    ]
     icon = "📗"
     
     # URL Detection patterns

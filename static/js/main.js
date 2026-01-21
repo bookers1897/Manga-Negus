@@ -7,6 +7,11 @@ import { Storage } from './storage.js';
 // Debug Mode
 // ========================================
 const DEBUG_MODE = false; // Set to true for development debugging
+const DIRECT_DOWNLOAD_LIMIT = 25;
+const DIRECT_DOWNLOAD_ONLY = true;
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 
 // ========================================
 // State Management
@@ -18,7 +23,10 @@ const state = {
         isLoggedIn: false,
         isLoading: true,
         isAuthModalOpen: false,
-        authMode: 'login' // 'login' or 'register'
+        authMode: 'login', // 'login' or 'register'
+        isAccountDropdownOpen: false,
+        isAccountSettingsOpen: false,
+        activeSettingsTab: 'profile'
     },
     activeView: 'discover',
     previousView: 'discover', // Track previous view for back button
@@ -1011,6 +1019,52 @@ const API = {
         return data;
     },
 
+    async downloadDirect(mangaId, chapters, source, title, fallbackName) {
+        const payload = { chapters, title, source, manga_id: mangaId };
+        const headers = { 'Content-Type': 'application/json' };
+        if (state.csrfToken) {
+            headers['X-CSRF-Token'] = state.csrfToken;
+        }
+        const response = await fetch('/api/download/direct', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload)
+        });
+        const contentType = response.headers.get('content-type') || '';
+        if (!response.ok) {
+            let message = `HTTP ${response.status}: ${response.statusText}`;
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                message = data?.error || data?.message || message;
+            }
+            if (response.status === 401) {
+                requireLogin('download');
+            }
+            throw new Error(message);
+        }
+        if (contentType.includes('application/json')) {
+            const data = await response.json();
+            throw new Error(data?.error || data?.message || 'Download failed');
+        }
+        const blob = await response.blob();
+        const filename = getFilenameFromDisposition(response.headers.get('content-disposition'), fallbackName);
+        return { blob, filename };
+    },
+
+    async createDownloadToken(mangaId, chapters, source, title) {
+        const payload = { chapters, title, source, manga_id: mangaId };
+        const headers = { 'Content-Type': 'application/json' };
+        if (state.csrfToken) {
+            headers['X-CSRF-Token'] = state.csrfToken;
+        }
+        const data = await this.request('/api/download/token', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(payload)
+        });
+        return data;
+    },
+
     // Download Queue API
     async getDownloadQueue() {
         const data = await this.request('/api/download/queue');
@@ -1135,6 +1189,85 @@ function log(message) {
     els.consoleContent.scrollTop = els.consoleContent.scrollHeight;
 }
 
+function sanitizeFilename(name) {
+    return String(name || '')
+        .replace(/[\/:*?"<>|]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function buildDownloadFallback(title, isBundle) {
+    const base = sanitizeFilename(title) || 'manga';
+    return `${base}${isBundle ? '-chapters.zip' : '.cbz'}`;
+}
+
+function getFilenameFromDisposition(disposition, fallback) {
+    if (!disposition) return fallback;
+    const matchStar = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (matchStar && matchStar[1]) {
+        try {
+            return decodeURIComponent(matchStar[1]);
+        } catch {
+            return matchStar[1];
+        }
+    }
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    if (match && match[1]) return match[1];
+    return fallback;
+}
+
+function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const safeName = filename || 'manga-download.cbz';
+
+    // Detect iOS Safari
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    if (isIOS) {
+        // iOS Safari: Open blob in new tab - user can then use share sheet to save
+        // This is more reliable than programmatic download on iOS
+        const newWindow = window.open(url, '_blank');
+        if (newWindow) {
+            // Set a timeout to revoke URL after user has time to save
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            showToast('Tap "Share" then "Save to Files" to download');
+        } else {
+            // Popup blocked - try the link method as fallback
+            const link = document.createElement('a');
+            link.href = url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            showToast('Tap "Share" then "Save to Files" to download');
+        }
+    } else {
+        // Desktop and Android: Use standard download attribute
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = safeName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // Delay revoking to ensure download starts
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+}
+
+function openDirectDownloadUrl(url) {
+    const popup = window.open('', '_blank');
+    if (popup) {
+        popup.location = url;
+        popup.focus();
+        return true;
+    }
+    window.location.href = url;
+    return false;
+}
+
 /**
  * Show a custom confirm modal (replacement for native confirm())
  * @param {string} title - Modal title
@@ -1189,6 +1322,13 @@ function showConfirmModal(title, message, confirmText = 'Confirm') {
 // Download Queue Management
 // ========================================
 async function fetchDownloadQueue() {
+    if (DIRECT_DOWNLOAD_ONLY || !state.auth.isLoggedIn) {
+        state.downloadQueue = [];
+        state.queuePaused = false;
+        state.pausedQueueCount = 0;
+        updateQueueBadge();
+        return { queue: [], paused: false, paused_count: 0 };
+    }
     try {
         const data = await API.getDownloadQueue();
         state.downloadQueue = data.queue || [];
@@ -1288,12 +1428,33 @@ function renderDownloadQueue() {
         startAllBtn.addEventListener('click', startAllPaused);
     }
 
-    document.querySelectorAll('.btn-start-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const jobId = btn.dataset.jobId;
-            startPausedItem(jobId);
-        });
-    });
+    // Event delegation for queue action buttons (prevents XSS from onclick handlers)
+    els.queueList.onclick = async (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+
+        const action = btn.dataset.action;
+        const jobId = btn.dataset.jobId;
+        if (!jobId) return;
+
+        switch (action) {
+            case 'start':
+                startPausedItem(jobId);
+                break;
+            case 'pause':
+                await pauseQueueItem(jobId);
+                break;
+            case 'resume':
+                await resumeQueueItem(jobId);
+                break;
+            case 'cancel':
+                await cancelQueueItem(jobId);
+                break;
+            case 'remove':
+                await removeQueueItem(jobId);
+                break;
+        }
+    };
 }
 
 function renderQueueItem(item, isPausedSection) {
@@ -1312,43 +1473,45 @@ function renderQueueItem(item, isPausedSection) {
         ? `Page ${item.current_page}/${item.total_pages}`
         : '';
 
+    // Use data attributes instead of onclick to prevent XSS
+    const escapedJobId = escapeHtml(item.job_id);
     let actions = '';
     if (isPausedSection) {
         actions = `
-            <button class="control-btn primary btn-start-item" data-job-id="${item.job_id}">
+            <button class="control-btn primary" data-action="start" data-job-id="${escapedJobId}">
                 <i data-lucide="play" width="12"></i> Start
             </button>
-            <button class="control-btn" onclick="cancelQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="cancel" data-job-id="${escapedJobId}">
                 <i data-lucide="x" width="12"></i> Cancel
             </button>
         `;
     } else if (item.status === 'downloading') {
         actions = `
-            <button class="control-btn" onclick="pauseQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="pause" data-job-id="${escapedJobId}">
                 <i data-lucide="pause" width="12"></i> Pause
             </button>
-            <button class="control-btn" onclick="cancelQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="cancel" data-job-id="${escapedJobId}">
                 <i data-lucide="x" width="12"></i> Cancel
             </button>
         `;
     } else if (item.status === 'paused') {
         actions = `
-            <button class="control-btn primary" onclick="resumeQueueItem('${item.job_id}')">
+            <button class="control-btn primary" data-action="resume" data-job-id="${escapedJobId}">
                 <i data-lucide="play" width="12"></i> Resume
             </button>
-            <button class="control-btn" onclick="cancelQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="cancel" data-job-id="${escapedJobId}">
                 <i data-lucide="x" width="12"></i> Cancel
             </button>
         `;
     } else if (item.status === 'queued') {
         actions = `
-            <button class="control-btn" onclick="removeQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="remove" data-job-id="${escapedJobId}">
                 <i data-lucide="trash-2" width="12"></i> Remove
             </button>
         `;
     } else {
         actions = `
-            <button class="control-btn" onclick="removeQueueItem('${item.job_id}')">
+            <button class="control-btn" data-action="remove" data-job-id="${escapedJobId}">
                 <i data-lucide="trash-2" width="12"></i> Remove
             </button>
         `;
@@ -1475,6 +1638,11 @@ async function startPausedItem(jobId) {
 }
 
 function openDownloadQueue() {
+    if (!requireLogin('manage downloads')) return;
+    if (DIRECT_DOWNLOAD_ONLY) {
+        showToast('Direct downloads go to your device. Queue is disabled.');
+        return;
+    }
     fetchDownloadQueue().then(() => {
         renderDownloadQueue();
         els.downloadQueueModal.classList.add('active');
@@ -2750,6 +2918,18 @@ async function loadDiscover(page = 1, { append = false } = {}) {
 
 async function loadHistory() {
     hidePagination();
+    if (!state.auth.isLoggedIn) {
+        state.history = [];
+        renderHistorySummary([]);
+        els.discoverGrid.classList.add('hidden');
+        els.discoverEmpty.classList.remove('hidden');
+        const titleEl = els.discoverEmpty.querySelector('.empty-title');
+        const textEl = els.discoverEmpty.querySelector('.empty-text');
+        if (titleEl) titleEl.textContent = 'Login required';
+        if (textEl) textEl.textContent = 'Sign in to see your history';
+        updateDiscoverSubtitle('// RECENTLY VIEWED');
+        return;
+    }
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>
@@ -2851,6 +3031,7 @@ function renderHistoryOnThisDay(items) {
 
 async function trackHistory(entry) {
     if (!entry) return;
+    if (!state.auth.isLoggedIn) return;
     if (!navigator.onLine) {
         state.history = [entry, ...(state.history || []).filter(item => item.key !== entry.key)];
         saveCachedHistory();
@@ -3181,6 +3362,18 @@ function sortLibraryItems(items) {
 }
 
 async function renderLibraryFromState() {
+    if (els.libraryEmpty) {
+        const titleEl = els.libraryEmpty.querySelector('.empty-title');
+        const textEl = els.libraryEmpty.querySelector('.empty-text');
+        if (!state.auth.isLoggedIn) {
+            if (titleEl) titleEl.textContent = 'Login required';
+            if (textEl) textEl.textContent = 'SIGN IN TO SAVE YOUR LIBRARY';
+        } else {
+            if (titleEl) titleEl.textContent = 'Library is Empty';
+            if (textEl) textEl.textContent = 'ADD MANGA TO GET STARTED';
+        }
+    }
+
     // Show loading if library is large
     if (state.library.length > 500) {
         els.libraryGrid.innerHTML = `
@@ -3258,6 +3451,7 @@ function populateCollectionFilterOptions() {
 
 async function checkFavoritesForUpdates({ silent = false } = {}) {
     if (!state.autoDownloadFavorites || state.filters.dataSaver) return;
+    if (!state.auth.isLoggedIn || DIRECT_DOWNLOAD_ONLY) return;
     const now = Date.now();
     if (now - state.lastAutoDownloadCheck < 30 * 60 * 1000) return;
     state.lastAutoDownloadCheck = now;
@@ -3309,6 +3503,7 @@ function scheduleAutoDownloadChecks() {
         state.autoDownloadTimer = null;
     }
     if (!state.autoDownloadFavorites || state.filters.dataSaver) return;
+    if (!state.auth.isLoggedIn || DIRECT_DOWNLOAD_ONLY) return;
     state.autoDownloadTimer = setInterval(() => {
         void checkFavoritesForUpdates({ silent: true });
     }, 30 * 60 * 1000);
@@ -3460,6 +3655,7 @@ function renderGenreBreakdown(genreCounts) {
 }
 
 async function handleExportLibrary() {
+    if (!requireLogin('export your library')) return;
     try {
         const data = await API.exportLibrary();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3480,6 +3676,7 @@ async function handleExportLibrary() {
 
 async function handleImportLibrary(file) {
     if (!file) return;
+    if (!requireLogin('import to your library')) return;
     try {
         const text = await file.text();
         const parsed = JSON.parse(text);
@@ -3623,6 +3820,7 @@ async function resolveImportEntries(entries) {
 }
 
 async function handleExportBackup() {
+    if (!requireLogin('export your backup')) return;
     try {
         const [libraryData, historyData] = await Promise.all([
             API.exportLibrary(),
@@ -3653,6 +3851,7 @@ async function handleExportBackup() {
 
 async function handleImportBackup(file) {
     if (!file) return;
+    if (!requireLogin('import your backup')) return;
     try {
         const text = await file.text();
         const backup = JSON.parse(text);
@@ -3976,6 +4175,16 @@ async function loadLibrary() {
         console.log('[DEBUG] loadLibrary called');
     }
 
+    if (!state.auth.isLoggedIn) {
+        state.library = [];
+        renderLibraryFromState();
+        populateCollectionFilterOptions();
+        renderContinueReading();
+        renderRecommendations();
+        renderNav();
+        return;
+    }
+
     hidePagination();
     renderGridSkeleton(els.libraryGrid, 10);
     els.libraryEmpty.classList.add('hidden');
@@ -4234,6 +4443,7 @@ function recordReadingSession(minutes, pages = 0) {
 }
 
 async function addToLibrary(mangaId, source, title, cover, status) {
+    if (!requireLogin('save to your library')) return;
     try {
         if (!navigator.onLine) {
             const key = upsertLocalLibraryEntry({ mangaId, source, title, cover, status });
@@ -4278,6 +4488,7 @@ async function updateLibraryStatus(key, status) {
         showToast('Missing library key');
         return;
     }
+    if (!requireLogin('update your library')) return;
     try {
         if (!navigator.onLine) {
             const entry = state.library.find(item => item.key === key);
@@ -4776,10 +4987,12 @@ async function loadMangaSources() {
             chapters: src.chapters || 0
         }));
         renderAvailableSources();
+        return state.currentMangaSources;
     } catch (error) {
         log(`Source lookup failed: ${error.message}`);
         state.currentMangaSources = [];
         renderAvailableSources();
+        return state.currentMangaSources;
     }
 }
 
@@ -4798,6 +5011,7 @@ async function switchMangaSource(sourceId, mangaId) {
     if (!sourceId || !mangaId || !state.currentManga) return;
     state.currentManga.source = sourceId;
     state.currentManga.id = mangaId;
+    state.currentManga.sourceResolved = true;
     state.currentChapters = [];
     state.currentChaptersOffset = 0;
     state.currentPage = 1;
@@ -4824,7 +5038,8 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
         title,
         mal_id: mangaData?.mal_id,
         cover: mangaData?.cover_url || mangaData?.cover,
-        data: mangaData
+        data: mangaData,
+        sourceResolved: false
     };
     state.currentLibraryKey = findLibraryKeyForManga(
         mangaId,
@@ -4915,13 +5130,40 @@ function buildChaptersPayload(page = 1) {
         limit: 100
     };
 
+    const hasResolvedSource = state.currentManga.source
+        && state.currentManga.source !== 'jikan'
+        && state.currentManga.id
+        && state.currentManga.id !== state.currentManga.mal_id;
+    if (hasResolvedSource) {
+        payload.source = state.currentManga.source;
+    }
     if (state.currentManga.mal_id) {
         payload.mal_id = state.currentManga.mal_id;
-    } else if (state.currentManga.source) {
-        payload.source = state.currentManga.source;
     }
 
     return payload;
+}
+
+async function resolveMangaSourceForChapters() {
+    if (!state.currentManga?.title) return false;
+    if (state.currentManga?.sourceResolved) return false;
+    const needsResolution = !state.currentManga.source
+        || state.currentManga.source === 'jikan'
+        || state.currentManga.id === state.currentManga.mal_id;
+    if (!needsResolution) return false;
+
+    state.currentManga.sourceResolved = true;
+    if (!state.currentMangaSources?.length) {
+        await loadMangaSources();
+    }
+    const candidate = (state.currentMangaSources || []).find(src => src.source_id && src.manga_id);
+    if (candidate) {
+        state.currentManga.source = candidate.source_id;
+        state.currentManga.id = candidate.manga_id;
+        renderAvailableSources();
+        return true;
+    }
+    return false;
 }
 
 async function fetchChaptersPage(page = 1, { updateState = false } = {}) {
@@ -5156,6 +5398,7 @@ async function loadChaptersMerged(page = 1) {
 }
 
 async function loadChapters(page = 1) {
+    await resolveMangaSourceForChapters();
     if (state.mergeChapters) {
         if (!state.currentMangaSources?.length) {
             await loadMangaSources();
@@ -5342,13 +5585,72 @@ function deselectAllChapters() {
     renderChapters();
 }
 
+async function downloadChaptersDirect({ mangaId, source, title, chapters, silent = false }) {
+    if (!requireLogin('download')) return false;
+    if (!mangaId || !source) {
+        if (!silent) showToast('Missing manga source');
+        return false;
+    }
+    if (!Array.isArray(chapters) || chapters.length === 0) {
+        if (!silent) showToast('No chapters selected');
+        return false;
+    }
+
+    const limit = Math.min(DIRECT_DOWNLOAD_LIMIT, getDataSaverDownloadLimit());
+    const finalBatch = chapters.slice(0, limit);
+    if (!finalBatch.length) {
+        if (!silent) showToast('No chapters available');
+        return false;
+    }
+
+    if (!silent) {
+        const label = finalBatch.length !== chapters.length
+            ? `Downloading ${finalBatch.length} chapters (limit ${limit})`
+            : `Downloading ${finalBatch.length} chapter${finalBatch.length === 1 ? '' : 's'}...`;
+        showToast(label);
+    }
+
+    const fallbackName = buildDownloadFallback(title, finalBatch.length > 1);
+    try {
+        if (IS_IOS) {
+            // Preserve user gesture for iOS by opening a blank tab before async work
+            const popup = window.open('', '_blank');
+            const tokenResponse = await API.createDownloadToken(mangaId, finalBatch, source, title);
+            const token = tokenResponse?.token;
+            if (!token) {
+                throw new Error('Unable to start download');
+            }
+            const url = `/api/download/direct?token=${encodeURIComponent(token)}`;
+            if (popup) {
+                popup.location = url;
+                popup.focus();
+            } else {
+                window.location.href = url;
+            }
+            if (!silent) {
+                showToast('Download starting...');
+            }
+            return true;
+        }
+        const result = await API.downloadDirect(mangaId, finalBatch, source, title, fallbackName);
+        triggerDownload(result.blob, result.filename || fallbackName);
+        if (!silent) {
+            showToast('Download ready');
+        }
+        return true;
+    } catch (error) {
+        if (!silent) {
+            showToast(`Download failed: ${error.message}`);
+        }
+        return false;
+    }
+}
+
 async function downloadSelectedChapters() {
     if (state.selectedChapters.size === 0) {
         showToast('No chapters selected');
         return;
     }
-
-    showToast(`Downloading ${state.selectedChapters.size} chapter(s)...`);
 
     // Collect all selected chapters for batch download
     const chaptersToDownload = [];
@@ -5363,25 +5665,12 @@ async function downloadSelectedChapters() {
         }
     }
 
-    const limit = getDataSaverDownloadLimit();
-    const finalBatch = chaptersToDownload.slice(0, limit);
-    if (finalBatch.length > 0) {
-        try {
-            await API.downloadChapters(
-                state.currentManga.id,
-                finalBatch,
-                state.currentManga.source,
-                state.currentManga.title
-            );
-            const label = finalBatch.length !== chaptersToDownload.length
-                ? `Queued ${finalBatch.length} (data saver limit)`
-                : `Added ${finalBatch.length} chapter(s) to queue`;
-            showToast(label);
-            fetchDownloadQueue();
-        } catch (error) {
-            showToast(`Download failed: ${error.message}`);
-        }
-    }
+    await downloadChaptersDirect({
+        mangaId: state.currentManga.id,
+        source: state.currentManga.source,
+        title: state.currentManga.title,
+        chapters: chaptersToDownload
+    });
 }
 
 async function downloadNextChapters(count = 5) {
@@ -5414,43 +5703,27 @@ async function downloadNextChapters(count = 5) {
         return;
     }
 
-    try {
-        await API.downloadChapters(
-            state.currentManga.id,
-            chaptersToDownload,
-            state.currentManga.source,
-            state.currentManga.title,
-            !state.filters.dataSaver
-        );
-        showToast(`Queued next ${chaptersToDownload.length} chapters`);
-        fetchDownloadQueue();
-    } catch (error) {
-        showToast(`Download failed: ${error.message}`);
-    }
+    await downloadChaptersDirect({
+        mangaId: state.currentManga.id,
+        source: state.currentManga.source,
+        title: state.currentManga.title,
+        chapters: chaptersToDownload
+    });
 }
 
 async function downloadChapter(chapterId, chapterTitle, chapterNumber = '0') {
     log(`Downloading: ${chapterTitle}...`);
-    showToast(`Downloading: ${chapterTitle}`);
-
-    try {
-        await API.downloadChapter(
-            state.currentManga.id,
-            chapterId,
-            state.currentManga.source,
-            state.currentManga.title,
-            chapterTitle,
-            chapterNumber,
-            !state.filters.dataSaver
-        );
-        log(`Download queued: ${chapterTitle}`);
-        showToast('Added to download queue');
-        // Update queue badge
-        fetchDownloadQueue();
-    } catch (error) {
-        log(`Download failed: ${error.message}`);
-        showToast(`Download failed: ${error.message}`);
-    }
+    const chapters = [{
+        id: chapterId,
+        chapter: chapterNumber,
+        title: chapterTitle
+    }];
+    await downloadChaptersDirect({
+        mangaId: state.currentManga.id,
+        source: state.currentManga.source,
+        title: state.currentManga.title,
+        chapters
+    });
 }
 
 async function downloadLatestChapter(mangaId, source, title) {
@@ -5465,17 +5738,17 @@ async function downloadLatestChapter(mangaId, source, title) {
             showToast('No chapters found');
             return;
         }
-        await API.downloadChapter(
+        const chapters = [{
+            id: chapter.id,
+            chapter: chapter.chapter || '0',
+            title: chapter.title || 'Latest'
+        }];
+        await downloadChaptersDirect({
             mangaId,
-            chapter.id,
             source,
             title,
-            chapter.title || 'Latest',
-            chapter.chapter || '0',
-            !state.filters.dataSaver
-        );
-        showToast('Queued latest chapter');
-        fetchDownloadQueue();
+            chapters
+        });
     } catch (error) {
         showToast(`Download failed: ${error.message}`);
     }
@@ -5689,6 +5962,11 @@ async function saveReadingProgress() {
         renderContinueReading();
         return;
     }
+    if (!state.auth.isLoggedIn) {
+        saveLastRead(lastReadEntry);
+        renderContinueReading();
+        return;
+    }
 
     try {
         if (!navigator.onLine) {
@@ -5748,6 +6026,7 @@ async function saveReadingProgress() {
 }
 
 async function markAllRead() {
+    if (!requireLogin('update your library')) return;
     const key = resolveCurrentLibraryKey();
     if (!key) {
         showToast('Add to library to track progress');
@@ -5827,6 +6106,7 @@ function getCompletionChapterFromList(chapters) {
 }
 
 async function markLibraryEntryRead(key) {
+    if (!requireLogin('update your library')) return;
     const entry = state.library.find(item => item.key === key);
     if (!entry) {
         showToast('Item not found in library');
@@ -6915,6 +7195,7 @@ async function bulkUpdateStatus(keys, status) {
         showToast('No items selected');
         return;
     }
+    if (!requireLogin('update your library')) return;
     try {
         await Promise.all(keys.map(key => API.updateStatus(key, status)));
         keys.forEach(key => {
@@ -6935,6 +7216,7 @@ function showLibraryStatusModal(mangaId, source, title, coverUrl, libraryKey = n
     if (DEBUG_MODE) {
         console.log(`[DEBUG] showLibraryStatusModal called for ${title}`);
     }
+    if (!requireLogin('manage your library')) return;
 
     els.libraryStatusModal.classList.add('active');
     const modalTitle = els.libraryStatusModal.querySelector('.modal-title');
@@ -7182,6 +7464,7 @@ function initElements() {
 
         // Auth Modal
         loginBtn: document.querySelector('.login-btn'),
+        loginBtnGuest: document.getElementById('login-btn-guest'),
         authModal: document.getElementById('auth-modal'),
         closeAuthModal: document.getElementById('close-auth-modal'),
         authModalTitle: document.getElementById('auth-modal-title'),
@@ -7196,7 +7479,39 @@ function initElements() {
         authRememberGroup: document.getElementById('auth-remember-group'),
         authSubmit: document.getElementById('auth-submit'),
         authToggleText: document.getElementById('auth-toggle-text'),
-        authToggleBtn: document.getElementById('auth-toggle-btn')
+        authToggleBtn: document.getElementById('auth-toggle-btn'),
+
+        // Account Menu (logged in state)
+        accountMenuContainer: document.getElementById('account-menu-container'),
+        accountBtn: document.getElementById('account-btn'),
+        accountAvatar: document.getElementById('account-avatar'),
+        accountName: document.getElementById('account-name'),
+        accountDropdown: document.getElementById('account-dropdown'),
+        dropdownAvatar: document.getElementById('dropdown-avatar'),
+        dropdownName: document.getElementById('dropdown-name'),
+        dropdownEmail: document.getElementById('dropdown-email'),
+
+        // Account Settings Modal
+        accountSettingsModal: document.getElementById('account-settings-modal'),
+        closeAccountSettings: document.getElementById('close-account-settings'),
+        settingsTabs: document.querySelectorAll('.settings-tab'),
+        settingsAvatarPreview: document.getElementById('settings-avatar-preview'),
+        settingsAvatarUrl: document.getElementById('settings-avatar-url'),
+        settingsDisplayName: document.getElementById('settings-display-name'),
+        settingsEmail: document.getElementById('settings-email'),
+        previewAvatarBtn: document.getElementById('preview-avatar-btn'),
+        saveProfileBtn: document.getElementById('save-profile-btn'),
+        currentPassword: document.getElementById('current-password'),
+        newPassword: document.getElementById('new-password'),
+        confirmPassword: document.getElementById('confirm-password'),
+        changePasswordBtn: document.getElementById('change-password-btn'),
+        passwordChangeError: document.getElementById('password-change-error'),
+        passwordChangeSuccess: document.getElementById('password-change-success'),
+        activeSessionsList: document.getElementById('active-sessions-list'),
+        savePreferencesBtn: document.getElementById('save-preferences-btn'),
+        prefDefaultReaderMode: document.getElementById('pref-default-reader-mode'),
+        prefReadingDirection: document.getElementById('pref-reading-direction'),
+        prefImageFit: document.getElementById('pref-image-fit')
     };
 
     // Expose els in debug mode
@@ -7345,15 +7660,7 @@ function setupEventDelegation() {
         if (removeBtn) {
             e.stopPropagation();
             const key = card.dataset.libraryKey || getLibraryKey(mangaId, source);
-            API.removeFromLibrary(key)
-                .then(() => {
-                    showToast('Removed from library');
-                    return loadLibrary();
-                })
-                .catch(err => {
-                    log(`❌ Remove failed: ${err.message}`);
-                    showToast('Failed to remove');
-                });
+            removeFromLibraryWithConfirm(key, title);
             return;
         }
 
@@ -7630,6 +7937,12 @@ function createCardMenu(context, mangaId, source, key, title, coverUrl) {
 function openCardMenu(button, menu) {
     closeAllMenus();
 
+    // Elevate the parent card's z-index so dropdown appears above other cards
+    const card = button.closest('.card');
+    if (card) {
+        card.classList.add('menu-open');
+    }
+
     // Position menu
     const rect = button.getBoundingClientRect();
     const menuHeight = 180; // Approximate
@@ -7711,6 +8024,11 @@ function closeAllMenus() {
     // Reset aria-expanded on all menu buttons
     document.querySelectorAll('.card-menu-btn[aria-expanded="true"]').forEach(btn => {
         btn.setAttribute('aria-expanded', 'false');
+    });
+
+    // Remove elevated z-index from cards with open menus
+    document.querySelectorAll('.card.menu-open').forEach(card => {
+        card.classList.remove('menu-open');
     });
 
     if (state.activeMenu) {
@@ -7853,6 +8171,7 @@ async function shareCurrentReview() {
 }
 
 async function removeFromLibraryWithConfirm(key, title) {
+    if (!requireLogin('manage your library')) return;
     const confirmed = confirm(`Remove "${title}" from library?`);
     if (!confirmed) return;
 
@@ -7948,6 +8267,7 @@ async function deleteSelected() {
         showToast('No items selected');
         return;
     }
+    if (!requireLogin('manage your library')) return;
 
     const confirmed = await showConfirmModal(
         'Remove from Library',
@@ -7985,6 +8305,7 @@ async function downloadSelected() {
         showToast('No valid items found');
         return;
     }
+    if (!requireLogin('download')) return;
 
     let queuedCount = 0;
     for (const entry of entries) {
@@ -7996,17 +8317,23 @@ async function downloadSelected() {
     }
 
     if (queuedCount > 0) {
-        showToast(`Added ${queuedCount} manga to passive queue`);
-        await fetchDownloadQueue();
-        renderDownloadQueue();
+        const label = DIRECT_DOWNLOAD_ONLY
+            ? `Started ${queuedCount} download${queuedCount === 1 ? '' : 's'}`
+            : `Added ${queuedCount} manga to passive queue`;
+        showToast(label);
+        if (!DIRECT_DOWNLOAD_ONLY) {
+            await fetchDownloadQueue();
+            renderDownloadQueue();
+        }
         exitSelectionMode();
     } else {
-        showToast('No downloads queued');
+        showToast(DIRECT_DOWNLOAD_ONLY ? 'No downloads started' : 'No downloads queued');
     }
 }
 
 async function queueDownloadPassive(mangaId, source, title, options = {}) {
     const { silent = false, skipQueueRefresh = false } = options;
+    if (!requireLogin('download')) return false;
     if (!mangaId || !source) {
         if (!silent) showToast('Missing manga source or ID');
         return false;
@@ -8033,8 +8360,18 @@ async function queueDownloadPassive(mangaId, source, title, options = {}) {
             chapter: ch.chapter || '0',
             title: ch.title
         }));
-        const limit = getDataSaverDownloadLimit();
+        const limit = Math.min(DIRECT_DOWNLOAD_LIMIT, getDataSaverDownloadLimit());
         const finalPayload = chaptersPayload.slice(0, limit);
+
+        if (DIRECT_DOWNLOAD_ONLY) {
+            return downloadChaptersDirect({
+                mangaId,
+                source,
+                title,
+                chapters: finalPayload,
+                silent
+            });
+        }
 
         await API.downloadChapters(mangaId, finalPayload, source, title, false);
 
@@ -8159,6 +8496,17 @@ function hideAuthError() {
 }
 
 /**
+ * Require login before protected actions.
+ */
+function requireLogin(actionLabel = 'continue') {
+    if (state.auth.isLoggedIn) return true;
+    const label = actionLabel ? `to ${actionLabel}` : 'to continue';
+    showToast(`Login required ${label}`);
+    openAuthModal('login');
+    return false;
+}
+
+/**
  * Handle auth form submission
  */
 async function handleAuthSubmit(event) {
@@ -8192,12 +8540,21 @@ async function handleAuthSubmit(event) {
         if (response?.user) {
             state.auth.user = response.user;
             state.auth.isLoggedIn = true;
+
+            // Update CSRF token if provided (security: prevents session fixation)
+            if (response.csrf_token) {
+                state.csrfToken = response.csrf_token;
+            }
+
             updateAuthUI();
             closeAuthModal();
             showToast(`Welcome${response.user.display_name ? ', ' + response.user.display_name : ''}!`);
 
             // Refresh library to get user-specific data
             await loadLibrary();
+            if (state.activeView === 'history') {
+                await loadHistory();
+            }
         }
     } catch (error) {
         showAuthError(error.message || 'Authentication failed');
@@ -8223,6 +8580,9 @@ async function handleLogout() {
 
         // Refresh library (will now show anonymous/empty library)
         await loadLibrary();
+        if (state.activeView === 'history') {
+            await loadHistory();
+        }
     } catch (error) {
         console.error('Logout failed:', error);
         showToast('Logout failed');
@@ -8251,30 +8611,443 @@ async function checkAuthStatus() {
         state.auth.isLoading = false;
         updateAuthUI();
     }
+    return state.auth.user;
 }
 
 /**
- * Update the UI based on auth state (login button text, user info, etc.)
+ * Update the UI based on auth state (login button, account dropdown, etc.)
  */
 function updateAuthUI() {
-    if (els.loginBtn) {
-        if (state.auth.isLoggedIn && state.auth.user) {
-            // Show user info or avatar
-            const displayName = state.auth.user.display_name || state.auth.user.email.split('@')[0];
-            els.loginBtn.textContent = displayName.substring(0, 12);
-            els.loginBtn.title = `Logged in as ${state.auth.user.email}`;
-            els.loginBtn.classList.add('logged-in');
+    const DEFAULT_AVATAR = '/static/images/default-avatar.png';
 
-            // Change click handler to show user menu or logout
-            els.loginBtn.onclick = handleLogout;
-        } else {
+    if (state.auth.isLoggedIn && state.auth.user) {
+        const user = state.auth.user;
+        const displayName = user.display_name || user.email.split('@')[0];
+        const avatarUrl = user.avatar_url || DEFAULT_AVATAR;
+
+        // Hide guest login button, show account menu
+        if (els.loginBtnGuest) els.loginBtnGuest.classList.add('hidden');
+        if (els.accountMenuContainer) els.accountMenuContainer.classList.remove('hidden');
+
+        // Update account button
+        if (els.accountAvatar) els.accountAvatar.src = avatarUrl;
+        if (els.accountName) els.accountName.textContent = displayName.substring(0, 12);
+
+        // Update dropdown header
+        if (els.dropdownAvatar) els.dropdownAvatar.src = avatarUrl;
+        if (els.dropdownName) els.dropdownName.textContent = displayName;
+        if (els.dropdownEmail) els.dropdownEmail.textContent = user.email;
+
+        // Legacy support: update old login button if it exists and new elements don't
+        if (els.loginBtn && !els.loginBtnGuest) {
+            els.loginBtn.textContent = displayName.substring(0, 12);
+            els.loginBtn.title = `Logged in as ${user.email}`;
+            els.loginBtn.classList.add('logged-in');
+        }
+    } else {
+        // Show guest login button, hide account menu
+        if (els.loginBtnGuest) els.loginBtnGuest.classList.remove('hidden');
+        if (els.accountMenuContainer) els.accountMenuContainer.classList.add('hidden');
+
+        // Close any open dropdowns/modals
+        closeAccountDropdown();
+        closeAccountSettings();
+
+        // Legacy support
+        if (els.loginBtn && !els.loginBtnGuest) {
             els.loginBtn.textContent = 'LOGIN';
             els.loginBtn.title = 'Click to login or register';
             els.loginBtn.classList.remove('logged-in');
-
-            // Click to open auth modal
-            els.loginBtn.onclick = () => openAuthModal('login');
         }
+    }
+}
+
+// ========================================
+// Account Dropdown System
+// ========================================
+
+/**
+ * Toggle the account dropdown menu
+ */
+function toggleAccountDropdown() {
+    if (state.auth.isAccountDropdownOpen) {
+        closeAccountDropdown();
+    } else {
+        openAccountDropdown();
+    }
+}
+
+/**
+ * Open the account dropdown
+ */
+function openAccountDropdown() {
+    if (!els.accountDropdown) return;
+
+    els.accountDropdown.classList.add('active');
+    els.accountBtn?.setAttribute('aria-expanded', 'true');
+    state.auth.isAccountDropdownOpen = true;
+
+    // Re-render Lucide icons in the dropdown
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+
+    // Focus first menu item for accessibility
+    setTimeout(() => {
+        const firstItem = els.accountDropdown.querySelector('.account-dropdown-item');
+        if (firstItem) firstItem.focus();
+    }, 50);
+}
+
+/**
+ * Close the account dropdown
+ */
+function closeAccountDropdown() {
+    if (!els.accountDropdown) return;
+
+    els.accountDropdown.classList.remove('active');
+    els.accountBtn?.setAttribute('aria-expanded', 'false');
+    state.auth.isAccountDropdownOpen = false;
+}
+
+/**
+ * Handle account dropdown item actions
+ */
+function handleAccountDropdownAction(action) {
+    closeAccountDropdown();
+
+    switch (action) {
+        case 'profile':
+            openAccountSettings('profile');
+            break;
+        case 'settings':
+            openAccountSettings('security');
+            break;
+        case 'logout':
+            confirmLogout();
+            break;
+    }
+}
+
+/**
+ * Show logout confirmation dialog
+ */
+async function confirmLogout() {
+    const confirmed = await showConfirmModal('Log Out', 'Are you sure you want to log out?', 'Log Out');
+    if (confirmed) {
+        await handleLogout();
+    }
+}
+
+// ========================================
+// Account Settings Modal
+// ========================================
+
+/**
+ * Open the account settings modal
+ * @param {string} tab - Initial tab to show ('profile', 'security', 'preferences')
+ */
+function openAccountSettings(tab = 'profile') {
+    if (!els.accountSettingsModal) return;
+
+    state.auth.isAccountSettingsOpen = true;
+    state.auth.activeSettingsTab = tab;
+
+    // Populate form with current user data
+    populateAccountSettings();
+
+    // Switch to the requested tab
+    switchSettingsTab(tab);
+
+    // Show modal
+    els.accountSettingsModal.classList.add('active');
+
+    // Load active sessions if on security tab
+    if (tab === 'security') {
+        loadActiveSessions();
+    }
+
+    // Re-render Lucide icons
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
+
+/**
+ * Close the account settings modal
+ */
+function closeAccountSettings() {
+    if (!els.accountSettingsModal) return;
+
+    state.auth.isAccountSettingsOpen = false;
+    els.accountSettingsModal.classList.remove('active');
+
+    // Clear password fields for security
+    if (els.currentPassword) els.currentPassword.value = '';
+    if (els.newPassword) els.newPassword.value = '';
+    if (els.confirmPassword) els.confirmPassword.value = '';
+    hidePasswordError();
+    hidePasswordSuccess();
+}
+
+/**
+ * Populate account settings form with current user data
+ */
+function populateAccountSettings() {
+    const user = state.auth.user;
+    if (!user) return;
+
+    const DEFAULT_AVATAR = '/static/images/default-avatar.png';
+
+    if (els.settingsAvatarPreview) {
+        els.settingsAvatarPreview.src = user.avatar_url || DEFAULT_AVATAR;
+    }
+    if (els.settingsAvatarUrl) {
+        els.settingsAvatarUrl.value = user.avatar_url || '';
+    }
+    if (els.settingsDisplayName) {
+        els.settingsDisplayName.value = user.display_name || '';
+    }
+    if (els.settingsEmail) {
+        els.settingsEmail.value = user.email || '';
+    }
+}
+
+/**
+ * Switch between settings tabs
+ * @param {string} tabName - Tab to switch to
+ */
+function switchSettingsTab(tabName) {
+    state.auth.activeSettingsTab = tabName;
+
+    // Update tab buttons
+    els.settingsTabs?.forEach(tab => {
+        const isActive = tab.dataset.tab === tabName;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    // Update tab content
+    document.querySelectorAll('.settings-tab-content').forEach(content => {
+        const isActive = content.id === `settings-tab-${tabName}`;
+        content.classList.toggle('active', isActive);
+    });
+
+    // Load sessions if switching to security tab
+    if (tabName === 'security') {
+        loadActiveSessions();
+    }
+}
+
+/**
+ * Preview avatar from URL input
+ */
+function previewAvatar() {
+    const url = els.settingsAvatarUrl?.value?.trim();
+    const DEFAULT_AVATAR = '/static/images/default-avatar.png';
+
+    if (url && els.settingsAvatarPreview) {
+        els.settingsAvatarPreview.src = url;
+        els.settingsAvatarPreview.onerror = () => {
+            els.settingsAvatarPreview.src = DEFAULT_AVATAR;
+            showToast('Invalid avatar URL');
+        };
+    } else if (els.settingsAvatarPreview) {
+        els.settingsAvatarPreview.src = DEFAULT_AVATAR;
+    }
+}
+
+/**
+ * Save profile changes (display name, avatar)
+ */
+async function saveProfile() {
+    const displayName = els.settingsDisplayName?.value?.trim() || null;
+    const avatarUrl = els.settingsAvatarUrl?.value?.trim() || null;
+
+    try {
+        const response = await API.authUpdate({
+            display_name: displayName,
+            avatar_url: avatarUrl
+        });
+
+        if (response?.user) {
+            state.auth.user = response.user;
+            updateAuthUI();
+            populateAccountSettings();
+            showToast('Profile updated successfully');
+        }
+    } catch (error) {
+        showToast(error.message || 'Failed to update profile');
+    }
+}
+
+/**
+ * Change password
+ */
+async function changePassword() {
+    const currentPwd = els.currentPassword?.value;
+    const newPwd = els.newPassword?.value;
+    const confirmPwd = els.confirmPassword?.value;
+
+    hidePasswordError();
+    hidePasswordSuccess();
+
+    // Validation
+    if (!currentPwd) {
+        showPasswordError('Please enter your current password');
+        return;
+    }
+    if (!newPwd || newPwd.length < 8) {
+        showPasswordError('New password must be at least 8 characters');
+        return;
+    }
+    if (newPwd !== confirmPwd) {
+        showPasswordError('Passwords do not match');
+        return;
+    }
+
+    try {
+        const response = await API.authUpdate({
+            current_password: currentPwd,
+            new_password: newPwd
+        });
+
+        if (response?.status === 'ok') {
+            // Clear password fields
+            els.currentPassword.value = '';
+            els.newPassword.value = '';
+            els.confirmPassword.value = '';
+            showPasswordSuccess('Password changed successfully');
+            showToast('Password changed successfully');
+        }
+    } catch (error) {
+        showPasswordError(error.message || 'Failed to change password');
+    }
+}
+
+/**
+ * Save reading preferences
+ */
+async function savePreferences() {
+    // For now, just show a toast - preferences can be stored in localStorage
+    // or extended to save to user profile via API in the future
+    const prefs = {
+        defaultReaderMode: els.prefDefaultReaderMode?.value || 'strip',
+        readingDirection: els.prefReadingDirection?.value || 'ltr',
+        imageFit: els.prefImageFit?.value || 'fit-width'
+    };
+
+    try {
+        localStorage.setItem('userPreferences', JSON.stringify(prefs));
+        showToast('Preferences saved');
+    } catch (error) {
+        showToast('Failed to save preferences');
+    }
+}
+
+/**
+ * Show password change error message
+ */
+function showPasswordError(message) {
+    if (els.passwordChangeError) {
+        els.passwordChangeError.textContent = message;
+        els.passwordChangeError.classList.remove('hidden');
+    }
+}
+
+/**
+ * Hide password change error message
+ */
+function hidePasswordError() {
+    if (els.passwordChangeError) {
+        els.passwordChangeError.classList.add('hidden');
+        els.passwordChangeError.textContent = '';
+    }
+}
+
+/**
+ * Show password change success message
+ */
+function showPasswordSuccess(message) {
+    if (els.passwordChangeSuccess) {
+        els.passwordChangeSuccess.textContent = message;
+        els.passwordChangeSuccess.classList.remove('hidden');
+    }
+}
+
+/**
+ * Hide password change success message
+ */
+function hidePasswordSuccess() {
+    if (els.passwordChangeSuccess) {
+        els.passwordChangeSuccess.classList.add('hidden');
+        els.passwordChangeSuccess.textContent = '';
+    }
+}
+
+/**
+ * Load active sessions from the API
+ */
+async function loadActiveSessions() {
+    if (!els.activeSessionsList) return;
+
+    els.activeSessionsList.innerHTML = `
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading sessions...</span>
+        </div>
+    `;
+
+    try {
+        const response = await API.request('/api/auth/sessions', { silent: true });
+        const sessions = response?.sessions || [];
+
+        if (sessions.length === 0) {
+            els.activeSessionsList.innerHTML = '<p class="settings-note">No active sessions</p>';
+            return;
+        }
+
+        els.activeSessionsList.innerHTML = sessions.map(session => `
+            <div class="session-item ${session.is_current ? 'current' : ''}">
+                <div class="session-info">
+                    <span class="session-device">${escapeHtml(session.device || 'Unknown Device')} - ${escapeHtml(session.browser || 'Browser')}</span>
+                    <span class="session-meta">
+                        ${escapeHtml(session.ip || 'Unknown IP')}
+                        ${session.created_at ? ' &bull; Last active ' + formatRelativeTime(session.created_at) : ''}
+                    </span>
+                </div>
+                ${session.is_current ? '<span class="session-badge">Current</span>' : ''}
+            </div>
+        `).join('');
+
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+        els.activeSessionsList.innerHTML = '<p class="settings-note">Failed to load sessions</p>';
+    }
+}
+
+/**
+ * Format timestamp to relative time (e.g., "2 hours ago")
+ */
+function formatRelativeTime(isoString) {
+    if (!isoString) return '';
+
+    try {
+        const date = new Date(isoString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return 'just now';
+        if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+
+        return date.toLocaleDateString();
+    } catch {
+        return '';
     }
 }
 
@@ -8282,13 +9055,106 @@ function updateAuthUI() {
  * Initialize auth event listeners
  */
 function initAuthEventListeners() {
-    // Login button click
-    if (els.loginBtn) {
+    // Guest login button click
+    if (els.loginBtnGuest) {
+        els.loginBtnGuest.addEventListener('click', () => openAuthModal('login'));
+    }
+
+    // Legacy login button click (fallback)
+    if (els.loginBtn && !els.loginBtnGuest) {
         els.loginBtn.addEventListener('click', () => {
             if (!state.auth.isLoggedIn) {
                 openAuthModal('login');
             }
         });
+    }
+
+    // Account button - toggle dropdown
+    if (els.accountBtn) {
+        els.accountBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleAccountDropdown();
+        });
+    }
+
+    // Account dropdown item clicks
+    if (els.accountDropdown) {
+        els.accountDropdown.addEventListener('click', (e) => {
+            const item = e.target.closest('.account-dropdown-item');
+            if (item) {
+                e.stopPropagation();
+                handleAccountDropdownAction(item.dataset.action);
+            }
+        });
+
+        // Keyboard navigation for dropdown
+        els.accountDropdown.addEventListener('keydown', (e) => {
+            const items = Array.from(els.accountDropdown.querySelectorAll('.account-dropdown-item'));
+            const currentIndex = items.indexOf(document.activeElement);
+
+            switch (e.key) {
+                case 'Escape':
+                    e.preventDefault();
+                    closeAccountDropdown();
+                    els.accountBtn?.focus();
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    const nextIndex = (currentIndex + 1) % items.length;
+                    items[nextIndex]?.focus();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    const prevIndex = (currentIndex - 1 + items.length) % items.length;
+                    items[prevIndex]?.focus();
+                    break;
+            }
+        });
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (state.auth.isAccountDropdownOpen &&
+            !e.target.closest('.account-menu-container')) {
+            closeAccountDropdown();
+        }
+    });
+
+    // Account Settings Modal
+    if (els.closeAccountSettings) {
+        els.closeAccountSettings.addEventListener('click', closeAccountSettings);
+    }
+
+    // Settings tabs
+    els.settingsTabs?.forEach(tab => {
+        tab.addEventListener('click', () => switchSettingsTab(tab.dataset.tab));
+    });
+
+    // Settings modal overlay click to close
+    if (els.accountSettingsModal) {
+        els.accountSettingsModal.addEventListener('click', (e) => {
+            if (e.target === els.accountSettingsModal) {
+                closeAccountSettings();
+            }
+        });
+    }
+
+    // Profile actions
+    if (els.previewAvatarBtn) {
+        els.previewAvatarBtn.addEventListener('click', previewAvatar);
+    }
+    if (els.saveProfileBtn) {
+        els.saveProfileBtn.addEventListener('click', saveProfile);
+    }
+
+    // Password change
+    if (els.changePasswordBtn) {
+        els.changePasswordBtn.addEventListener('click', changePassword);
+    }
+
+    // Save preferences
+    if (els.savePreferencesBtn) {
+        els.savePreferencesBtn.addEventListener('click', savePreferences);
     }
 
     // Close auth modal
@@ -8315,10 +9181,16 @@ function initAuthEventListeners() {
         });
     }
 
-    // Close modal on Escape key
+    // Global Escape key handler
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && state.auth.isAuthModalOpen) {
-            closeAuthModal();
+        if (e.key === 'Escape') {
+            if (state.auth.isAccountDropdownOpen) {
+                closeAccountDropdown();
+            } else if (state.auth.isAccountSettingsOpen) {
+                closeAccountSettings();
+            } else if (state.auth.isAuthModalOpen) {
+                closeAuthModal();
+            }
         }
     });
 }
@@ -8485,8 +9357,8 @@ async function init() {
     await API.getCsrfToken();
     log('CSRF token obtained');
 
-    // Check authentication status (async, doesn't block)
-    checkAuthStatus();
+    // Check authentication status (blocks so library loads correctly)
+    await checkAuthStatus();
 
     // Load sources
     state.sources = await API.getSources();
@@ -8505,9 +9377,7 @@ async function init() {
     log(`Loaded ${state.sources.length} sources`);
 
     // Load library
-    state.library = await API.getLibrary();
-    log(`Loaded ${state.library.length} library items`);
-    renderContinueReading();
+    await loadLibrary();
 
     // Render navigation
     renderNav();
@@ -8712,6 +9582,7 @@ async function init() {
     }
     if (els.syncPullBtn) {
         els.syncPullBtn.addEventListener('click', async () => {
+            if (!requireLogin('sync preferences')) return;
             try {
                 const prefs = await API.getPreferences();
                 applyPreferences(prefs);
@@ -8724,6 +9595,7 @@ async function init() {
     }
     if (els.syncPushBtn) {
         els.syncPushBtn.addEventListener('click', async () => {
+            if (!requireLogin('sync preferences')) return;
             try {
                 await API.savePreferences(collectPreferences());
                 showToast('Synced to server');

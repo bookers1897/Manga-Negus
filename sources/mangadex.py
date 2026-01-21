@@ -38,9 +38,9 @@ class MangaDexConnector(BaseConnector):
         r'https?://(?:www\.)?mangadex\.org/title/([a-f0-9-]+)',  # UUID format
     ]
 
-    # CONSERVATIVE rate limiting - stay well below their 5/sec limit
-    rate_limit = 2.0          # 2 requests per second
-    rate_limit_burst = 3      # Small burst
+    # Rate limiting - MangaDex allows 5/sec, we use 3/sec for safety
+    rate_limit = 3.0          # 3 requests per second
+    rate_limit_burst = 5      # Reasonable burst
     request_timeout = 30      # Increased timeout
 
     supports_latest = True

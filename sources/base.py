@@ -218,6 +218,8 @@ class BaseConnector(ABC):
         self._last_error: Optional[str] = None
         self._failure_count = 0
         self._cooldown_until = 0.0
+        self._mirror_index = 0
+        self._last_mirror_switch = 0.0
 
         # Thread safety
         self._lock = threading.Lock()
@@ -281,6 +283,23 @@ class BaseConnector(ABC):
         """Set a cooldown period where no requests are made."""
         with self._lock:
             self._cooldown_until = time.time() + seconds
+
+    def _rotate_mirror(self, reason: str) -> None:
+        mirrors = getattr(self, "MIRRORS", None)
+        if not mirrors or not isinstance(mirrors, list) or len(mirrors) < 2:
+            return
+        now = time.time()
+        if (now - self._last_mirror_switch) < 30:
+            return
+        self._last_mirror_switch = now
+        if self.base_url in mirrors:
+            idx = mirrors.index(self.base_url)
+            next_idx = (idx + 1) % len(mirrors)
+        else:
+            next_idx = (self._mirror_index + 1) % len(mirrors)
+        self._mirror_index = next_idx
+        self.base_url = mirrors[next_idx]
+        source_log(f"[{self.id}] 🔁 Switched mirror to {self.base_url} ({reason})")
     
     # =========================================================================
     # STATUS MANAGEMENT
@@ -292,6 +311,7 @@ class BaseConnector(ABC):
             self._cooldown_until = time.time() + retry_after
             self._status = SourceStatus.RATE_LIMITED
             self._failure_count += 1
+        self._rotate_mirror("rate_limited")
     
     def _handle_cloudflare(self) -> None:
         """Handle Cloudflare protection detection."""
@@ -299,6 +319,7 @@ class BaseConnector(ABC):
             self._status = SourceStatus.CLOUDFLARE
             self._cooldown_until = time.time() + 300  # 5 min cooldown
             self._failure_count += 1
+        self._rotate_mirror("cloudflare")
     
     def _handle_success(self) -> None:
         """Reset counters on successful request."""
@@ -314,6 +335,8 @@ class BaseConnector(ABC):
             if self._failure_count >= 5:
                 self._status = SourceStatus.OFFLINE
                 self._cooldown_until = time.time() + 300
+        if self._failure_count >= 2:
+            self._rotate_mirror("error")
     
     @property
     def status(self) -> SourceStatus:

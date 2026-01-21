@@ -1,4 +1,4 @@
-const VERSION = 'v4';
+const VERSION = 'v6';
 const STATIC_CACHE = `manganegus-static-${VERSION}`;
 const DATA_CACHE = `manganegus-data-${VERSION}`;
 const IMAGE_CACHE = `manganegus-images-${VERSION}`;
@@ -63,6 +63,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  if (url.pathname.startsWith('/api/download/direct')) {
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request));
     return;

@@ -36,6 +36,10 @@ class MangaSeeV2Connector(BaseConnector):
     id = "mangasee-v2"
     name = "MangaSee V2"
     base_url = "https://manga4life.com"
+    MIRRORS = [
+        "https://manga4life.com",
+        "https://mangasee123.com"
+    ]
     icon = "📗"
     
     # URL Detection patterns
@@ -44,8 +48,8 @@ class MangaSeeV2Connector(BaseConnector):
         r'https?://(?:www\.)?manga4life\.com/manga/([A-Za-z0-9-]+)',
     ]
     
-    rate_limit = 1.0
-    rate_limit_burst = 3
+    rate_limit = 2.0  # Increased for faster downloads
+    rate_limit_burst = 5
     request_timeout = 30
     
     supports_latest = True

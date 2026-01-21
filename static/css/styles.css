@@ -848,6 +848,11 @@ h1 {
   box-shadow: var(--shadow-card);
 }
 
+/* Elevate card z-index when its dropdown menu is open */
+.card.menu-open {
+  z-index: 100;
+}
+
 .remove-btn {
   background: rgba(0,0,0,0.6);
   border: 1px solid var(--border-glass);
@@ -1853,7 +1858,7 @@ body.reader-active #main-content {
   inset: 0;
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(8px);
-  z-index: 110;
+  z-index: 1200;  /* Above card menus (1100), sidebar (1001), etc */
   display: none;
   align-items: center;
   justify-content: center;
@@ -2293,7 +2298,7 @@ body.reader-active #main-content {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 4px;
-    z-index: 1000;
+    z-index: 1100;  /* Above sidebar (1001) */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     animation: menuFadeIn 150ms ease-out;
 }
@@ -2401,7 +2406,7 @@ body.reader-active #main-content {
     display: flex;
     align-items: center;
     gap: 16px;
-    z-index: 1000;
+    z-index: 1050;  /* Above sidebar (1001) */
     animation: slideUp 200ms ease-out;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -2972,4 +2977,710 @@ body.reader-active #main-content {
 
 .badge-score, .badge-source {
   background: rgba(0, 0, 0, 0.85);
+}
+
+/* ==================================================
+   Account Menu System
+   ================================================== */
+
+/* Account Button (logged in state) */
+.account-menu-container {
+  position: relative;
+}
+
+.account-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--text-primary);
+}
+
+.account-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.account-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.account-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border-glass);
+}
+
+.account-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.account-btn[aria-expanded="true"] .account-chevron {
+  transform: rotate(180deg);
+}
+
+/* Account Dropdown */
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 260px;
+  background: rgba(20, 20, 20, 0.98);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  z-index: 200;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: none;
+  animation: accountDropdownFadeIn 150ms ease-out;
+}
+
+.account-dropdown.active {
+  display: block;
+}
+
+@keyframes accountDropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.account-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 4px;
+}
+
+.dropdown-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-glass);
+  flex-shrink: 0;
+}
+
+.dropdown-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdown-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-email {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+
+.account-dropdown-divider {
+  height: 1px;
+  background: var(--border-glass);
+  margin: 4px 0;
+}
+
+.account-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: background 0.1s ease;
+}
+
+.account-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-dropdown-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-dropdown-item svg,
+.account-dropdown-item i {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+}
+
+.account-dropdown-item.danger {
+  color: var(--accent);
+}
+
+.account-dropdown-item.danger svg,
+.account-dropdown-item.danger i {
+  color: var(--accent);
+}
+
+.account-dropdown-item.danger:hover {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+/* ==================================================
+   Account Settings Modal
+   ================================================== */
+
+.account-settings-modal {
+  max-width: 600px;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-settings-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-glass);
+  margin-bottom: 0;
+}
+
+.account-settings-modal .modal-title {
+  margin: 0;
+}
+
+.account-settings-modal .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 0;
+}
+
+/* Settings Tabs */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.settings-tab {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.settings-tab.active {
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--accent);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+/* Tab Content */
+.settings-tab-content {
+  display: none;
+}
+
+.settings-tab-content.active {
+  display: block;
+}
+
+/* Settings Sections */
+.settings-section {
+  margin-bottom: 24px;
+}
+
+.settings-section h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+/* Profile Avatar Section */
+.profile-avatar-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.settings-avatar-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-glass);
+  flex-shrink: 0;
+}
+
+.avatar-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Input Styling */
+.input-wrap {
+  margin-bottom: 16px;
+}
+
+.input-wrap label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input-wrap input[type="text"],
+.input-wrap input[type="email"],
+.input-wrap input[type="password"],
+.input-wrap input[type="url"] {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.input-wrap input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.input-wrap input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.input-wrap input::placeholder {
+  color: var(--text-muted);
+}
+
+.input-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* Settings Actions */
+.settings-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* Settings Error/Success */
+.settings-error {
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: #ef4444;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.settings-success {
+  padding: 12px 16px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  color: #22c55e;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.settings-error.hidden,
+.settings-success.hidden {
+  display: none;
+}
+
+/* Preferences Grid */
+.preferences-grid {
+  display: grid;
+  gap: 16px;
+}
+
+/* Active Sessions */
+.active-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+}
+
+.session-item.current {
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-device {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.session-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.session-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--accent);
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.loading-state .spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-glass);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 13px;
+}
+
+/* ==================================================
+   Mobile Responsive Fixes
+   ================================================== */
+
+/* Fix: Prevent horizontal overflow on all devices */
+html, body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Fix: Constrain background blobs to viewport */
+.bg-blob {
+  max-width: 100vw;
+}
+
+/* Fix: Show header-actions on mobile (login button visible) */
+.header-actions {
+  display: flex !important;  /* Override the display: none */
+  flex-shrink: 0;
+}
+
+/* Mobile-specific header adjustments */
+@media (max-width: 640px) {
+  /* Reduce header padding on mobile */
+  .header {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  /* Make menu button smaller on mobile */
+  .menu-btn {
+    padding: 6px;
+    flex-shrink: 0;
+  }
+
+  .menu-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Make icon buttons smaller on mobile */
+  .header-actions > .icon-btn {
+    padding: 6px;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .header-actions > .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Hide divider on mobile to save space */
+  .header-actions > .divider-v {
+    display: none;
+  }
+
+  /* Keep login button and account menu visible */
+  .header-actions > .login-btn,
+  .header-actions > .account-menu-container {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  /* Smaller login button on mobile */
+  .login-btn {
+    padding: 6px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* Search container takes remaining space but can shrink */
+  .search-container {
+    margin-left: 0;
+    flex: 1 1 auto;
+    min-width: 80px;  /* Minimum usable width */
+    max-width: none;
+  }
+
+  .search-wrapper {
+    height: 36px;
+    padding: 0 8px;
+  }
+
+  .search-input {
+    font-size: 13px;
+  }
+
+  /* Make search mode button smaller on mobile */
+  .search-mode-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+  }
+
+  .search-mode-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* Hide divider in search on mobile */
+  .search-wrapper .divider-v {
+    display: none;
+  }
+
+  /* Hide brand text on small screens */
+  .brand-text {
+    display: none !important;
+  }
+
+  /* Smaller brand logo on mobile */
+  .brand-logo,
+  .brand-logo.brand-logo-image img {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .brand {
+    flex-shrink: 0;
+  }
+
+  /* Header actions - compact layout */
+  .header-actions {
+    gap: 4px;
+    flex-shrink: 0;
+    margin-left: 0;
+  }
+
+  /* Account menu mobile styles */
+  .account-name {
+    display: none;
+  }
+
+  .account-btn {
+    padding: 6px;
+  }
+
+  .account-chevron {
+    display: none;
+  }
+
+  .account-dropdown {
+    right: -8px;
+    min-width: 240px;
+  }
+
+  .account-settings-modal {
+    max-width: 100%;
+    margin: 8px;
+    max-height: calc(100vh - 16px);
+  }
+
+  .settings-tabs {
+    flex-wrap: wrap;
+  }
+
+  .settings-tab {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .profile-avatar-section {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  /* Reduce main content padding on mobile */
+  .main-content {
+    padding: 96px 12px 32px;
+  }
+
+  /* Fix card grid on mobile */
+  .grid {
+    gap: 12px;
+  }
+}
+
+/* Very small screens (iPhone SE, etc.) */
+@media (max-width: 375px) {
+  .header {
+    padding: 0 6px;
+    gap: 4px;
+  }
+
+  .search-container {
+    min-width: 60px;
+  }
+
+  /* Make icon buttons even smaller on tiny screens */
+  .header-actions > .icon-btn {
+    padding: 5px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .header-actions > .icon-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .header-actions {
+    gap: 2px;
+  }
+
+  .login-btn {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .brand-logo,
+  .brand-logo.brand-logo-image img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .search-wrapper {
+    height: 32px;
+    padding: 0 6px;
+  }
+
+  .search-input {
+    font-size: 12px;
+  }
 }

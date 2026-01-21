@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, Response, render_template
 from manganegus_app.log import log, msg_queue
 from manganegus_app.rate_limit import limit_burst, limit_light
+from .auth_api import admin_required
 import requests
 import queue
 import ipaddress
@@ -257,62 +258,76 @@ def proxy_image():
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': referer or url,
         }
-        resp = requests.get(url, headers=headers, timeout=10, stream=True)
+        # Increased timeout for slow CDNs, stream for efficiency
+        resp = requests.get(url, headers=headers, timeout=20, stream=True)
         if resp.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), resp.status_code
 
-        img_bytes = resp.content
-
+        # Check if any image processing is requested
         fmt = (request.args.get('format') or '').lower().strip()
         quality = request.args.get('quality')
         width = request.args.get('w')
         height = request.args.get('h')
+        needs_processing = fmt or width or height or quality
 
+        # FAST PATH: No processing needed - just pass through the image
+        if not needs_processing:
+            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+            # If content-type isn't an image type, try to detect from URL
+            if not content_type.startswith('image/'):
+                if url.lower().endswith('.webp'):
+                    content_type = 'image/webp'
+                elif url.lower().endswith('.png'):
+                    content_type = 'image/png'
+                elif url.lower().endswith('.gif'):
+                    content_type = 'image/gif'
+                else:
+                    content_type = 'image/jpeg'
+            return Response(
+                resp.content,
+                mimetype=content_type,
+                headers={
+                    'Cache-Control': 'public, max-age=86400',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+
+        # SLOW PATH: Processing requested - use Pillow
+        img_bytes = resp.content
         try:
             from io import BytesIO
             from PIL import Image
 
-            # Always open with Pillow to detect actual format (servers often lie about Content-Type)
             image = Image.open(BytesIO(img_bytes))
             actual_format = image.format or 'JPEG'
-
-            # Determine output format
             save_format = fmt.upper() if fmt else actual_format
 
-            # Check if we need to process the image
-            needs_processing = fmt or width or height or quality
+            if width or height:
+                try:
+                    w = int(width) if width else None
+                    h = int(height) if height else None
+                except ValueError:
+                    w = h = None
+                if w or h:
+                    image.thumbnail((w or image.width, h or image.height), Image.LANCZOS)
 
-            if needs_processing:
-                if width or height:
-                    try:
-                        w = int(width) if width else None
-                        h = int(height) if height else None
-                    except ValueError:
-                        w = h = None
-                    if w or h:
-                        image.thumbnail((w or image.width, h or image.height), Image.LANCZOS)
-
-                out = BytesIO()
-                save_kwargs = {}
-                if quality:
-                    try:
-                        save_kwargs['quality'] = max(20, min(95, int(quality)))
-                    except ValueError:
-                        pass
-                if save_format == 'WEBP':
-                    save_kwargs.setdefault('method', 6)
-                # Convert RGBA to RGB for JPEG format
-                if save_format == 'JPEG' and image.mode in ('RGBA', 'P'):
-                    image = image.convert('RGB')
-                image.save(out, format=save_format, optimize=True, **save_kwargs)
-                img_bytes = out.getvalue()
-
+            out = BytesIO()
+            save_kwargs = {}
+            if quality:
+                try:
+                    save_kwargs['quality'] = max(20, min(95, int(quality)))
+                except ValueError:
+                    pass
+            if save_format == 'WEBP':
+                save_kwargs.setdefault('method', 6)
+            if save_format == 'JPEG' and image.mode in ('RGBA', 'P'):
+                image = image.convert('RGB')
+            image.save(out, format=save_format, optimize=True, **save_kwargs)
+            img_bytes = out.getvalue()
             content_type = f"image/{save_format.lower()}"
         except ImportError:
-            # Pillow not installed; use server's Content-Type
             content_type = resp.headers.get('Content-Type', 'image/jpeg')
         except Exception as e:
-            # If Pillow fails to process, return original with detected or server Content-Type
             log(f"⚠️ Image processing error: {e}")
             content_type = resp.headers.get('Content-Type', 'image/jpeg')
 
@@ -329,6 +344,7 @@ def proxy_image():
         return jsonify({'error': 'Failed to fetch image'}), 500
 
 @main_bp.route('/api/logs')
+@admin_required
 def get_logs():
     """Get pending log messages."""
     messages = []

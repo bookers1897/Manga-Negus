@@ -341,10 +341,10 @@ class AniListProvider(BaseMetadataProvider):
                 try:
                     start_date = datetime(
                         sd['year'],
-                        sd.get('month', 1),
-                        sd.get('day', 1)
+                        sd.get('month', 1) or 1,
+                        sd.get('day', 1) or 1
                     )
-                except:
+                except (ValueError, TypeError):
                     pass
 
         end_date = None
@@ -354,10 +354,10 @@ class AniListProvider(BaseMetadataProvider):
                 try:
                     end_date = datetime(
                         ed['year'],
-                        ed.get('month', 1),
-                        ed.get('day', 1)
+                        ed.get('month', 1) or 1,
+                        ed.get('day', 1) or 1
                     )
-                except:
+                except (ValueError, TypeError):
                     pass
 
         # Year
