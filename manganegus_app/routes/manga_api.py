@@ -505,6 +505,14 @@ def get_chapter_pages():
     chapter_id = data['chapter_id']
     source_id = data['source']
 
+    # Reject jikan pseudo-source (metadata-only, cannot serve chapters)
+    if source_id == 'jikan':
+        return jsonify({'error': 'jikan is a metadata-only source and cannot serve chapter pages. Please use a manga source.'}), 400
+
+    # Verify source exists before attempting to fetch
+    if not manager.get_source(source_id):
+        return jsonify({'error': f'Unknown source: {source_id}'}), 400
+
     pages = manager.get_pages(chapter_id, source_id)
 
     if not pages:

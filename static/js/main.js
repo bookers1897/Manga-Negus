@@ -9441,8 +9441,8 @@ async function init() {
         els.searchInput.value = '';
         els.clearSearchBtn.classList.add('hidden');
         clearLiveSuggestions();
-        loadDiscover(state.viewPages.discover || 1);
         hideSearchSuggestions();
+        setView('discover');  // Switch to discover view (loads content since searchQuery is empty)
     });
 
     els.searchBtn.addEventListener('click', () => {

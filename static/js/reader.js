@@ -170,20 +170,18 @@ const Prefetcher = {
             const cached = await this.getCached(url);
             if (cached) return;
 
-            // Fetch the image
-            const headers = {};
-            if (referer) {
-                headers['Referer'] = referer;
-            }
+            // Build proxy URL to avoid CORS and use rate limiting
+            const page = referer ? { url, referer } : url;
+            const proxyUrl = buildProxyUrl(page);
 
             // Use low priority for prefetch requests
-            const response = await fetch(url, {
-                headers,
+            const response = await fetch(proxyUrl, {
                 priority: 'low'
             });
 
             if (response.ok) {
                 const blob = await response.blob();
+                // Cache using original URL as key for consistency
                 await this.cacheImage(url, blob);
             }
         } catch (e) {
@@ -406,6 +404,9 @@ function setReaderSpread(enabled) {
 }
 
 async function apiRequest(endpoint, options = {}) {
+    const MAX_RETRIES = 3;
+    let rateLimitAttempt = 0;
+
     const headers = {
         ...(options.headers || {})
     };
@@ -416,18 +417,35 @@ async function apiRequest(endpoint, options = {}) {
         headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(endpoint, {
-        ...options,
-        headers
-    });
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
-    const data = isJson ? await response.json() : null;
-    if (!response.ok) {
-        const message = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(message);
+    while (true) {
+        const response = await fetch(endpoint, {
+            ...options,
+            headers
+        });
+
+        // Handle rate limiting with silent retry (consistent with main.js)
+        if (response.status === 429) {
+            if (rateLimitAttempt >= MAX_RETRIES) {
+                console.warn(`[Reader] Rate limit exceeded after ${MAX_RETRIES} retries: ${endpoint}`);
+                throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+            }
+            const retryAfter = parseInt(response.headers.get('Retry-After')) || 60;
+            const delay = Math.min(retryAfter * 1000 * (0.5 + Math.random()), 120000);
+            console.log(`[Reader] Rate limited, retrying in ${Math.round(delay / 1000)}s`);
+            await new Promise(r => setTimeout(r, delay));
+            rateLimitAttempt++;
+            continue;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        const isJson = contentType.includes('application/json');
+        const data = isJson ? await response.json() : null;
+        if (!response.ok) {
+            const message = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+            throw new Error(message);
+        }
+        return data;
     }
-    return data;
 }
 
 async function ensureCsrfToken() {
@@ -1179,8 +1197,17 @@ async function init() {
         console.warn('[Reader] Failed to init prefetch cache:', e);
     }
 
-    if (!state.chapterId || !state.source) {
-        showError('Missing chapter or source.');
+    if (!state.chapterId) {
+        showError('Missing chapter ID. Please go back and select a chapter.');
+        return;
+    }
+    if (!state.source) {
+        showError('Missing source. Please go back and select this manga from a source.');
+        return;
+    }
+    // Reject jikan pseudo-source which is metadata-only (MyAnimeList)
+    if (state.source === 'jikan') {
+        showError('This manga was found via MyAnimeList metadata. Please search for it from a manga source to read chapters.');
         return;
     }
 
