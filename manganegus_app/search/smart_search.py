@@ -36,13 +36,15 @@ class SmartSearch:
     Smart search orchestrator with parallel queries and metadata enrichment.
     """
 
-    # Top sources to query (based on speed and coverage)
+    # Top sources to query - priority order (sync with sources/__init__.py)
     DEFAULT_SOURCES = [
-        'weebcentral-v2',   # Fast, 1100+ chapters
-        'mangafreak',       # Reliable coverage
-        'mangadex',         # Official API, reliable
-        'mangasee-v2',      # Curl-based bypass
-        'manganato-v2'      # Curl-based bypass
+        'weebcentral-v2',   # Primary - HTMX breakthrough (curl_cffi)
+        'mangadex',         # Secondary - Official API, reliable
+        'mangafreak',       # Backup with good coverage
+        'mangasee-v2',      # Cloudflare bypass
+        'manganato-v2',     # Cloudflare bypass
+        'mangafire',        # Solid backup
+        'comicx'            # Recent addition
     ]
 
     def __init__(self):

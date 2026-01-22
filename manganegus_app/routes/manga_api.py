@@ -6,6 +6,7 @@ from manganegus_app.csrf import csrf_protect
 from manganegus_app.rate_limit import limit_heavy, limit_medium, limit_light
 from manganegus_app.search.smart_search import SmartSearch
 from manganegus_app.jikan_api import get_jikan_client
+from manganegus_app.services.discovery_service import get_discovery_service
 from .validators import validate_fields, validate_pagination, validate_source_id, sanitize_string
 from .auth_api import admin_required
 
@@ -104,19 +105,74 @@ def search():
             payload.append(data)
         return jsonify(payload)
 
-    log(f"🔍 Searching Jikan for '{query}'...")
+    # Default behavior: Use SmartSearch (multi-source with fallback)
+    # Falls back to Jikan if SmartSearch fails completely
+    log(f"🔍 SmartSearch for '{query}' (default multi-source)...")
+
+    try:
+        # Run SmartSearch with all default sources
+        smart_results = _run_async(
+            _smart_search.search(
+                query,
+                limit=limit,
+                sources=None,  # Use all default sources
+                enrich_metadata=True
+            )
+        )
+
+        if smart_results:
+            # Transform SmartSearch results to match expected format
+            results = []
+            for item in smart_results:
+                metadata = item.get('metadata', {}) or {}
+
+                # Get the primary source info
+                sources = item.get('sources', [])
+                primary_source_info = sources[0] if sources else {}
+
+                result = {
+                    'title': item.get('title', ''),
+                    'id': primary_source_info.get('manga_id', item.get('id', '')),
+                    'source': item.get('primary_source_id', primary_source_info.get('source_id', '')),
+                    'source_name': item.get('primary_source', primary_source_info.get('source_name', '')),
+                    'cover_url': item.get('cover_url', ''),
+                    'cover': item.get('cover_url', ''),
+                    'synopsis': item.get('description') or metadata.get('synopsis', ''),
+                    'rating': metadata.get('rating'),
+                    'genres': metadata.get('genres', []),
+                    'tags': metadata.get('tags', []),
+                    'status': metadata.get('status', ''),
+                    'year': metadata.get('year'),
+                    'author': metadata.get('author', ''),
+                    'type': metadata.get('type', 'manga'),
+                    'chapters': item.get('total_chapters') or primary_source_info.get('chapters'),
+                    'alt_titles': item.get('alt_titles', []),
+                    'all_sources': sources,  # Include all available sources for this manga
+                    'match_confidence': item.get('match_confidence', 0)
+                }
+                results.append(result)
+
+            log(f"✅ SmartSearch returned {len(results)} results")
+            return jsonify(results)
+
+        log(f"⚠️ SmartSearch returned no results, falling back to Jikan...")
+
+    except Exception as e:
+        log(f"⚠️ SmartSearch failed ({e}), falling back to Jikan...")
+
+    # Fallback: Use Jikan for metadata-only results
+    log(f"🔍 Jikan fallback search for '{query}'...")
     jikan = get_jikan_client()
     jikan_filters = {}
 
     # SFW filter - enabled by default unless explicitly disabled
-    # Set sfw=false in filters to include adult content
-    sfw_mode = True  # Default to safe-for-work
+    sfw_mode = True
     if isinstance(filters, dict):
         sfw_setting = filters.get('sfw')
         if sfw_setting is False or sfw_setting == 'false' or sfw_setting == '0':
             sfw_mode = False
     if sfw_mode:
-        jikan_filters['sfw'] = True  # Filter out adult content
+        jikan_filters['sfw'] = True
 
     if isinstance(filters, dict):
         status = filters.get('status') or ''
@@ -288,7 +344,7 @@ def detect_url():
 @manga_bp.route('/discover')
 @limit_medium
 def get_discover():
-    """Get hidden gems - lesser-known but high-quality manga for discovery."""
+    """Get hidden gems - lesser-known but high-quality manga for discovery (MangaDex-first)."""
     try:
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 20))
@@ -299,16 +355,16 @@ def get_discover():
     except ValueError:
         return jsonify({'error': 'Invalid parameters'}), 400
 
-    log(f"💎 Loading hidden gems from Jikan (page {page})...")
-    jikan = get_jikan_client()
-    results = jikan.get_hidden_gems(limit=limit, page=page)
+    log(f"💎 Loading hidden gems (page {page})...")
+    discovery = get_discovery_service()
+    results = discovery.get_discover(page=page, limit=limit)
 
     return jsonify(results)
 
 @manga_bp.route('/popular')
 @limit_medium
 def get_popular():
-    """Get popular manga - blended mix of trending and all-time top."""
+    """Get popular manga - high followers with ongoing/active status (MangaDex-first)."""
     try:
         page = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 20))
@@ -319,16 +375,16 @@ def get_popular():
     except ValueError:
         return jsonify({'error': 'Invalid parameters'}), 400
 
-    log(f"📚 Loading blended popular manga from Jikan (page {page})...")
-    jikan = get_jikan_client()
-    results = jikan.get_blended_popular(limit=limit, page=page)
+    log(f"📚 Loading popular manga (page {page})...")
+    discovery = get_discovery_service()
+    results = discovery.get_popular(page=page, limit=limit)
 
     return jsonify(results)
 
 @manga_bp.route('/trending')
 @limit_medium
 def get_trending():
-    """Get trending/seasonal manga from Jikan."""
+    """Get trending manga - ongoing with recent chapter activity (MangaDex-first)."""
     try:
         limit = int(request.args.get('limit', 20))
         page = int(request.args.get('page', 1))
@@ -339,10 +395,9 @@ def get_trending():
     except ValueError:
         return jsonify({'error': 'Invalid parameters'}), 400
 
-    log(f"🔥 Loading trending manga from Jikan (page {page})...")
-    jikan = get_jikan_client()
-    # Seasonal feed sometimes returns limited items; fall back to top list for variety
-    results = jikan.get_seasonal_manga(limit=limit, page=page) or jikan.get_top_manga(limit=limit, page=page)
+    log(f"🔥 Loading trending manga (page {page})...")
+    discovery = get_discovery_service()
+    results = discovery.get_trending(page=page, limit=limit)
 
     return jsonify(results)
 
@@ -456,7 +511,8 @@ def get_chapters():
         # Auto-fallback: If source returns no chapters and we have a title, try other sources
         if not chapters and manga_title:
             log(f"⚠️ No chapters from {source_id}, trying fallback sources...")
-            priority_sources = ['weebcentral-v2', 'mangadex', 'mangasee-v2', 'manganato-v2', 'mangafire', 'comicx']
+            # Priority order - sync with sources/__init__.py and smart_search.py
+            priority_sources = ['weebcentral-v2', 'mangadex', 'mangafreak', 'mangasee-v2', 'manganato-v2', 'mangafire', 'comicx']
 
             for fallback_source in priority_sources:
                 if fallback_source == source_id:
@@ -593,3 +649,183 @@ def evict_expired():
     evicted = _smart_search.cache.evict_expired()
     log(f"🗑️ Evicted {evicted} expired cache entries")
     return jsonify({'status': 'ok', 'evicted': evicted})
+
+
+# =============================================================================
+# SOURCE HEALTH TEST ENDPOINTS (Admin)
+# =============================================================================
+
+@manga_bp.route('/sources/test/<source_id>', methods=['GET'])
+@admin_required
+def test_single_source(source_id):
+    """
+    Test a single source with a sample search.
+
+    Returns timing, result count, and circuit breaker state.
+
+    Example:
+        GET /api/sources/test/weebcentral-v2
+    """
+    import time
+
+    manager = get_source_manager()
+    source = manager._source_registry.get(source_id)
+
+    if not source:
+        return jsonify({'error': f'Source "{source_id}" not found'}), 404
+
+    test_query = "naruto"  # Universal test query
+    result = {
+        'source_id': source_id,
+        'source_name': source.name,
+        'test_query': test_query,
+        'status': 'unknown',
+        'results': 0,
+        'response_time_ms': 0,
+        'circuit_breaker': {},
+        'error': None
+    }
+
+    # Get circuit breaker state
+    try:
+        breaker = manager._circuit_breakers.get_or_create(source_id)
+        cb_state = breaker.state.name if hasattr(breaker.state, 'name') else str(breaker.state)
+        result['circuit_breaker'] = {
+            'state': cb_state,
+            'consecutive_failures': breaker.stats.consecutive_failures if hasattr(breaker, 'stats') else 0,
+            'consecutive_successes': breaker.stats.consecutive_successes if hasattr(breaker, 'stats') else 0,
+            'can_execute': breaker.can_execute()
+        }
+    except Exception as e:
+        result['circuit_breaker'] = {'error': str(e)}
+
+    # Test the source
+    start_time = time.time()
+    try:
+        results = source.search(test_query, page=1)
+        response_time = (time.time() - start_time) * 1000  # ms
+
+        result['response_time_ms'] = round(response_time, 2)
+        result['results'] = len(results) if results else 0
+
+        if results and len(results) > 0:
+            result['status'] = 'healthy'
+            result['sample_result'] = {
+                'title': results[0].title if hasattr(results[0], 'title') else str(results[0]),
+                'id': results[0].id if hasattr(results[0], 'id') else None
+            }
+        else:
+            result['status'] = 'empty'
+
+    except Exception as e:
+        response_time = (time.time() - start_time) * 1000
+        result['response_time_ms'] = round(response_time, 2)
+        result['status'] = 'error'
+        result['error'] = str(e)[:200]  # Truncate long errors
+
+    log(f"🔬 Source test {source_id}: {result['status']} ({result['results']} results in {result['response_time_ms']}ms)")
+    return jsonify(result)
+
+
+@manga_bp.route('/sources/test/all', methods=['GET'])
+@admin_required
+def test_all_sources():
+    """
+    Test all sources in parallel.
+
+    Returns health status for each source.
+
+    Example:
+        GET /api/sources/test/all
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    manager = get_source_manager()
+    sources = list(manager._source_registry.values())
+    test_query = "naruto"
+
+    results = {
+        'test_query': test_query,
+        'total_sources': len(sources),
+        'healthy': 0,
+        'empty': 0,
+        'error': 0,
+        'skipped': 0,
+        'sources': [],
+        'priority_order': manager._priority_order
+    }
+
+    def test_source(source):
+        """Test a single source and return results."""
+        source_result = {
+            'source_id': source.id,
+            'source_name': source.name,
+            'status': 'unknown',
+            'results': 0,
+            'response_time_ms': 0,
+            'circuit_breaker_state': 'unknown',
+            'error': None
+        }
+
+        # Get circuit breaker state
+        try:
+            breaker = manager._circuit_breakers.get_or_create(source.id)
+            source_result['circuit_breaker_state'] = breaker.state.name if hasattr(breaker.state, 'name') else str(breaker.state)
+        except Exception:
+            pass
+
+        start_time = time.time()
+        try:
+            search_results = source.search(test_query, page=1)
+            response_time = (time.time() - start_time) * 1000
+
+            source_result['response_time_ms'] = round(response_time, 2)
+            source_result['results'] = len(search_results) if search_results else 0
+
+            if search_results and len(search_results) > 0:
+                source_result['status'] = 'healthy'
+            else:
+                source_result['status'] = 'empty'
+
+        except Exception as e:
+            response_time = (time.time() - start_time) * 1000
+            source_result['response_time_ms'] = round(response_time, 2)
+            source_result['status'] = 'error'
+            source_result['error'] = str(e)[:100]
+
+        return source_result
+
+    # Run tests in parallel
+    log(f"🔬 Testing all {len(sources)} sources in parallel...")
+    start_time = time.time()
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_source = {executor.submit(test_source, source): source for source in sources}
+
+        for future in as_completed(future_to_source):
+            try:
+                source_result = future.result()
+                results['sources'].append(source_result)
+
+                # Count by status
+                if source_result['status'] == 'healthy':
+                    results['healthy'] += 1
+                elif source_result['status'] == 'empty':
+                    results['empty'] += 1
+                elif source_result['status'] == 'error':
+                    results['error'] += 1
+                else:
+                    results['skipped'] += 1
+            except Exception as e:
+                log(f"⚠️ Source test future failed: {e}")
+
+    total_time = (time.time() - start_time) * 1000
+    results['total_time_ms'] = round(total_time, 2)
+
+    # Sort by priority order
+    priority_map = {sid: idx for idx, sid in enumerate(manager._priority_order)}
+    results['sources'].sort(key=lambda x: priority_map.get(x['source_id'], 999))
+
+    log(f"🔬 Source test complete: {results['healthy']} healthy, {results['empty']} empty, {results['error']} errors in {total_time:.0f}ms")
+    return jsonify(results)

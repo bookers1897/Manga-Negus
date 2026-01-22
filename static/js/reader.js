@@ -615,9 +615,38 @@ function getPageNode(index) {
         }
     }, { once: true });
     node.addEventListener('error', () => {
-        node.classList.add('load-error');
-        node.alt = `Page ${index + 1} failed to load`;
-    }, { once: true });
+        const retryCount = parseInt(node.dataset.retryCount || '0', 10);
+        const maxRetries = 2;
+
+        if (retryCount < maxRetries) {
+            // Auto-retry with exponential backoff
+            node.dataset.retryCount = String(retryCount + 1);
+            const delay = 500 * Math.pow(2, retryCount); // 500ms, 1000ms
+            setTimeout(() => {
+                node.classList.remove('load-error');
+                const page = state.pages[index];
+                if (page) {
+                    node.src = buildProxyUrl(page) + '&retry=' + (retryCount + 1) + '&t=' + Date.now();
+                }
+            }, delay);
+        } else {
+            // Max retries exhausted - show tap-to-retry
+            node.classList.add('load-error');
+            node.alt = `Page ${index + 1} failed - tap to retry`;
+            node.style.cursor = 'pointer';
+            node.style.minHeight = '200px';
+            node.onclick = () => {
+                node.classList.remove('load-error');
+                node.style.cursor = '';
+                node.dataset.retryCount = '0';
+                node.onclick = null;
+                const page = state.pages[index];
+                if (page) {
+                    node.src = buildProxyUrl(page) + '&force=' + Date.now();
+                }
+            };
+        }
+    });
     state.virtualNodes.set(index, node);
     return node;
 }

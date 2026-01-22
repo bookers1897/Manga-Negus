@@ -120,14 +120,13 @@ class SourceManager:
         # Base priority order for fallback (updated Jan 2026)
         # This is the starting order; adaptive scoring adjusts it dynamically
         self._priority_order = [
-            "weebcentral-v2",   # HTMX breakthrough - 1170 chapters (needs curl_cffi)
-            "mangafreak",       # Reliable backup with good chapter coverage
-            "mangadex",         # Official API - fast and reliable
-            "mangasee-v2",      # V2: Cloudflare bypass
-            "manganato-v2",     # V2: Cloudflare bypass
-            "mangafire",        # Cloudflare bypass - solid backup
+            "weebcentral-v2",   # Primary - HTMX breakthrough (curl_cffi)
+            "mangadex",         # Secondary - Official API, reliable
+            "mangafreak",       # Backup with good coverage
+            "mangasee-v2",      # Cloudflare bypass
+            "manganato-v2",     # Cloudflare bypass
+            "mangafire",        # Solid backup
             "comicx"            # Recent addition
-            # Removed: annas-archive, libgen (never worked reliably)
         ]
 
         self._skipped_sources: list[dict[str, str]] = []
@@ -625,23 +624,36 @@ class SourceManager:
         """
         sources = self._get_ordered_sources()
 
+        # Enhanced logging: Show attempt order
+        source_ids = [s.id for s in sources] if sources else []
+        self._log(f"🔄 [{operation_name}] Starting with priority order: {source_ids}")
+
         if not sources:
             # If all sources have open circuits or cooldowns, try anyway
             sources = self._get_ordered_sources(skip_cooldown=True, skip_circuit_breaker=True)
             if not sources:
-                self._log("❌ No available sources!")
+                self._log(f"❌ [{operation_name}] No available sources!")
                 return None
-            self._log("⚠️ All sources unavailable (circuit open or cooldown), trying anyway...")
+            self._log(f"⚠️ [{operation_name}] All sources unavailable (circuit open or cooldown), forcing retry...")
 
+        attempt_num = 0
         for source in sources:
+            attempt_num += 1
             # Get or create circuit breaker for this source
             breaker = self._circuit_breakers.get_or_create(source.id)
 
+            # Enhanced logging: Circuit breaker state
+            cb_state = breaker.state.name if hasattr(breaker.state, 'name') else str(breaker.state)
+            cb_failures = breaker.stats.consecutive_failures if hasattr(breaker, 'stats') else 0
+
             # Check if circuit allows this request
             if not breaker.can_execute():
-                self._log(f"🔴 Circuit OPEN for {source.name}, skipping (retry in {breaker.retry_after:.0f}s)")
+                retry_in = breaker.retry_after if hasattr(breaker, 'retry_after') else 0
+                self._log(f"🔴 [{operation_name}] #{attempt_num} {source.id} SKIP - circuit {cb_state}, retry in {retry_in:.0f}s")
                 breaker.record_rejection()
                 continue
+
+            self._log(f"🔵 [{operation_name}] #{attempt_num} {source.id} TRYING - circuit {cb_state} (failures: {cb_failures})")
 
             start_time = time.time()
             try:
@@ -650,31 +662,41 @@ class SourceManager:
 
                 # Check if result has actual data
                 if result is not None and result:
+                    # Count results for logging
+                    result_count = len(result) if hasattr(result, '__len__') else 1
+
                     # Success! Record to both circuit breaker and health metrics
                     breaker.record_success()
                     self._record_success(source.id, response_time)
 
+                    # Enhanced logging: Success with timing and count
+                    self._log(f"✅ [{operation_name}] #{attempt_num} {source.id} SUCCESS - {result_count} result(s) in {response_time:.2f}s")
+
                     # Log circuit state if recovering
                     if breaker.state == CircuitState.HALF_OPEN:
-                        self._log(f"🟡 {source.name} recovering (half-open)")
+                        self._log(f"🟡 [{operation_name}] {source.id} recovering (half-open -> testing)")
                     elif breaker.stats.consecutive_successes == self._circuit_breaker_config.success_threshold:
-                        self._log(f"🟢 {source.name} circuit CLOSED (recovered)")
+                        self._log(f"🟢 [{operation_name}] {source.id} circuit CLOSED (fully recovered)")
 
                     return result
 
                 # Empty result - don't penalize circuit but don't reward either
-                # (source works but doesn't have this manga)
+                response_time = time.time() - start_time
+                self._log(f"⚪ [{operation_name}] #{attempt_num} {source.id} EMPTY - no results in {response_time:.2f}s (trying next)")
 
             except Exception as e:
+                response_time = time.time() - start_time
                 # Failure! Record to circuit breaker and health metrics
                 breaker.record_failure()
                 self._record_failure(source.id)
 
+                # Enhanced logging: Failure with timing and error
+                error_msg = str(e)[:100]  # Truncate long errors
+                self._log(f"❌ [{operation_name}] #{attempt_num} {source.id} FAILED in {response_time:.2f}s - {error_msg}")
+
                 # Log circuit state change
                 if breaker.is_open:
-                    self._log(f"🔴 Circuit OPENED for {source.name} (too many failures)")
-                else:
-                    self._log(f"⚠️ {source.name} failed: {e}")
+                    self._log(f"🔴 [{operation_name}] {source.id} circuit OPENED (threshold reached)")
 
                 try:
                     source._handle_error(str(e))
@@ -682,7 +704,7 @@ class SourceManager:
                     pass
                 continue
 
-        self._log(f"❌ All sources failed for {operation_name}")
+        self._log(f"❌ [{operation_name}] All {attempt_num} sources exhausted - no results")
         return None
 
     def _parallel_search(self, query: str, page: int = 1, max_workers: int = 3) -> List[MangaResult]:

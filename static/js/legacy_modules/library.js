@@ -73,7 +73,8 @@ export async function loadLibrary(filter = 'all') {
                 if (coverUrl && coverUrl.includes('myanimelist.net')) {
                     cover.src = coverUrl;
                 } else if (coverUrl) {
-                    cover.src = proxyImageUrl(coverUrl);
+                    const referer = m.source || '';
+                    cover.src = proxyImageUrl(coverUrl, referer);
                 } else {
                     cover.src = '/static/images/placeholder.svg';
                 }

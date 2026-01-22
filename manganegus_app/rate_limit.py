@@ -31,20 +31,20 @@ limiter = Limiter(
 # ==============================================================================
 
 # Heavy operations - expensive scraping/parallel queries
-HEAVY_LIMIT = "10 per minute"
+HEAVY_LIMIT = "20 per minute"
 
 # Medium operations - database/API calls
-MEDIUM_LIMIT = "30 per minute"
+MEDIUM_LIMIT = "60 per minute"
 
 # Light operations - fast reads
-LIGHT_LIMIT = "60 per minute"
+LIGHT_LIMIT = "120 per minute"
 
 # Burst operations - high volume with caching (image proxy)
-# Increased to 600/min (10/sec) for smooth manga page loading
-BURST_LIMIT = "600 per minute"
+# Increased to 1200/min (20/sec) for smooth manga page and cover loading
+BURST_LIMIT = "1200 per minute"
 
 # Download operations - resource intensive
-DOWNLOAD_LIMIT = "5 per minute"
+DOWNLOAD_LIMIT = "10 per minute"
 
 
 # ==============================================================================

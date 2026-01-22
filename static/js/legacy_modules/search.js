@@ -138,7 +138,9 @@ function createMangaCard(manga) {
     if (coverUrl && coverUrl.includes('myanimelist.net')) {
         cover.src = coverUrl;  // Direct URL for Jikan/MAL images
     } else if (coverUrl) {
-        cover.src = proxyImageUrl(coverUrl);  // Proxy for other sources
+        // Pass the referer (manga url or source id) to allow hotlinking
+        const referer = manga.url || manga.source || '';
+        cover.src = proxyImageUrl(coverUrl, referer);
     } else {
         cover.src = '/static/images/placeholder.svg';
     }

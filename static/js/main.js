@@ -2175,7 +2175,7 @@ function getDataSaverDownloadLimit() {
     return state.filters.dataSaver ? 5 : Infinity;
 }
 
-function applyFiltersToList(list) {
+function applyFiltersToList(list, { skipSourceFilter = false } = {}) {
     const f = state.filters;
     if (!Array.isArray(list)) return [];
     let results = [...list];
@@ -2187,7 +2187,8 @@ function applyFiltersToList(list) {
         return !isHiddenManga(mangaId, sourceId);
     });
 
-    if (f.source) {
+    // Skip source filter for curated feeds (discover/trending/popular)
+    if (f.source && !skipSourceFilter) {
         results = results.filter(item => {
             const sourceId = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
             return sourceId ? sourceId === f.source : false;
@@ -2825,7 +2826,7 @@ async function loadPopular(page = 1, { append = false } = {}) {
 
     try {
         if (!navigator.onLine && !append && (state.feedCache.popular || []).length) {
-            const cached = applyFiltersToList(state.feedCache.popular);
+            const cached = applyFiltersToList(state.feedCache.popular, { skipSourceFilter: true });
             renderMangaGrid(cached, els.discoverGrid, els.discoverEmpty);
             renderDiscoverPagination('popular', page);
             showToast('Offline mode: showing cached popular');
@@ -2838,7 +2839,8 @@ async function loadPopular(page = 1, { append = false } = {}) {
         state.feedCache.popular = combined;
         saveFeedCache();
 
-        const filtered = applyFiltersToList(combined);
+        // Skip source filter for curated feeds - they show MangaDex content regardless of selected source
+        const filtered = applyFiltersToList(combined, { skipSourceFilter: true });
         if (!filtered || filtered.length === 0) {
             log('No results returned from API');
             els.discoverGrid.classList.add('hidden');
@@ -2878,7 +2880,7 @@ async function loadDiscover(page = 1, { append = false } = {}) {
 
     try {
         if (!navigator.onLine && !append && (state.feedCache.discover || []).length) {
-            const cached = applyFiltersToList(state.feedCache.discover);
+            const cached = applyFiltersToList(state.feedCache.discover, { skipSourceFilter: true });
             renderMangaGrid(cached, els.discoverGrid, els.discoverEmpty);
             renderDiscoverPagination('discover', page);
             showToast('Offline mode: showing cached discover');
@@ -2897,7 +2899,8 @@ async function loadDiscover(page = 1, { append = false } = {}) {
         state.feedCache.discover = combined;
         saveFeedCache();
 
-        const filtered = applyFiltersToList(combined);
+        // Skip source filter for curated feeds - they show MangaDex content regardless of selected source
+        const filtered = applyFiltersToList(combined, { skipSourceFilter: true });
         if (!filtered || filtered.length === 0) {
             els.discoverGrid.classList.add('hidden');
             els.discoverEmpty.classList.remove('hidden');
@@ -3111,7 +3114,7 @@ async function loadTrendingView(page = 1, { append = false } = {}) {
 
     try {
         if (!navigator.onLine && !append && (state.feedCache.trending || []).length) {
-            const cached = applyFiltersToList(state.feedCache.trending);
+            const cached = applyFiltersToList(state.feedCache.trending, { skipSourceFilter: true });
             renderMangaGrid(cached, els.discoverGrid, els.discoverEmpty);
             renderDiscoverPagination('trending', page);
             showToast('Offline mode: showing cached trending');
@@ -3123,7 +3126,8 @@ async function loadTrendingView(page = 1, { append = false } = {}) {
         state.feedCache.trending = combined;
         saveFeedCache();
 
-        const filtered = applyFiltersToList(combined);
+        // Skip source filter for curated feeds - they show MangaDex content regardless of selected source
+        const filtered = applyFiltersToList(combined, { skipSourceFilter: true });
         if (!filtered || filtered.length === 0) {
             els.discoverGrid.classList.add('hidden');
             els.discoverEmpty.classList.remove('hidden');
