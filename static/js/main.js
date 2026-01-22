@@ -4567,7 +4567,20 @@ function getCoverProxyUrl(url, { quality = 80, width = 220, height = 300 } = {})
     if (!url) return '';
     try {
         const host = new URL(url, window.location.origin).hostname;
-        if (!COVER_PROXY_HOSTS.has(host)) return '';
+        let allowed = COVER_PROXY_HOSTS.has(host);
+        if (!allowed) {
+            // Check wildcards
+            for (const domain of COVER_PROXY_HOSTS) {
+                if (domain.startsWith('*.')) {
+                    const suffix = domain.slice(2); // Remove *.
+                    if (host.endsWith(suffix) || host === suffix) {
+                        allowed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!allowed) return '';
     } catch {
         return '';
     }
@@ -4579,13 +4592,15 @@ function getCoverProxyUrl(url, { quality = 80, width = 220, height = 300 } = {})
 
 function getCoverUrlsForItem(item) {
     const coverCandidates = [
+        // Prioritize metadata covers (high quality, from AniList)
+        item.cover_image_large,
+        item.cover_image_medium,
+        item.cover_image,
+        // Then standard fields
         item.cover_url_large,
         item.cover_url,
         item.cover_url_medium,
         item.cover_url_small,
-        item.cover_image_large,
-        item.cover_image_medium,
-        item.cover_image,
         item.cover
     ].filter(Boolean);
     const rawCoverUrl = state.filters.dataSaver
