@@ -1,34 +1,37 @@
 """
 ================================================================================
-MangaNegus v3.1 - Database Models
+MangaNegus v4.0 - Database Models (Master Entity Architecture)
 ================================================================================
-SQLAlchemy ORM models for PostgreSQL database.
+Refactored SQLAlchemy models for improved data integrity, authentication, and
+multi-source aggregation.
 
-SCHEMA DESIGN:
-  - manga: Rich metadata from sources + external APIs (AniList, MAL, etc.)
-  - library: User's manga library (reading status, progress)
-  - chapters: Chapter metadata cache
-  - metadata_cache: External API response cache (TTL-based)
-  - downloads: Track downloaded CBZ files
+NEW ARCHITECTURE:
+  - Series (Master): Global entity representing "the book" (e.g., "One Piece").
+    Holds unified metadata (title, author, genres) agnostic of source.
+  - SourceLink (Child): A specific connection to a provider (e.g., MangaDex ID).
+    Links a Series to a concrete scraping source.
+  - User: Authentication via Flask-Login (UserMixin).
+  - LibraryEntry: Links User -> Series (not SourceLink). Allows progress to
+    persist even if the user switches sources.
+  - DownloadJob: Persistent queue table for robust background downloads.
 
-RELATIONSHIPS:
-  - Library → Manga (many-to-one)
-  - Manga → Chapters (one-to-many)
-  - Manga → MetadataCache (one-to-many)
-  - Downloads → Chapters (many-to-one)
+LEGACY COMPATIBILITY:
+  - 'Manga' alias provided for 'SourceLink' to ease migration.
 ================================================================================
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List
-from sqlalchemy import (
-    Column, Integer, String, Text, Float, Boolean, DateTime,
-    ForeignKey, JSON, Index, UniqueConstraint, Enum
-)
-from sqlalchemy.orm import relationship, DeclarativeBase
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 import uuid
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
+from sqlalchemy import (
+    Column, String, Integer, DateTime, Boolean, ForeignKey, Text, JSON, Float, Enum,
+    UniqueConstraint, Index
+)
+from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from flask_login import UserMixin as FlaskLoginUserMixin
 
 # Use JSON for SQLite compatibility, JSONType for PostgreSQL performance
 # SQLAlchemy will use JSONType on PostgreSQL, JSON on SQLite automatically
@@ -42,491 +45,230 @@ def UUIDType():
         return PG_UUID(as_uuid=False)
     return String(36)  # SQLite fallback - stores UUID as string
 
-
-class Base(DeclarativeBase):
-    """Base class for all models."""
-    pass
-
+Base = declarative_base()
 
 # =============================================================================
-# USER - Authentication and user profiles
+# MIXINS
 # =============================================================================
 
-class User(Base):
-    """
-    User model for authentication and profile management.
+class TimestampMixin:
+    """Adds created_at and updated_at timestamps to models."""
+    @declared_attr
+    def created_at(cls):
+        return Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    Supports:
-    - Email/password authentication (traditional)
-    - OAuth providers (Google, GitHub, etc.) - ready for future expansion
-    - Profile customization
+    @declared_attr
+    def updated_at(cls):
+        return Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
-    OAuth-ready architecture:
-    - password_hash is nullable for OAuth-only users
-    - oauth_provider + oauth_provider_id for social logins
-    """
+# =============================================================================
+# USER & AUTHENTICATION
+# =============================================================================
+
+class User(Base, FlaskLoginUserMixin, TimestampMixin):
+    """User model for authentication and preferences."""
     __tablename__ = 'users'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
-
-    # Authentication - email is always required
     email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=True)  # Nullable for OAuth-only users
-
-    # OAuth fields (nullable for email/password users)
-    oauth_provider = Column(String(50), nullable=True)  # 'google', 'github', etc.
-    oauth_provider_id = Column(String(255), nullable=True)  # Provider's user ID
-
-    # Profile
-    display_name = Column(String(100), nullable=True)
-    avatar_url = Column(Text, nullable=True)
-
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False,
-                       default=lambda: datetime.now(timezone.utc))
-    last_login = Column(DateTime(timezone=True), nullable=True)
-
-    # Account status
-    is_active = Column(Boolean, default=True)
+    password_hash = Column(String(255), nullable=False)
+    display_name = Column(String(100))
     is_admin = Column(Boolean, default=False)
-
+    preferences = Column(JSON, default={})
+    
     # Relationships
-    library_entries = relationship("LibraryEntry", back_populates="user",
-                                   cascade="all, delete-orphan")
-    history_entries = relationship("HistoryEntry", back_populates="user",
-                                   cascade="all, delete-orphan")
-    downloads = relationship("Download", back_populates="user",
-                            cascade="all, delete-orphan")
+    library_entries = relationship("LibraryEntry", back_populates="user", cascade="all, delete-orphan")
+    history_entries = relationship("HistoryEntry", back_populates="user", cascade="all, delete-orphan")
+    downloads = relationship("DownloadJob", back_populates="user")
 
-    __table_args__ = (
-        # Unique constraint for OAuth users (provider + provider_id)
-        UniqueConstraint('oauth_provider', 'oauth_provider_id',
-                        name='uq_user_oauth_provider_id'),
-        Index('ix_user_oauth', 'oauth_provider', 'oauth_provider_id'),
-    )
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
 
-    def __repr__(self):
-        return f"<User(id={self.id}, email='{self.email}')>"
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'display_name': self.display_name,
+            'is_admin': self.is_admin,
+            'preferences': self.preferences
+        }
 
 # =============================================================================
-# MANGA - Rich metadata from all sources
+# MANGA DATA MODEL (Master Entity Pattern)
 # =============================================================================
 
-class Manga(Base):
+class Series(Base, TimestampMixin):
     """
-    Unified manga metadata from scraping sources + external APIs.
-
-    This is the heart of the MetaForge system - combines data from:
-    - MangaNegus sources (31 scrapers)
-    - AniList (GraphQL API)
-    - MyAnimeList via Jikan (REST API)
-    - Kitsu (JSON:API)
-    - Shikimori (REST API)
-    - MangaUpdates (REST API)
+    Master entity for a manga series.
+    Aggregates metadata from multiple sources (SourceLinks).
     """
-    __tablename__ = 'manga'
+    __tablename__ = 'series'
 
-    # Primary key
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
-
-    # Source identifiers (for linking to scraper results)
-    source_id = Column(String(50), nullable=False, index=True)  # e.g., "mangadex"
-    source_manga_id = Column(String(255), nullable=False, index=True)  # Source's internal ID
-    source_url = Column(String(500))
-
-    # External API IDs (for cross-referencing)
-    anilist_id = Column(Integer, index=True)
-    mal_id = Column(Integer, index=True)
-    kitsu_id = Column(Integer, index=True)
-    shikimori_id = Column(Integer, index=True)
-    mangaupdates_id = Column(Integer, index=True)
-
-    # Core metadata
     title = Column(String(500), nullable=False, index=True)
-    title_english = Column(String(500))
-    title_romaji = Column(String(500))
-    title_native = Column(String(500))
-    alt_titles = Column(JSONType)  # List of alternative titles
-
-    # Rich description
+    slug = Column(String(500), index=True)  # Normalized title for matching
+    
+    # Unified Metadata
     description = Column(Text)
-    synopsis = Column(Text)  # From external APIs
-
-    # Classification
-    status = Column(Enum('releasing', 'finished', 'hiatus', 'cancelled',
-                         'not_yet_released', name='manga_status'))
-    manga_type = Column(String(50))  # manga, manhwa, manhua, novel, etc.
-
-    # Content info
-    genres = Column(JSONType)  # List of genre strings
-    tags = Column(JSONType)  # Nuanced tags from AniList/MAL
-    themes = Column(JSONType)  # From MAL
-    demographics = Column(JSONType)  # Shounen, Seinen, etc.
-
-    # People
     author = Column(String(255))
     artist = Column(String(255))
-    authors = Column(JSONType)  # Full author list with roles
-
-    # Popularity & ratings (aggregated from multiple sources)
-    rating_average = Column(Float)  # 0-10 scale
-    rating_anilist = Column(Float)
-    rating_mal = Column(Float)
-    rating_kitsu = Column(Float)
-
-    popularity_score = Column(Integer)  # Combined metric
-    favorites_count = Column(Integer)
-    members_count = Column(Integer)  # MAL members
-
-    rank = Column(Integer)
-    popularity_rank = Column(Integer)
-
-    # Structure
-    chapters = Column(Integer)  # Total chapter count
-    volumes = Column(Integer)
-
-    # Media
-    cover_image = Column(String(1000))  # Best quality cover
-    cover_image_large = Column(String(1000))
-    cover_image_medium = Column(String(1000))
-    banner_image = Column(String(1000))
-
-    # Publication
-    year = Column(Integer, index=True)
-    start_date = Column(DateTime(timezone=True))
-    end_date = Column(DateTime(timezone=True))
-
-    # External links
-    links = Column(JSONType)  # List of {site: str, url: str}
-
-    # Metadata
-    last_scraped_at = Column(DateTime(timezone=True), nullable=False,
-                             default=lambda: datetime.now(timezone.utc))
-    last_metadata_update = Column(DateTime(timezone=True))
-    created_at = Column(DateTime(timezone=True), nullable=False,
-                        default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), nullable=False,
-                        default=lambda: datetime.now(timezone.utc),
-                        onupdate=lambda: datetime.now(timezone.utc))
-
-    # Flags
-    is_adult = Column(Boolean, default=False)
-    is_licensed = Column(Boolean, default=False)
-
+    cover_image = Column(String(500))
+    genres = Column(JSON, default=[])
+    status = Column(String(50), default='unknown')  # ongoing, completed, etc.
+    year = Column(Integer)
+    mal_id = Column(Integer, unique=True, nullable=True)
+    anilist_id = Column(Integer, unique=True, nullable=True)
+    
     # Relationships
-    library_entries = relationship("LibraryEntry", back_populates="manga",
-                                   cascade="all, delete-orphan")
-    chapter_cache = relationship("ChapterCache", back_populates="manga",
-                                 cascade="all, delete-orphan")
-    metadata_cache = relationship("MetadataCache", back_populates="manga",
-                                  cascade="all, delete-orphan")
+    source_links = relationship("SourceLink", back_populates="series", cascade="all, delete-orphan")
+    library_entries = relationship("LibraryEntry", back_populates="series", cascade="all, delete-orphan")
 
-    # Indexes
-    __table_args__ = (
-        # Unique constraint on source + source_manga_id
-        UniqueConstraint('source_id', 'source_manga_id',
-                        name='uq_manga_source_id'),
-        # Composite index for common queries
-        Index('ix_manga_title_status', 'title', 'status'),
-        Index('ix_manga_rating_popularity', 'rating_average', 'popularity_score'),
-    )
-
-    def __repr__(self):
-        return f"<Manga(id={self.id}, title='{self.title}', source='{self.source_id}')>"
-
-
-# =============================================================================
-# LIBRARY - User's manga collection (replaces library.json)
-# =============================================================================
-
-class LibraryEntry(Base):
+class SourceLink(Base, TimestampMixin):
     """
-    User's library - tracks reading status and progress.
-
-    Replaces the old library.json file-based storage.
-    Each entry belongs to a specific user.
+    Links a Series to a specific provider (MangaDex, MangaFire, etc).
+    Previously named 'Manga'.
     """
-    __tablename__ = 'library'
+    __tablename__ = 'source_links'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    series_id = Column(UUIDType(), ForeignKey('series.id'), nullable=True)
+    
+    source_id = Column(String(50), nullable=False)  # e.g., 'mangadex'
+    source_manga_id = Column(String(255), nullable=False)  # e.g., 'c0ee660b-...'
+    
+    # Source-specific metadata cache
+    title = Column(String(500))
+    cover_image = Column(String(500))
+    url = Column(String(500))
+    chapters_count = Column(Integer, default=0)
+    last_scraped_at = Column(DateTime)
+    
+    # Relationships
+    series = relationship("Series", back_populates="source_links")
+    # Legacy relationship for backward compatibility
+    library_entries = relationship("LibraryEntry", back_populates="manga")
+    history_entries = relationship("HistoryEntry", back_populates="manga")
 
-    # Link to user (owner of this library entry)
-    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
-                    nullable=False, index=True)
+    __table_args__ = (
+        # Ensure unique link per source
+        # {'sqlite_autoincrement': True}, 
+    )
 
-    # Link to manga
-    manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
-                     nullable=False, index=True)
+# =============================================================================
+# LIBRARY & HISTORY
+# =============================================================================
 
-    # Reading status
-    status = Column(Enum('reading', 'completed', 'plan_to_read', 'dropped',
-                         'on_hold', name='reading_status'),
-                   nullable=False, default='plan_to_read', index=True)
+class LibraryEntry(Base, TimestampMixin):
+    """
+    User's library entry.
+    """
+    __tablename__ = 'library_entries'
 
-    # Progress tracking
-    last_chapter_read = Column(String(50))  # Chapter number as string (e.g., "123.5")
-    last_chapter_id = Column(String(255))  # Source's chapter ID
-    last_page_read = Column(Integer, default=0)
+    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(UUIDType(), ForeignKey('users.id'), nullable=False)
+    series_id = Column(UUIDType(), ForeignKey('series.id'), nullable=True)
+    
+    # Legacy/Direct support (if series_id is null)
+    manga_id = Column(UUIDType(), ForeignKey('source_links.id'), nullable=True) 
 
-    # User ratings
-    user_rating = Column(Float)  # User's personal rating (0-10)
-
-    # Timestamps
-    added_at = Column(DateTime(timezone=True), nullable=False,
-                     default=lambda: datetime.now(timezone.utc), index=True)
-    last_read_at = Column(DateTime(timezone=True))
-    updated_at = Column(DateTime(timezone=True), nullable=False,
-                       default=lambda: datetime.now(timezone.utc),
-                       onupdate=lambda: datetime.now(timezone.utc))
+    status = Column(Enum('reading', 'completed', 'plan_to_read', 'dropped', 'on_hold', name='read_status'), default='reading')
+    user_rating = Column(Float, nullable=True)
+    
+    # Progress
+    last_chapter_read = Column(String(50))
+    last_page_read = Column(Integer)
+    last_chapter_id = Column(String(255))
+    last_read_at = Column(DateTime)
 
     # Relationships
     user = relationship("User", back_populates="library_entries")
-    manga = relationship("Manga", back_populates="library_entries")
-
-    __table_args__ = (
-        # Unique constraint: one entry per user per manga
-        UniqueConstraint('user_id', 'manga_id', name='uq_library_user_manga'),
-        Index('ix_library_user_status', 'user_id', 'status'),
-    )
-
-    def __repr__(self):
-        return f"<LibraryEntry(manga='{self.manga.title if self.manga else 'N/A'}', status='{self.status}')>"
-
-
-# =============================================================================
-# HISTORY - Recently viewed manga (lightweight and append-only)
-# =============================================================================
+    series = relationship("Series", back_populates="library_entries")
+    manga = relationship("SourceLink", back_populates="library_entries")  # Legacy support
 
 class HistoryEntry(Base):
     """
-    Tracks recently viewed manga so the History tab can be restored across sessions.
-    Each entry belongs to a specific user.
+    Reading history log.
     """
-    __tablename__ = 'history'
+    __tablename__ = 'history_entries'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
-
-    # Link to user (owner of this history entry)
-    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
-                    nullable=False, index=True)
-
-    # Link to manga
-    manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
-                     nullable=False, index=True)
-
-    # Tracking
-    last_viewed_at = Column(DateTime(timezone=True), nullable=False,
-                            default=lambda: datetime.now(timezone.utc), index=True)
+    user_id = Column(UUIDType(), ForeignKey('users.id'), nullable=False)
+    
+    # Link to specific source used
+    manga_id = Column(UUIDType(), ForeignKey('source_links.id'), nullable=False)
+    
+    last_viewed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     view_count = Column(Integer, default=1)
+    payload = Column(JSON)  # Extra context (chapter, page)
 
-    # Optional extra payload for quick rendering (cover, author, etc.)
-    payload = Column(JSONType)
-
-    # Relationships
     user = relationship("User", back_populates="history_entries")
-    manga = relationship("Manga")
-
-    __table_args__ = (
-        # Unique constraint: one history entry per user per manga
-        UniqueConstraint('user_id', 'manga_id', name='uq_history_user_manga'),
-        Index('ix_history_user_viewed', 'user_id', 'last_viewed_at'),
-    )
-
-    def __repr__(self):
-        return f"<HistoryEntry(manga='{self.manga.title if self.manga else 'N/A'}', last_viewed_at='{self.last_viewed_at}')>"
-
+    manga = relationship("SourceLink", back_populates="history_entries")
 
 # =============================================================================
-# CHAPTER CACHE - Store chapter metadata
+# DOWNLOADS
 # =============================================================================
 
-class ChapterCache(Base):
-    """
-    Cache for chapter metadata from sources.
-
-    Reduces API calls by storing chapter lists.
-    """
-    __tablename__ = 'chapters'
+class DownloadJob(Base, TimestampMixin):
+    """Persistent download queue."""
+    __tablename__ = 'download_jobs'
 
     id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(UUIDType(), ForeignKey('users.id'), nullable=True)
+    
+    # Target
+    title = Column(String(500), nullable=False)
+    source_id = Column(String(50), nullable=False)
+    manga_id = Column(String(255)) # Source-specific ID
+    chapters = Column(JSON, nullable=False) # List of chapter dicts
+    
+    # State
+    status = Column(String(20), default='queued') # queued, downloading, paused, completed, failed, cancelled
+    total_chapters = Column(Integer, default=0)
+    chapters_done = Column(Integer, default=0)
+    current_chapter = Column(String(100))
+    error_message = Column(Text)
+    
+    completed_at = Column(DateTime)
 
-    # Link to manga
-    manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
-                     nullable=False, index=True)
+    user = relationship("User", back_populates="downloads")
 
-    # Source chapter ID
-    source_chapter_id = Column(String(255), nullable=False, index=True)
-
-    # Chapter info
-    chapter_number = Column(String(50), index=True)  # e.g., "123.5"
-    title = Column(String(500))
-    volume = Column(String(20))
-
-    # Language
-    language = Column(String(10), default='en', index=True)
-
-    # Groups/scanlators
-    scanlator = Column(String(255))
-    groups = Column(JSONType)  # List of scanlation groups
-
-    # Pages
-    page_count = Column(Integer)
-    pages_data = Column(JSONType)  # List of page URLs (cached for offline)
-
-    # Publication
-    published_at = Column(DateTime(timezone=True))
-    uploaded_at = Column(DateTime(timezone=True))
-
-    # Metadata
-    created_at = Column(DateTime(timezone=True), nullable=False,
-                       default=lambda: datetime.now(timezone.utc))
-    cached_at = Column(DateTime(timezone=True), nullable=False,
-                      default=lambda: datetime.now(timezone.utc), index=True)
-
-    # Relationships
-    manga = relationship("Manga", back_populates="chapter_cache")
-    downloads = relationship("Download", back_populates="chapter",
-                           cascade="all, delete-orphan")
-
-    __table_args__ = (
-        # Unique constraint on manga + source_chapter_id + language
-        UniqueConstraint('manga_id', 'source_chapter_id', 'language',
-                        name='uq_chapter_manga_source_lang'),
-        Index('ix_chapter_number_lang', 'chapter_number', 'language'),
-    )
-
-    def __repr__(self):
-        return f"<ChapterCache(manga_id={self.manga_id}, chapter='{self.chapter_number}')>"
-
+    def to_dict(self):
+        return {
+            'job_id': self.id,
+            'title': self.title,
+            'source': self.source_id,
+            'status': self.status,
+            'chapters_total': self.total_chapters,
+            'chapters_done': self.chapters_done,
+            'error': self.error_message,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+        }
 
 # =============================================================================
-# METADATA CACHE - External API response cache
+# CACHE MODELS
 # =============================================================================
 
 class MetadataCache(Base):
-    """
-    TTL-based cache for external metadata API responses.
-
-    Reduces API calls to AniList, MAL, Kitsu, etc.
-    """
+    """Cache for external metadata (MAL, AniList)."""
     __tablename__ = 'metadata_cache'
+    
+    key = Column(String(255), primary_key=True) # e.g. "title:naruto"
+    data = Column(JSON, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+class ChapterCache(Base):
+    """Cache for chapter lists from sources."""
+    __tablename__ = 'chapter_cache'
+    
+    key = Column(String(255), primary_key=True) # e.g. "mangadex:c0ee..."
+    chapters = Column(JSON, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # Link to manga (optional - some cache entries might be for ID mapping)
-    manga_id = Column(UUIDType(), ForeignKey('manga.id', ondelete='CASCADE'),
-                     index=True)
-
-    # Cache key (provider + query/ID)
-    provider = Column(String(50), nullable=False, index=True)  # "anilist", "mal", etc.
-    cache_key = Column(String(500), nullable=False, index=True)  # Query or ID
-    cache_type = Column(String(50), nullable=False)  # "search", "details", "id_map"
-
-    # Cached response
-    response_data = Column(JSONType, nullable=False)  # Full API response
-
-    # TTL management
-    created_at = Column(DateTime(timezone=True), nullable=False,
-                       default=lambda: datetime.now(timezone.utc))
-    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
-
-    # Hit tracking
-    hit_count = Column(Integer, default=0)
-    last_hit_at = Column(DateTime(timezone=True))
-
-    # Relationships
-    manga = relationship("Manga", back_populates="metadata_cache")
-
-    __table_args__ = (
-        # Unique constraint on provider + cache_key + cache_type
-        UniqueConstraint('provider', 'cache_key', 'cache_type',
-                        name='uq_cache_provider_key_type'),
-        Index('ix_cache_expires', 'expires_at'),
-    )
-
-    def is_expired(self) -> bool:
-        """Check if cache entry is expired."""
-        return datetime.now(timezone.utc) > self.expires_at
-
-    def __repr__(self):
-        return f"<MetadataCache(provider='{self.provider}', key='{self.cache_key}')>"
-
-
-# =============================================================================
-# DOWNLOADS - Track downloaded CBZ files
-# =============================================================================
-
-class Download(Base):
-    """
-    Track downloaded manga chapters (CBZ files).
-
-    Enables:
-    - Offline reading
-    - Download management
-    - Storage optimization
-
-    Each download belongs to a specific user.
-    """
-    __tablename__ = 'downloads'
-
-    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
-
-    # Link to user (owner of this download)
-    user_id = Column(UUIDType(), ForeignKey('users.id', ondelete='CASCADE'),
-                    nullable=False, index=True)
-
-    # Link to chapter
-    chapter_id = Column(UUIDType(), ForeignKey('chapters.id', ondelete='CASCADE'),
-                       nullable=False, index=True)
-
-    # File info
-    filename = Column(String(500), nullable=False, unique=True)  # CBZ filename
-    file_path = Column(String(1000), nullable=False)  # Relative path in downloads/
-    file_size = Column(Integer)  # Bytes
-
-    # Download metadata
-    downloaded_at = Column(DateTime(timezone=True), nullable=False,
-                          default=lambda: datetime.now(timezone.utc), index=True)
-    quality = Column(String(20))  # "hd" or "data_saver"
-
-    # Status
-    status = Column(Enum('downloading', 'completed', 'failed', 'deleted',
-                         name='download_status'),
-                   nullable=False, default='downloading', index=True)
-    error_message = Column(Text)
-
-    # Relationships
-    user = relationship("User", back_populates="downloads")
-    chapter = relationship("ChapterCache", back_populates="downloads")
-
-    __table_args__ = (
-        Index('ix_download_status_downloaded', 'status', 'downloaded_at'),
-        Index('ix_download_user_status', 'user_id', 'status'),
-    )
-
-    def __repr__(self):
-        return f"<Download(filename='{self.filename}', status='{self.status}')>"
-
-
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-def init_db(engine):
-    """
-    Initialize database - create all tables.
-
-    Usage:
-        from sqlalchemy import create_engine
-        engine = create_engine('postgresql://user:pass@localhost/manganegus')
-        init_db(engine)
-    """
-    Base.metadata.create_all(engine)
-
-
-def drop_all_tables(engine):
-    """
-    Drop all tables (DANGEROUS - for development only).
-    """
-    Base.metadata.drop_all(engine)
+# Keep legacy names for now to avoid breaking imports during migration
+Manga = SourceLink
+Download = DownloadJob

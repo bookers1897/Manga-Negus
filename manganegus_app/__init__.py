@@ -84,9 +84,11 @@ def create_app():
     from .log import log, msg_queue, debug_log_event
     from .csrf import ensure_csrf_token, get_csrf_token
     from .rate_limit import init_rate_limiting
+    from .routes.auth_api import init_login_manager # Import initialization function
 
     # Initialize rate limiting (disable in debug if needed)
     init_rate_limiting(app)
+    init_login_manager(app) # Initialize Flask-Login
 
     @app.before_request
     def assign_request_id():

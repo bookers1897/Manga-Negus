@@ -68,11 +68,11 @@ class Library:
         """Load from PostgreSQL database with optimized eager loading."""
         try:
             from .database import get_db_session
-            from .models import LibraryEntry, Manga
+            from .models import LibraryEntry, SourceLink
             from sqlalchemy.orm import joinedload
 
             with get_db_session() as session:
-                # Eager load Manga data to prevent N+1 queries
+                # Eager load SourceLink data to prevent N+1 queries
                 # This loads all manga data in a single JOIN query instead of 1 + N separate queries
                 entries = session.query(LibraryEntry).options(
                     joinedload(LibraryEntry.manga)
@@ -91,7 +91,7 @@ class Library:
                         "last_chapter": entry.last_chapter_read,
                         "last_chapter_id": entry.last_chapter_id,
                         "last_page": entry.last_page_read,
-                        "total_chapters": manga.chapters,
+                        "total_chapters": manga.chapters_count,
                         "last_read_at": entry.last_read_at.isoformat() if entry.last_read_at else None,
                         "added_at": entry.added_at.strftime("%Y-%m-%d %H:%M:%S") if entry.added_at else None
                     }
@@ -136,7 +136,7 @@ class Library:
         """Add to PostgreSQL database."""
         try:
             from .database import get_db_session
-            from .models import LibraryEntry, Manga
+            from .models import LibraryEntry, SourceLink
             from datetime import datetime, timezone
             import uuid
 
@@ -144,7 +144,7 @@ class Library:
 
             with get_db_session() as session:
                 # Check if manga exists (convert manga_id to string for VARCHAR column)
-                manga = session.query(Manga).filter_by(
+                manga = session.query(SourceLink).filter_by(
                     source_id=source,
                     source_manga_id=str(manga_id)
                 ).first()
@@ -152,7 +152,7 @@ class Library:
                 if not manga:
                     # Create new manga record
                     now = datetime.now(timezone.utc)
-                    manga = Manga(
+                    manga = SourceLink(
                         id=str(uuid.uuid4()),
                         source_id=source,
                         source_manga_id=str(manga_id),  # Store as string
@@ -248,7 +248,7 @@ class Library:
         """Update status in database."""
         try:
             from .database import get_db_session
-            from .models import LibraryEntry, Manga
+            from .models import LibraryEntry, SourceLink
             from datetime import datetime, timezone
 
             # Parse key: "source:manga_id"
@@ -262,7 +262,7 @@ class Library:
             reading_status = status if status in valid_statuses else 'reading'
 
             with get_db_session() as session:
-                manga = session.query(Manga).filter_by(
+                manga = session.query(SourceLink).filter_by(
                     source_id=source,
                     source_manga_id=str(manga_id)  # Convert to string
                 ).first()
@@ -318,7 +318,7 @@ class Library:
         """Update progress in database."""
         try:
             from .database import get_db_session
-            from .models import LibraryEntry, Manga
+            from .models import LibraryEntry, SourceLink
             from datetime import datetime, timezone
 
             parts = key.split(':', 1)
@@ -327,7 +327,7 @@ class Library:
             source, manga_id = parts
 
             with get_db_session() as session:
-                manga = session.query(Manga).filter_by(
+                manga = session.query(SourceLink).filter_by(
                     source_id=source,
                     source_manga_id=str(manga_id)  # Convert to string
                 ).first()
@@ -348,7 +348,7 @@ class Library:
                         library_entry.updated_at = datetime.now(timezone.utc)
 
                         if total_chapters is not None:
-                            manga.chapters = int(total_chapters)
+                            manga.chapters_count = int(total_chapters)
 
                 
                         log(f"📖 Progress saved: Chapter {chapter} (page {page})")
@@ -403,7 +403,7 @@ class Library:
         """Remove from database."""
         try:
             from .database import get_db_session
-            from .models import LibraryEntry, Manga
+            from .models import LibraryEntry, SourceLink
 
             parts = key.split(':', 1)
             if len(parts) != 2:
@@ -411,7 +411,7 @@ class Library:
             source, manga_id = parts
 
             with get_db_session() as session:
-                manga = session.query(Manga).filter_by(
+                manga = session.query(SourceLink).filter_by(
                     source_id=source,
                     source_manga_id=str(manga_id)  # Convert to string
                 ).first()
@@ -523,7 +523,7 @@ class History:
                         "title": manga.title if manga else None,
                         "cover": manga.cover_image,
                         "cover_url": manga.cover_image,
-                        "mal_id": manga.mal_id if manga else None,
+                        "mal_id": None, # Mal ID is now on Series, not SourceLink, needs refactor if needed here
                         "viewed_at": entry.last_viewed_at.isoformat() if entry.last_viewed_at else None,
                         "view_count": entry.view_count or 1,
                         "payload": entry.payload or {}
@@ -569,12 +569,12 @@ class History:
     def _add_to_db(self, user_id: str, manga_id: str, title: str, source: str, cover: Optional[str], mal_id: Optional[int], payload: Dict[str, Any]) -> str:
         try:
             from .database import get_db_session
-            from .models import HistoryEntry, Manga
+            from .models import HistoryEntry, SourceLink
             import uuid
 
             key = f"{source}:{manga_id}"
             with get_db_session() as session:
-                manga = session.query(Manga).filter_by(
+                manga = session.query(SourceLink).filter_by(
                     source_id=source,
                     source_manga_id=str(manga_id)
                 ).first()
@@ -582,13 +582,12 @@ class History:
                 now = datetime.now(timezone.utc)
 
                 if not manga:
-                    manga = Manga(
+                    manga = SourceLink(
                         id=str(uuid.uuid4()),
                         source_id=source,
                         source_manga_id=str(manga_id),
                         title=title,
                         cover_image=cover,
-                        mal_id=mal_id,
                         last_scraped_at=now,
                         created_at=now,
                         updated_at=now
@@ -663,140 +662,21 @@ class History:
         return key
 
 
-class DownloadItem:
-    """Represents a single download job in the queue.
-
-    Status values:
-    - paused_queue: Added but not started (user must manually start)
-    - queued: Ready to download
-    - downloading: Currently downloading
-    - paused: User paused
-    - completed: Finished
-    - failed: Error occurred
-    - cancelled: User cancelled
-    """
-    def __init__(self, job_id: str, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", user_id: str = ""):
-        self.job_id = job_id
-        self.chapters = chapters
-        self.title = title
-        self.source_id = source_id
-        self.manga_id = manga_id
-        self.user_id = user_id or ""
-        self.status = "queued"
-        self.current_chapter_index = 0
-        self.current_page = 0
-        self.total_pages = 0
-        self.error = None
-        self.created_at = time.time()
-        self.started_at = None
-        self.completed_at = None
-
-    def to_dict(self, include_user: bool = False) -> Dict[str, Any]:
-        payload = {
-            "job_id": self.job_id,
-            "title": self.title,
-            "source": self.source_id,
-            "manga_id": self.manga_id,
-            "chapters": self.chapters,  # Include full chapter data for persistence
-            "status": self.status,
-            "chapters_total": len(self.chapters),
-            "chapters_done": self.current_chapter_index,
-            "current_page": self.current_page,
-            "total_pages": self.total_pages,
-            "error": self.error,
-            "created_at": self.created_at,
-            "started_at": self.started_at,
-            "completed_at": self.completed_at
-        }
-        if include_user:
-            payload["user_id"] = self.user_id
-        return payload
-
-
 class Downloader:
-    """Background chapter downloader with CBZ packaging and queue management."""
+    """Background chapter downloader with DB persistence and queue management."""
     def __init__(self, download_dir: str):
         self.download_dir = download_dir
-        self._queue: List[DownloadItem] = []
-        self._active_item: Optional[DownloadItem] = None
         self._worker_thread: Optional[threading.Thread] = None
         self._pause_event = threading.Event()
         self._pause_event.set()  # Start unpaused
         self._stop_event = threading.Event()
         self._cancel_current = threading.Event()
         self._lock = threading.Lock()
+        self._active_job_id = None
         # Stealth fingerprint for consistent browser identity
         self._fingerprint = SessionFingerprint() if HAS_STEALTH else None
         
-        self._load_queue()
         self._start_worker()
-
-    def _save_queue(self):
-        """Save queue to disk."""
-        try:
-            # Create a simplified copy of data to save, holding lock briefly
-            with self._lock:
-                queue_data = [item.to_dict(include_user=True) for item in self._queue]
-                paused = not self._pause_event.is_set()
-            
-            data = {
-                "queue": queue_data,
-                "paused": paused
-            }
-            
-            # Atomic write
-            tmp_file = QUEUE_FILE + ".tmp"
-            with open(tmp_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2)
-            os.replace(tmp_file, QUEUE_FILE)
-        except Exception as e:
-            log(f"⚠️ Failed to save queue: {e}")
-
-    def _load_queue(self):
-        """Load queue from disk."""
-        if not os.path.exists(QUEUE_FILE):
-            return
-        try:
-            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            if data.get("paused"):
-                self._pause_event.clear()
-            
-            queue_list = data.get("queue", [])
-            loaded_items = []
-            
-            for q in queue_list:
-                # Skip items that are definitely finished, but keep them if we want history? 
-                # Downloader memory queue usually keeps them for a session.
-                # Let's keep them but reset 'downloading' to 'queued'
-                
-                status = q.get('status', 'queued')
-                if status == 'downloading':
-                    status = 'queued'
-                
-                item = DownloadItem(
-                    job_id=q['job_id'],
-                    chapters=q.get('chapters', []),
-                    title=q['title'],
-                    source_id=q['source'],
-                    manga_id=q.get('manga_id', ''),
-                    user_id=q.get('user_id', '')
-                )
-                item.status = status
-                item.current_chapter_index = q.get('chapters_done', 0)
-                item.created_at = q.get('created_at', time.time())
-                item.completed_at = q.get('completed_at')
-                item.error = q.get('error')
-                
-                loaded_items.append(item)
-            
-            with self._lock:
-                self._queue = loaded_items
-                
-            log(f"📥 Loaded {len(loaded_items)} items from queue storage")
-        except Exception as e:
-            log(f"⚠️ Failed to load queue: {e}")
 
     def _sanitize(self, name: str) -> str:
         return "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
@@ -813,104 +693,125 @@ class Downloader:
         return os.path.join(self.download_dir, safe_user)
 
     def _start_worker(self):
-        """Start the background worker thread that processes the queue."""
+        """Start the background worker thread that polls the DB queue."""
         def worker():
+            from .database import get_db_session
+            from .models import DownloadJob
+            
             while not self._stop_event.is_set():
                 # Wait if paused
                 self._pause_event.wait()
 
-                # Get next item from queue
-                item = None
-                with self._lock:
-                    for q_item in self._queue:
-                        if q_item.status == "queued":
-                            item = q_item
-                            item.status = "downloading"
-                            item.started_at = time.time()
-                            self._active_item = item
-                            break
+                # Poll DB for next pending job
+                job = None
+                try:
+                    with get_db_session() as session:
+                        # Find oldest queued job
+                        job_record = session.query(DownloadJob).filter_by(status='queued').order_by(DownloadJob.created_at.asc()).first()
+                        
+                        if job_record:
+                            # Lock it by setting status to downloading
+                            job_record.status = 'downloading'
+                            session.commit()
+                            
+                            # Detach object from session to use outside
+                            session.refresh(job_record)
+                            job = {
+                                'id': job_record.id,
+                                'title': job_record.title,
+                                'source_id': job_record.source_id,
+                                'manga_id': job_record.manga_id,
+                                'chapters': job_record.chapters,
+                                'user_id': str(job_record.user_id) if job_record.user_id else None,
+                                'chapters_done': job_record.chapters_done
+                            }
+                            self._active_job_id = job['id']
+                except Exception as e:
+                    log(f"Queue poll error: {e}")
+                    time.sleep(5)
+                    continue
 
-                if item is None:
+                if job is None:
                     # No items to process, wait a bit
-                    time.sleep(0.5)
+                    time.sleep(2)
                     continue
 
                 # Process the download
-                self._process_download(item)
+                self._process_download(job)
 
-                with self._lock:
-                    self._active_item = None
+                self._active_job_id = None
 
         self._worker_thread = threading.Thread(target=worker, daemon=True)
         self._worker_thread.start()
 
-    def _process_download(self, item: DownloadItem):
-        """Process a single download item."""
+    def _process_download(self, job: Dict):
+        """Process a single download job."""
         from sources import get_source_manager
+        from .database import get_db_session
+        from .models import DownloadJob
 
         manager = get_source_manager()
-        source = manager.get_source(item.source_id)
-        if not source and item.title:
+        source = manager.get_source(job['source_id'])
+        
+        if not source and job['title']:
             try:
-                log(f"🔍 Resolving source for download: {item.title} (requested {item.source_id})")
-                results = manager.search(item.title, source_id=None)
+                log(f"🔍 Resolving source for download: {job['title']} (requested {job['source_id']})")
+                results = manager.search(job['title'], source_id=None)
                 if results:
                     best = results[0]
-                    item.source_id = best.source
+                    job['source_id'] = best.source
                     if best.id:
-                        item.manga_id = best.id
-                    source = manager.get_source(item.source_id)
+                        job['manga_id'] = best.id
+                    source = manager.get_source(job['source_id'])
             except Exception as exc:
                 log(f"⚠️ Failed to resolve download source: {exc}")
-
+        
         if not source:
-            item.status = "failed"
-            item.error = f"Source '{item.source_id}' not found"
-            log(f"❌ {item.error}")
+            self._update_job_status(job['id'], 'failed', error=f"Source '{job['source_id']}' not found")
             return
 
-        safe_title = self._sanitize(item.title) or "untitled"
-        base_dir = self._user_dir(item.user_id)
+        safe_title = self._sanitize(job['title']) or "untitled"
+        base_dir = self._user_dir(job['user_id'])
         os.makedirs(base_dir, exist_ok=True)
         series_dir = os.path.join(base_dir, safe_title)
         os.makedirs(series_dir, exist_ok=True)
-        log(f"🚀 Downloading {len(item.chapters)} chapters from {source.name}")
+        
+        chapters = job['chapters']
+        start_index = job['chapters_done']
+        
+        log(f"🚀 Downloading {len(chapters) - start_index} chapters from {source.name}")
 
-        # Fetch manga metadata for ComicInfo.xml
+        # Fetch manga metadata for ComicInfo.xml (optional)
         manga_details = None
-        if item.manga_id:
+        if job.get('manga_id'):
             try:
-                manga_details = source.get_manga_details(item.manga_id)
-            except Exception as e:
-                log(f"⚠️ Failed to fetch manga details: {e}")
+                manga_details = source.get_manga_details(job['manga_id'])
+            except Exception:
+                pass
 
+        # Session setup
         download_session = getattr(source, "get_download_session", None)
         download_session = download_session() if callable(download_session) else source.session
         if not download_session:
             download_session = requests.Session()
-            # Optimize connection pooling for parallel downloads
-            adapter = requests.adapters.HTTPAdapter(
-                pool_connections=MAX_DOWNLOAD_WORKERS,
-                pool_maxsize=MAX_DOWNLOAD_WORKERS * 2,
-                max_retries=1
-            )
+            adapter = requests.adapters.HTTPAdapter(pool_connections=MAX_DOWNLOAD_WORKERS, pool_maxsize=MAX_DOWNLOAD_WORKERS * 2)
             download_session.mount('http://', adapter)
             download_session.mount('https://', adapter)
 
-        for idx, ch in enumerate(item.chapters[item.current_chapter_index:], start=item.current_chapter_index):
-            # Check for pause
+        for idx, ch in enumerate(chapters[start_index:], start=start_index):
             self._pause_event.wait()
 
-            # Check for cancel
             if self._cancel_current.is_set():
-                item.status = "cancelled"
+                self._update_job_status(job['id'], 'cancelled')
                 self._cancel_current.clear()
                 log("⏹️ Download cancelled")
                 return
 
-            item.current_chapter_index = idx
             ch_num = str(ch.get("chapter", "0"))
             ch_id = ch.get("id", "")
+            
+            # Update DB progress
+            self._update_job_progress(job['id'], idx, ch_num)
 
             try:
                 pages = source.get_pages(ch_id)
@@ -918,13 +819,9 @@ class Downloader:
                     log(f"⚠️ No pages for Chapter {ch_num}")
                     continue
 
-                item.total_pages = len(pages)
-                item.current_page = 0
-
                 safe_ch = self._sanitize_filename(ch_num)
                 folder_name = f"{safe_title} - Ch{safe_ch}"
-                log(f"⬇️ Ch {ch_num} ({len(pages)} pages)...")
-
+                
                 # Handle file sources (PDFs, EPUBs)
                 if getattr(source, "is_file_source", False):
                     page = pages[0]
@@ -948,13 +845,12 @@ class Downloader:
                         for chunk in resp.iter_content(chunk_size=1024 * 256):
                             if chunk: f.write(chunk)
                     log(f"✅ Saved file: {folder_name}{ext}")
-                    item.current_chapter_index = idx + 1
                     continue
 
                 # Standard image download
                 temp_folder = os.path.join(series_dir, folder_name)
                 os.makedirs(temp_folder, exist_ok=True)
-                self._write_comic_info(temp_folder, item.title, ch, source, manga_details)
+                self._write_comic_info(temp_folder, job['title'], ch, source, manga_details)
 
                 def download_single_page(page) -> Optional[Tuple[int, str, bytes]]:
                     """Download a single page with retries. Returns (index, ext, content) or None."""
@@ -983,7 +879,7 @@ class Downloader:
                                 time.sleep(0.5)
                     return None
 
-                # Download pages in parallel with pause/cancel checks
+                # Download pages in parallel
                 page_results = []
                 cancelled = False
                 with ThreadPoolExecutor(max_workers=MAX_DOWNLOAD_WORKERS) as executor:
@@ -1000,14 +896,11 @@ class Downloader:
                         result = future.result()
                         if result:
                             page_results.append(result)
-                            # Update progress with highest completed page
-                            item.current_page = max(item.current_page, result[0])
 
                 if cancelled:
                     shutil.rmtree(temp_folder, ignore_errors=True)
-                    item.status = "cancelled"
+                    self._update_job_status(job['id'], 'cancelled')
                     self._cancel_current.clear()
-                    self._save_queue()
                     return
 
                 # Write pages to disk in order
@@ -1027,179 +920,135 @@ class Downloader:
                             zf.write(os.path.join(r, f), arcname=f)
                 shutil.rmtree(temp_folder)
                 log(f"✅ Finished: Ch {ch_num}")
-                item.current_chapter_index = idx + 1
                 time.sleep(0.5)
 
             except Exception as e:
                 log(f"❌ Error Ch {ch_num}: {e}")
-                item.error = str(e)
+                # Don't fail the whole job for one chapter, just log
 
         # Completed all chapters
-        item.status = "completed"
-        item.completed_at = time.time()
-        self._save_queue()
-        log("✨ All downloads completed!")
+        self._update_job_status(job['id'], 'completed')
+        log("✨ Job completed!")
+
+    def _update_job_status(self, job_id, status, error=None):
+        from .database import get_db_session
+        from .models import DownloadJob
+        try:
+            with get_db_session() as session:
+                job = session.query(DownloadJob).get(job_id)
+                if job:
+                    job.status = status
+                    if error:
+                        job.error_message = error
+                    if status == 'completed':
+                        job.completed_at = datetime.now(timezone.utc)
+                    session.commit()
+        except Exception as e:
+            log(f"DB update error: {e}")
+
+    def _update_job_progress(self, job_id, chapters_done, current_chapter):
+        from .database import get_db_session
+        from .models import DownloadJob
+        try:
+            with get_db_session() as session:
+                job = session.query(DownloadJob).get(job_id)
+                if job:
+                    job.chapters_done = chapters_done
+                    job.current_chapter = current_chapter
+                    session.commit()
+        except Exception:
+            pass
 
     def add_to_queue(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", start_immediately: bool = True, user_id: str = "") -> str:
-        """Add a download job to the queue."""
-        job_id = str(uuid.uuid4())
-        item = DownloadItem(job_id, chapters, title, source_id, manga_id, user_id=user_id)
-
-        if not start_immediately:
-            item.status = "paused_queue"
-
-        with self._lock:
-            self._queue.append(item)
-            self._save_queue()
-
-        log(f"📥 Added to queue: {title} ({len(chapters)} chapters) - {'auto-start' if start_immediately else 'paused'}")
-        return job_id
+        from .database import get_db_session
+        from .models import DownloadJob
+        
+        try:
+            with get_db_session() as session:
+                job = DownloadJob(
+                    user_id=user_id if user_id else None,
+                    title=title,
+                    source_id=source_id,
+                    manga_id=manga_id,
+                    chapters=chapters,
+                    total_chapters=len(chapters),
+                    status='queued' if start_immediately else 'paused',
+                    created_at=datetime.now(timezone.utc)
+                )
+                session.add(job)
+                session.commit()
+                log(f"📥 Added to DB queue: {title}")
+                return job.id
+        except Exception as e:
+            log(f"Failed to add job: {e}")
+            return ""
 
     def start(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", start_immediately: bool = True, user_id: str = "") -> str:
-        """Backward-compatible wrapper for adding a download job."""
         return self.add_to_queue(chapters, title, source_id, manga_id, start_immediately, user_id=user_id)
 
     def cancel(self, job_id: str, user_id: Optional[str] = None) -> bool:
-        """Cancel a download (queued or active)."""
-        with self._lock:
-            # If it's the active download, signal cancel
-            if self._active_item and self._active_item.job_id == job_id:
-                if user_id and self._active_item.user_id != user_id:
-                    return False
-                self._cancel_current.set()
-                return True
-
-            # Otherwise find in queue and mark cancelled
-            for item in self._queue:
-                if item.job_id == job_id and item.status in ("queued", "paused_queue"):
-                    if user_id and item.user_id != user_id:
-                        return False
-                    item.status = "cancelled"
-                    self._save_queue()
-                    log(f"⏹️ Cancelled: {item.title}")
-                    return True
-        return False
+        if self._active_job_id == job_id:
+            self._cancel_current.set()
+            return True
+        self._update_job_status(job_id, 'cancelled')
+        return True
 
     def pause(self, job_id: Optional[str] = None, user_id: Optional[str] = None) -> bool:
-        """Pause downloads. If job_id is None, pause all."""
-        if job_id is None:
-            if user_id is not None:
-                return False
+        if job_id:
+            self._update_job_status(job_id, 'paused')
+        else:
             self._pause_event.clear()
-            self._save_queue()
-            log("⏸️ Downloads paused")
-            return True
-
-        with self._lock:
-            if self._active_item and self._active_item.job_id == job_id:
-                if user_id and self._active_item.user_id != user_id:
-                    return False
-                self._active_item.status = "paused"
-                self._pause_event.clear()
-                self._save_queue()
-                log(f"⏸️ Paused: {self._active_item.title}")
-                return True
-        return False
+        return True
 
     def resume(self, job_id: Optional[str] = None, user_id: Optional[str] = None) -> bool:
-        """Resume downloads. If job_id is None, resume all."""
-        if job_id is None:
-            if user_id is not None:
-                return False
+        if job_id:
+            self._update_job_status(job_id, 'queued')
+        else:
             self._pause_event.set()
-            self._save_queue()
-            log("▶️ Downloads resumed")
-            return True
-
-        with self._lock:
-            if self._active_item and self._active_item.job_id == job_id:
-                if user_id and self._active_item.user_id != user_id:
-                    return False
-                self._active_item.status = "downloading"
-                self._pause_event.set()
-                self._save_queue()
-                log(f"▶️ Resumed: {self._active_item.title}")
-                return True
-
-            # Check if paused in queue
-            for item in self._queue:
-                if item.job_id == job_id and item.status == "paused":
-                    if user_id and item.user_id != user_id:
-                        return False
-                    item.status = "queued"
-                    self._pause_event.set()
-                    self._save_queue()
-                    return True
-        return False
+        return True
 
     def start_paused_items(self, job_ids: Optional[List[str]] = None, user_id: Optional[str] = None) -> None:
-        """Start paused queue items."""
-        with self._lock:
-            started_count = 0
-            for item in self._queue:
-                if item.status == "paused_queue" and (job_ids is None or item.job_id in job_ids):
-                    if user_id and item.user_id != user_id:
-                        continue
-                    item.status = "queued"
-                    started_count += 1
-
-            if started_count:
-                log(f"▶️ Started {started_count} paused downloads")
+        """Start paused queue items (stub for compatibility, logic now handled by DB polling)."""
+        self._pause_event.set()
 
     def get_queue(self, user_id: Optional[str] = None, include_user: bool = False) -> Dict[str, Any]:
-        """Get the current download queue status with paused count."""
-        with self._lock:
-            queue_data = []
-            paused_count = 0
-            active_count = 0
-            completed_count = 0
-
-            for item in self._queue:
-                if user_id and item.user_id != user_id:
-                    continue
-                if item.status == "paused_queue":
-                    paused_count += 1
-                elif item.status in ("queued", "downloading", "paused"):
-                    active_count += 1
-                elif item.status in ("completed", "failed", "cancelled"):
-                    completed_count += 1
-                queue_data.append(item.to_dict(include_user=include_user))
-
+        """Get the current download queue status from DB."""
+        from .database import get_db_session
+        from .models import DownloadJob
+        
+        with get_db_session() as session:
+            query = session.query(DownloadJob).filter(DownloadJob.status.in_(['queued', 'downloading', 'paused']))
+            if user_id:
+                query = query.filter_by(user_id=str(user_id))
+            
+            jobs = query.all()
             return {
-                "queue": queue_data,
-                "paused_count": paused_count,
-                "active_count": active_count,
-                "completed_count": completed_count
+                "queue": [job.to_dict() for job in jobs],
+                "paused_count": sum(1 for j in jobs if j.status == 'paused'),
+                "active_count": len(jobs),
+                "completed_count": 0  # Query separate history if needed
             }
 
     def clear_completed(self, user_id: Optional[str] = None) -> int:
-        """Remove completed/cancelled/failed items from queue."""
-        with self._lock:
-            before = len(self._queue)
+        from .database import get_db_session
+        from .models import DownloadJob
+        with get_db_session() as session:
+            query = session.query(DownloadJob).filter(DownloadJob.status.in_(['completed', 'failed', 'cancelled']))
             if user_id:
-                kept = []
-                removed = 0
-                for item in self._queue:
-                    if item.user_id == user_id and item.status in ("completed", "failed", "cancelled"):
-                        removed += 1
-                        continue
-                    kept.append(item)
-                self._queue = kept
-                return removed
-            self._queue = [item for item in self._queue if item.status in ("queued", "downloading", "paused", "paused_queue")]
-            self._save_queue()
-            return before - len(self._queue)
+                query = query.filter_by(user_id=str(user_id))
+            count = query.delete(synchronize_session=False)
+            session.commit()
+            return count
 
     def remove_from_queue(self, job_id: str, user_id: Optional[str] = None) -> bool:
-        """Remove a specific item from queue (if not downloading)."""
-        with self._lock:
-            for i, item in enumerate(self._queue):
-                if item.job_id == job_id and item.status != "downloading":
-                    if user_id and item.user_id != user_id:
-                        return False
-                    del self._queue[i]
-                    self._save_queue()
-                    return True
+        from .database import get_db_session
+        from .models import DownloadJob
+        with get_db_session() as session:
+            job = session.query(DownloadJob).get(job_id)
+            if job and job.status != 'downloading':
+                session.delete(job)
+                session.commit()
+                return True
         return False
 
     def is_paused(self) -> bool:

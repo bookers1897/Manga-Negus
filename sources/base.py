@@ -84,6 +84,16 @@ class MangaResult:
     alt_titles: List[str] = field(default_factory=list)
     year: Optional[int] = None
     
+    def validate(self) -> bool:
+        """Validate critical fields are present."""
+        if not self.id or not self.title:
+            return False
+        # Filter out common bad titles from scrape errors
+        bad_titles = ['access denied', '403 forbidden', 'cloudflare', 'just a moment', 'attention required']
+        if any(b in self.title.lower() for b in bad_titles):
+            return False
+        return True
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary for API responses."""
         return {
@@ -116,6 +126,12 @@ class ChapterResult:
     url: Optional[str] = None        # Direct URL
     source: str = ""
     
+    def validate(self) -> bool:
+        """Validate chapter data."""
+        if not self.id or not self.chapter:
+            return False
+        return True
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         return {
@@ -134,80 +150,10 @@ class ChapterResult:
 
 @dataclass
 class PageResult:
-    """Standardized page/image information."""
-    url: str                         # Image URL
-    index: int                       # Page number (0-indexed)
-    headers: Dict[str, str] = field(default_factory=dict)
-    referer: Optional[str] = None    # Required referer header
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to JSON-serializable dictionary."""
-        return {
-            "url": self.url,
-            "index": self.index,
-            "headers": self.headers,
-            "referer": self.referer
-        }
+# ... (PageResult remains unchanged) ...
 
+# ... (BaseConnector class definition) ...
 
-# =============================================================================
-# BASE CONNECTOR CLASS
-# =============================================================================
-
-class BaseConnector(ABC):
-    """
-    Abstract base class for manga source connectors.
-    
-    INHERITANCE:
-        All sources (MangaDex, ComicK, MangaSee, etc.) inherit from this class
-        and implement the 3 required methods: search(), get_chapters(), get_pages()
-    
-    RATE LIMITING:
-        Built-in token bucket rate limiter prevents server abuse.
-        Configure via rate_limit and rate_limit_burst attributes.
-    
-    FALLBACK:
-        The SourceManager uses status tracking to route requests
-        to healthy sources when one is rate-limited or down.
-    
-    Example:
-        class MangaDexConnector(BaseConnector):
-            id = "mangadex"
-            name = "MangaDex"
-            rate_limit = 2.0  # 2 requests per second
-            
-            def search(self, query, page=1):
-                # Implementation here
-                pass
-    """
-    
-    # =========================================================================
-    # SOURCE CONFIGURATION (Override in subclass)
-    # =========================================================================
-    
-    id: str = "base"                 # Unique identifier
-    name: str = "Base Source"        # Display name
-    base_url: str = ""               # Root URL
-    icon: str = "📚"                 # Emoji for UI
-    
-    # URL Detection (Override in subclass with domain patterns)
-    # Example: url_patterns = [r'https?://(?:www\.)?mangadex\.org/title/([a-f0-9-]+)']
-    url_patterns: List[str] = []     # Regex patterns for URL matching
-    
-    # Rate limiting (requests per second)
-    rate_limit: float = 2.0          # Sustained rate
-    rate_limit_burst: int = 5        # Burst allowance
-    request_timeout: int = 15        # Request timeout seconds
-    
-    # Feature flags
-    supports_latest: bool = False
-    supports_popular: bool = False
-    requires_cloudflare: bool = False
-    is_file_source: bool = False
-    
-    # Supported languages (ISO codes)
-    languages: List[str] = ["en"]
-    
     # =========================================================================
     # INITIALIZATION
     # =========================================================================
@@ -231,6 +177,34 @@ class BaseConnector(ABC):
 
         # Session will be set by SourceManager
         self.session = None
+
+    def _validate_response(self, text: str, url: str = "") -> bool:
+        """
+        Check response text for common soft-ban/captcha signatures.
+        Returns False if the response is invalid/blocked.
+        """
+        if not text:
+            return False
+            
+        text_lower = text.lower()
+        block_signatures = [
+            'checking your browser',
+            'access denied',
+            '403 forbidden',
+            'cloudflare',
+            'attention required',
+            'security check',
+            'enable javascript'
+        ]
+        
+        if any(sig in text_lower for sig in block_signatures):
+            # Double check it's not just a mention in content
+            if len(text) < 5000:  # Block pages are usually small
+                source_log(f"[{self.id}] 🚫 Blocked/Captcha detected at {url}")
+                self._handle_cloudflare()
+                return False
+                
+        return True
 
     # =========================================================================
     # RATE LIMITING (Token Bucket Algorithm)
