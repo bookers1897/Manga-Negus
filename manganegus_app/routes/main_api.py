@@ -6,6 +6,16 @@ import requests
 import queue
 import ipaddress
 
+# Import SmartSession for image proxying with TLS fingerprint bypass
+try:
+    from sources import get_source_manager
+    from sources.stealth_headers import SessionFingerprint
+    HAS_SMART_SESSION = True
+    _proxy_fingerprint = SessionFingerprint()
+except ImportError:
+    HAS_SMART_SESSION = False
+    _proxy_fingerprint = None
+
 main_bp = Blueprint('main_api', __name__)
 
 def is_safe_url(url: str, allowed_domains: list) -> tuple[bool, str]:
@@ -254,14 +264,40 @@ def proxy_image():
         return jsonify({'error': f'Security: {error_msg}'}), 403
 
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': referer or url,
-        }
-        # Increased timeout for slow CDNs, stream for efficiency
-        resp = requests.get(url, headers=headers, timeout=20, stream=True)
-        if resp.status_code != 200:
-            return jsonify({'error': 'Failed to fetch image'}), resp.status_code
+        # Build headers with stealth fingerprint for bot detection bypass
+        if HAS_SMART_SESSION and _proxy_fingerprint:
+            headers = _proxy_fingerprint.get_image_headers(referer or url)
+        else:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': referer or url,
+            }
+
+        # Use SmartSession with curl_cffi for TLS fingerprint bypass
+        if HAS_SMART_SESSION:
+            try:
+                manager = get_source_manager()
+                session = manager._session  # SmartSession with curl_cffi
+                resp = session.request('GET', url, headers=headers, timeout=20)
+                status_code = resp.status_code
+                content = resp.content
+                content_type_header = resp.headers.get('Content-Type', 'image/jpeg')
+            except Exception as e:
+                log(f"⚠️ SmartSession failed, falling back to requests: {e}")
+                # Fallback to standard requests
+                resp = requests.get(url, headers=headers, timeout=20, stream=True)
+                status_code = resp.status_code
+                content = resp.content
+                content_type_header = resp.headers.get('Content-Type', 'image/jpeg')
+        else:
+            # Increased timeout for slow CDNs, stream for efficiency
+            resp = requests.get(url, headers=headers, timeout=20, stream=True)
+            status_code = resp.status_code
+            content = resp.content
+            content_type_header = resp.headers.get('Content-Type', 'image/jpeg')
+
+        if status_code != 200:
+            return jsonify({'error': 'Failed to fetch image'}), status_code
 
         # Check if any image processing is requested
         fmt = (request.args.get('format') or '').lower().strip()
@@ -272,7 +308,7 @@ def proxy_image():
 
         # FAST PATH: No processing needed - just pass through the image
         if not needs_processing:
-            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+            content_type = content_type_header
             # If content-type isn't an image type, try to detect from URL
             if not content_type.startswith('image/'):
                 if url.lower().endswith('.webp'):
@@ -284,7 +320,7 @@ def proxy_image():
                 else:
                     content_type = 'image/jpeg'
             return Response(
-                resp.content,
+                content,
                 mimetype=content_type,
                 headers={
                     'Cache-Control': 'public, max-age=86400',
@@ -293,7 +329,7 @@ def proxy_image():
             )
 
         # SLOW PATH: Processing requested - use Pillow
-        img_bytes = resp.content
+        img_bytes = content
         try:
             from io import BytesIO
             from PIL import Image
@@ -326,10 +362,10 @@ def proxy_image():
             img_bytes = out.getvalue()
             content_type = f"image/{save_format.lower()}"
         except ImportError:
-            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+            content_type = content_type_header
         except Exception as e:
             log(f"⚠️ Image processing error: {e}")
-            content_type = resp.headers.get('Content-Type', 'image/jpeg')
+            content_type = content_type_header
 
         return Response(
             img_bytes,
@@ -339,7 +375,7 @@ def proxy_image():
                 'Access-Control-Allow-Origin': '*'
             }
         )
-    except requests.RequestException as e:
+    except Exception as e:
         log(f"⚠️ Image proxy error: {e}")
         return jsonify({'error': 'Failed to fetch image'}), 500
 

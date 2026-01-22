@@ -229,6 +229,16 @@ def smart_search():
     sources = data.get('sources')  # None = use default top 5
     enrich_metadata = data.get('enrich_metadata', True)
 
+    # Handle source_id from frontend (single source filter)
+    # Frontend sends 'source_id', filters may send 'source'
+    if not sources:
+        filters = data.get('filters') or {}  # Handle null/None filters
+        specific_source = data.get('source_id') or filters.get('source')
+        if specific_source:
+            specific_source = specific_source.strip() if isinstance(specific_source, str) else specific_source
+            sources = [specific_source]
+            log(f"🔍 Smart search using specific source: {specific_source}")
+
     if not query:
         return jsonify({'error': 'Query is required'}), 400
 

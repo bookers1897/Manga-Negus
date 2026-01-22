@@ -2720,6 +2720,10 @@ async function performSearch() {
 }
 
 async function searchManga(query) {
+    // Switch to discover view if not already there (enables search from any page)
+    if (state.activeView !== 'discover') {
+        setView('discover');
+    }
     hidePagination();
     renderGridSkeleton(els.discoverGrid, 10);
     els.discoverEmpty.classList.add('hidden');
@@ -2753,6 +2757,10 @@ async function searchManga(query) {
 }
 
 async function detectUrl(url) {
+    // Switch to discover view if not already there (enables URL detection from any page)
+    if (state.activeView !== 'discover') {
+        setView('discover');
+    }
     els.discoverGrid.innerHTML = `
         <div class="loading-state">
             <div class="spinner"></div>

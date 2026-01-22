@@ -11,6 +11,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from .log import log
 
+# Import stealth headers for bot detection avoidance
+try:
+    from sources.stealth_headers import SessionFingerprint
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+    SessionFingerprint = None
+
 # Parallel download configuration
 MAX_DOWNLOAD_WORKERS = 4
 
@@ -712,6 +720,8 @@ class Downloader:
         self._stop_event = threading.Event()
         self._cancel_current = threading.Event()
         self._lock = threading.Lock()
+        # Stealth fingerprint for consistent browser identity
+        self._fingerprint = SessionFingerprint() if HAS_STEALTH else None
         self._start_worker()
     
     def _sanitize(self, name: str) -> str:
@@ -876,9 +886,16 @@ class Downloader:
                     """Download a single page with retries. Returns (index, ext, content) or None."""
                     for attempt in range(3):
                         try:
-                            headers = dict(page.headers) if page.headers else {}
-                            if page.referer:
-                                headers['Referer'] = page.referer
+                            # Use stealth headers for bot detection avoidance
+                            if self._fingerprint:
+                                headers = self._fingerprint.get_image_headers(page.referer)
+                            else:
+                                headers = {}
+                                if page.referer:
+                                    headers['Referer'] = page.referer
+                            # Merge page-specific headers
+                            if page.headers:
+                                headers.update(page.headers)
                             source.wait_for_rate_limit()
                             resp = download_session.get(page.url, headers=headers, timeout=20)
                             if resp.status_code == 200:

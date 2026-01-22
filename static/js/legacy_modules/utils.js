@@ -41,14 +41,19 @@ export function sanitizeUrl(url) {
 /**
  * Proxy external image URLs through backend to avoid CORS issues
  * @param {string} url - Image URL
+ * @param {string} referer - Optional referer URL for CDN hotlink protection bypass
  * @returns {string} - Proxied URL or original if local
  */
-export function proxyImageUrl(url) {
+export function proxyImageUrl(url, referer = null) {
     if (!url) return PLACEHOLDER_IMAGE;
     // If already a local URL, return as-is
     if (url.startsWith('/')) return url;
-    // Proxy external URLs
-    return `/api/proxy/image?url=${encodeURIComponent(url)}`;
+    // Proxy external URLs with optional referer
+    let proxyUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+    if (referer) {
+        proxyUrl += `&referer=${encodeURIComponent(referer)}`;
+    }
+    return proxyUrl;
 }
 
 /**

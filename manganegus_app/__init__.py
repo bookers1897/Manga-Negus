@@ -54,9 +54,14 @@ def create_app():
     is_production = os.environ.get('FLASK_ENV', 'production') == 'production'
     is_debug = os.environ.get('FLASK_DEBUG', 'false').lower() in ('true', '1', 'yes')
 
+    # Only enable secure cookies if explicitly set via env var
+    # This allows HTTP access on local networks while still supporting HTTPS via proxy
+    force_secure_cookies = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() in ('true', '1', 'yes')
+
     app.config.update(
-        # Cookie security - only send over HTTPS in production
-        SESSION_COOKIE_SECURE=is_production and not is_debug,
+        # Cookie security - only enforce HTTPS if explicitly enabled
+        # For local/HTTP access, set SESSION_COOKIE_SECURE=false in .env
+        SESSION_COOKIE_SECURE=force_secure_cookies,
         # Prevent JavaScript access to session cookie (XSS protection)
         SESSION_COOKIE_HTTPONLY=True,
         # CSRF protection - Lax allows normal navigation, blocks cross-origin POSTs

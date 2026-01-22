@@ -21,6 +21,13 @@ except Exception:  # pragma: no cover
     cloudscraper = None
     HAS_CLOUDSCRAPER = False
 
+try:
+    from .stealth_headers import SessionFingerprint
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+    SessionFingerprint = None
+
 
 class SmartSession:
     """Requests-compatible session with Cloudflare-aware fallbacks."""
@@ -41,6 +48,8 @@ class SmartSession:
         self._session = requests.Session()
         self._curl_session = curl_requests.Session(impersonate="chrome120") if HAS_CURL else None
         self._cloud_session = cloudscraper.create_scraper() if HAS_CLOUDSCRAPER else None
+        # Stealth fingerprint for consistent browser identity
+        self._fingerprint = SessionFingerprint() if HAS_STEALTH else None
         self._user_agents = [
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -49,7 +58,7 @@ class SmartSession:
             "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) "
             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
         ]
-        self._last_user_agent = random.choice(self._user_agents)
+        self._last_user_agent = self._fingerprint.user_agent if self._fingerprint else random.choice(self._user_agents)
         self._proxy_pool = self._load_proxy_pool()
         self._flare_cache: Dict[str, Dict[str, Any]] = {}
         self._host_cooldowns: Dict[str, Dict[str, Any]] = {}

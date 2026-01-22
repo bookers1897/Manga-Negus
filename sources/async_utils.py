@@ -8,13 +8,22 @@ Features:
   - Async rate limiter with human-like jitter
   - Semaphore-based concurrent download limiting
   - curl_cffi session management with TLS fingerprint bypass
+  - Stealth headers with SessionFingerprint
 ================================================================================
 """
 
 import asyncio
 import random
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
+try:
+    from .stealth_headers import SessionFingerprint, human_like_jitter
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+    SessionFingerprint = None
+    human_like_jitter = lambda x=0.5: random.uniform(0.3, 0.7)
 
 
 class AsyncRateLimiter:
@@ -56,6 +65,7 @@ class AsyncDownloadManager:
     Manages concurrent async downloads with rate limiting.
 
     Uses semaphores to limit concurrent connections and prevent bans.
+    Includes stealth headers for bot detection avoidance.
     """
 
     def __init__(
@@ -73,6 +83,8 @@ class AsyncDownloadManager:
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.limiter = AsyncRateLimiter(requests_per_second)
         self._session = None
+        # Stealth fingerprint for consistent browser identity
+        self._fingerprint = SessionFingerprint() if HAS_STEALTH else None
 
     async def get_session(self):
         """Get or create curl_cffi AsyncSession."""
@@ -203,13 +215,17 @@ class AsyncDownloadManager:
         async def download_page(page) -> bool:
             """Download a single page."""
             try:
-                # Build headers
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept": "image/*,*/*;q=0.8",
-                }
-                if referer:
-                    headers["Referer"] = referer
+                # Build headers using stealth fingerprint
+                if self._fingerprint:
+                    headers = self._fingerprint.get_image_headers(referer)
+                else:
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "image/*,*/*;q=0.8",
+                    }
+                    if referer:
+                        headers["Referer"] = referer
+                # Merge page-specific headers
                 if hasattr(page, 'headers') and page.headers:
                     headers.update(page.headers)
 

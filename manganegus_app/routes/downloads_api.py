@@ -16,6 +16,14 @@ from manganegus_app.celery_app import is_celery_available
 from .auth_api import login_required, is_admin_user
 from .validators import validate_fields
 
+# Import stealth headers for bot detection avoidance
+try:
+    from sources.stealth_headers import SessionFingerprint
+    HAS_STEALTH = True
+except ImportError:
+    HAS_STEALTH = False
+    SessionFingerprint = None
+
 downloads_bp = Blueprint('downloads_api', __name__)
 
 MAX_DIRECT_CHAPTERS = 25
@@ -24,6 +32,8 @@ _download_tokens = {}
 _download_token_lock = threading.Lock()
 # Parallel download workers (limited to avoid overwhelming servers)
 MAX_DOWNLOAD_WORKERS = 4
+# Global stealth fingerprint for consistent identity across downloads
+_download_fingerprint = SessionFingerprint() if HAS_STEALTH else None
 
 
 def _cleanup_download_tokens(now: float = None) -> None:
@@ -220,9 +230,16 @@ def direct_download():
         def download_page(page):
             """Download a single page (runs in thread pool)."""
             try:
-                headers = dict(page.headers) if page.headers else {}
-                if page.referer:
-                    headers['Referer'] = page.referer
+                # Use stealth headers for bot detection avoidance
+                if _download_fingerprint:
+                    headers = _download_fingerprint.get_image_headers(page.referer)
+                else:
+                    headers = {}
+                    if page.referer:
+                        headers['Referer'] = page.referer
+                # Merge page-specific headers (may override some stealth headers)
+                if page.headers:
+                    headers.update(page.headers)
                 source.wait_for_rate_limit()
                 resp = download_session.get(page.url, headers=headers, timeout=20)
                 if resp.status_code != 200:
