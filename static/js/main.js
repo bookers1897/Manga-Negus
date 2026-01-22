@@ -8684,7 +8684,8 @@ function updateAuthUI() {
 
     if (state.auth.isLoggedIn && state.auth.user) {
         const user = state.auth.user;
-        const displayName = user.display_name || user.email.split('@')[0];
+        const email = user.email || '';
+        const displayName = user.display_name || (email.includes('@') ? email.split('@')[0] : 'User');
         const avatarUrl = user.avatar_url || DEFAULT_AVATAR;
 
         // Hide guest login button, show account menu
