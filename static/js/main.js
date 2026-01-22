@@ -385,6 +385,9 @@ async function renderChunked(items, container, renderFn, options = {}) {
 }
 const COVER_PROXY_HOSTS = new Set([
     'cdn.myanimelist.net',
+    's4.anilist.co',
+    'media.anilist.co',
+    '*.anilist.co',
     'uploads.mangadex.org',
     'mangadex.org',
     'cover.nep.li',
@@ -2175,14 +2178,33 @@ function getDataSaverDownloadLimit() {
     return state.filters.dataSaver ? 5 : Infinity;
 }
 
+function resolveItemIdentity(item = {}) {
+    if (!item || typeof item !== 'object') {
+        return { mangaId: '', source: '', isMetadataOnly: true };
+    }
+    const source = item.source || item.source_id || item.primary_source_id || item.primary_source || '';
+    const mangaId = item.id || item.manga_id || item.source_manga_id || item.mangaId || '';
+    if (source && mangaId) {
+        return { mangaId: String(mangaId), source: String(source), isMetadataOnly: false };
+    }
+    const malId = item.mal_id || item.malId || item.mal || item.malID || '';
+    if (malId) {
+        return { mangaId: String(malId), source: 'jikan', isMetadataOnly: true };
+    }
+    return {
+        mangaId: mangaId ? String(mangaId) : '',
+        source: source ? String(source) : '',
+        isMetadataOnly: !source
+    };
+}
+
 function applyFiltersToList(list, { skipSourceFilter = false } = {}) {
     const f = state.filters;
     if (!Array.isArray(list)) return [];
     let results = [...list];
 
     results = results.filter(item => {
-        const mangaId = item.mal_id || item.id || item.manga_id;
-        const sourceId = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
+        const { mangaId, source: sourceId } = resolveItemIdentity(item);
         if (!mangaId || !sourceId) return true;
         return !isHiddenManga(mangaId, sourceId);
     });
@@ -2190,7 +2212,7 @@ function applyFiltersToList(list, { skipSourceFilter = false } = {}) {
     // Skip source filter for curated feeds (discover/trending/popular)
     if (f.source && !skipSourceFilter) {
         results = results.filter(item => {
-            const sourceId = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
+            const sourceId = resolveItemIdentity(item).source;
             return sourceId ? sourceId === f.source : false;
         });
     }
@@ -3251,8 +3273,7 @@ function renderRecommendations() {
     const libraryKeys = new Set(state.library.map(item => item.key));
     const scored = [];
     pool.forEach(item => {
-        const mangaId = item.mal_id || item.id || item.manga_id;
-        const sourceId = item.source || item.source_id || (item.mal_id ? 'jikan' : '');
+        const { mangaId, source: sourceId } = resolveItemIdentity(item);
         const key = mangaId && sourceId ? getLibraryKey(mangaId, sourceId) : '';
         if (!mangaId || !sourceId || libraryKeys.has(key) || isHiddenManga(mangaId, sourceId)) return;
         const tags = (item.genres || item.tags || []).map(tag => String(tag).toLowerCase());
@@ -4280,15 +4301,15 @@ async function showRandomManga() {
     }
 
     const pick = filtered[Math.floor(Math.random() * filtered.length)];
-    const mangaId = pick.mal_id || pick.id || pick.manga_id;
+    const { mangaId, source } = resolveItemIdentity(pick);
     if (!mangaId) {
         showToast('Random pick missing ID');
         return;
     }
-    const source = pick.mal_id ? 'jikan' : (pick.source || state.currentSource || 'jikan');
+    const resolvedSource = source || state.currentSource || 'jikan';
     const title = pick.title || pick.name || 'Random Pick';
     showToast(`Random pick: ${title}`);
-    openMangaDetails(mangaId, source, title, pick);
+    openMangaDetails(mangaId, resolvedSource, title, pick);
 }
 
 function isInLibrary(mangaId, source) {
@@ -4594,9 +4615,9 @@ function prefetchCoverImages(items, limit = 8) {
  * Extracted to enable chunked rendering for large datasets.
  */
 function generateCardHtml(item) {
-    // For Jikan manga, use mal_id as the ID and 'jikan' as pseudo-source
-    const mangaId = item.mal_id || item.id || item.manga_id || `item-${Math.random().toString(36).slice(2)}`;
-    const source = item.mal_id ? 'jikan' : (item.source || 'unknown');
+    const identity = resolveItemIdentity(item);
+    const mangaId = identity.mangaId || `item-${Math.random().toString(36).slice(2)}`;
+    const source = identity.source || 'unknown';
     const isLibraryView = state.activeView === 'library';
     const libraryKey = item.key || (source && mangaId ? `${source}:${mangaId}` : '');
 
@@ -4883,6 +4904,13 @@ function saveNotesForCurrent() {
 function getSimilarManga(mangaData) {
     const tags = (mangaData?.tags || mangaData?.genres || []).map(t => String(t).toLowerCase());
     if (tags.length === 0) return [];
+    const currentIdentity = resolveItemIdentity(mangaData || {});
+    const currentIds = new Set([
+        currentIdentity.mangaId,
+        mangaData?.mal_id,
+        mangaData?.id,
+        mangaData?.manga_id
+    ].filter(Boolean));
     const tagSet = new Set(tags);
     const pool = [
         ...(state.feedCache.discover || []),
@@ -4892,10 +4920,10 @@ function getSimilarManga(mangaData) {
     const seen = new Set();
     const scored = [];
     pool.forEach(item => {
-        const id = item.mal_id || item.id || item.manga_id;
-        if (!id || id === mangaData?.mal_id || id === mangaData?.id) return;
-        if (seen.has(id)) return;
-        seen.add(id);
+        const { mangaId } = resolveItemIdentity(item);
+        if (!mangaId || currentIds.has(mangaId)) return;
+        if (seen.has(mangaId)) return;
+        seen.add(mangaId);
         const itemTags = (item.tags || item.genres || []).map(t => String(t).toLowerCase());
         const score = itemTags.reduce((acc, tag) => acc + (tagSet.has(tag) ? 1 : 0), 0);
         if (score > 0) {
@@ -4910,6 +4938,13 @@ async function renderSimilarManga(mangaData) {
     if (!els.similarGrid) return;
     const emptyStub = document.createElement('div');
     emptyStub.classList.add('hidden');
+    const currentIdentity = resolveItemIdentity(mangaData || {});
+    const currentIds = new Set([
+        currentIdentity.mangaId,
+        mangaData?.mal_id,
+        mangaData?.id,
+        mangaData?.manga_id
+    ].filter(Boolean));
 
     // Show loading state
     els.similarGrid.innerHTML = '<p style="padding: 16px; color: var(--text-muted);">Finding similar titles...</p>';
@@ -4938,8 +4973,8 @@ async function renderSimilarManga(mangaData) {
         }
         const results = await API.search(query, 12, null);
         const filtered = applyFiltersToList(results).filter(item => {
-            const id = item.mal_id || item.id || item.manga_id;
-            return id && id !== mangaData?.mal_id && id !== mangaData?.id;
+            const { mangaId } = resolveItemIdentity(item);
+            return mangaId && !currentIds.has(mangaId);
         });
         if (filtered.length) {
             renderMangaGrid(filtered.slice(0, 8), els.similarGrid, emptyStub);

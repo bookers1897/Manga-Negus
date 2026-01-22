@@ -24,75 +24,16 @@ import time
 import hashlib
 import threading
 import requests
+import asyncio
 from typing import Optional, Dict, List, Any
 from collections import OrderedDict
+from urllib.parse import urlparse
 
 
-class DiscoveryCache:
-    """Thread-safe in-memory cache for discovery results with configurable TTL."""
-
-    def __init__(self, max_size: int = 500):
-        self.max_size = max_size
-        self._cache: OrderedDict = OrderedDict()
-        self._lock = threading.Lock()
-        self._hits = 0
-        self._misses = 0
-
-    def _make_key(self, cache_type: str, page: int, limit: int) -> str:
-        """Generate cache key from type, page, and limit."""
-        data = f"{cache_type}:{page}:{limit}"
-        return hashlib.md5(data.encode()).hexdigest()
-
-    def get(self, cache_type: str, page: int, limit: int, ttl: int) -> Optional[Dict]:
-        """Get cached results if not expired."""
-        key = self._make_key(cache_type, page, limit)
-
-        with self._lock:
-            if key not in self._cache:
-                self._misses += 1
-                return None
-
-            entry = self._cache[key]
-
-            # Check expiration
-            if time.time() - entry['timestamp'] > ttl:
-                del self._cache[key]
-                self._misses += 1
-                return None
-
-            # Move to end (LRU)
-            self._cache.move_to_end(key)
-            self._hits += 1
-
-            return entry['data']
-
-    def set(self, cache_type: str, page: int, limit: int, data: List[Dict]):
-        """Cache discovery results."""
-        key = self._make_key(cache_type, page, limit)
-
-        with self._lock:
-            # Evict oldest if at capacity
-            if len(self._cache) >= self.max_size and key not in self._cache:
-                self._cache.popitem(last=False)
-
-            self._cache[key] = {
-                'data': data,
-                'timestamp': time.time()
-            }
-
-    def stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        with self._lock:
-            total_requests = self._hits + self._misses
-            hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0.0
-
-            return {
-                'size': len(self._cache),
-                'max_size': self.max_size,
-                'hits': self._hits,
-                'misses': self._misses,
-                'hit_rate': round(hit_rate, 2)
-            }
+from typing import Optional, Dict, List, Any
+from collections import OrderedDict
+from urllib.parse import urlparse
+from manganegus_app.cache import global_cache
 
 
 class DiscoveryService:
@@ -120,9 +61,11 @@ class DiscoveryService:
             'User-Agent': self.USER_AGENT,
             'Accept': 'application/json'
         })
-        self.cache = DiscoveryCache()
         self._last_request_time = 0
         self._lock = threading.Lock()
+
+    def _cache_key(self, type: str, page: int, limit: int) -> str:
+        return f"discovery:{type}:{page}:{limit}"
 
     def _rate_limit(self):
         """Ensure we don't exceed MangaDex rate limit."""
@@ -326,9 +269,36 @@ class DiscoveryService:
         # At least 70% word overlap
         return overlap / min_words >= 0.7
 
+    def _run_async(self, coro):
+        """Run async coroutine safely from sync context."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        if loop.is_running():
+            new_loop = asyncio.new_event_loop()
+            try:
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+
+        return loop.run_until_complete(coro)
+
+    def _is_mangadex_cover(self, url: Optional[str]) -> bool:
+        """Return True if the cover URL points to MangaDex assets."""
+        if not url:
+            return True
+        try:
+            host = urlparse(url).hostname or ""
+        except Exception:
+            return False
+        return host.endswith("mangadex.org") or host.endswith("mangadex.network")
+
     def _enrich_with_jikan(self, manga_list: List[Dict]) -> List[Dict]:
         """
-        Enrich MangaDex results with Jikan metadata (covers, ratings, etc.).
+        Enrich MangaDex results with Jikan metadata (covers, ratings, etc.) concurrently.
 
         Keeps MangaDex id and source for chapter fetching, but replaces
         cover_url and adds rating/metadata from Jikan/MAL.
@@ -345,12 +315,12 @@ class DiscoveryService:
             self._log(f"Could not load Jikan client: {e}")
             return manga_list
 
-        enriched = []
-        for manga in manga_list:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def enrich_single(manga):
             title = manga.get('title', '')
             if not title:
-                enriched.append(manga)
-                continue
+                return manga
 
             try:
                 # Search Jikan for this manga by title (get more results for better matching)
@@ -382,18 +352,84 @@ class DiscoveryService:
                         # Add MAL ID for reference
                         'mal_id': matched_jikan.get('mal_id'),
                     }
-                    enriched.append(enriched_manga)
                     self._log(f"Enriched: {title[:30]} -> MAL {matched_jikan.get('mal_id')}")
+                    return enriched_manga
                 else:
                     # No good Jikan match, keep original MangaDex data
-                    enriched.append(manga)
                     self._log(f"No Jikan match for: {title[:30]}")
+                    return manga
 
             except Exception as e:
                 self._log(f"Enrichment error for '{title[:20]}': {e}")
-                enriched.append(manga)
+                return manga
+
+        # Execute in parallel
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            enriched = list(executor.map(enrich_single, manga_list))
 
         return enriched
+
+    def _enrich_with_metadata(self, manga_list: List[Dict], max_items: int = 20) -> List[Dict]:
+        """
+        Enrich MangaDex results with AniList/MAL metadata for covers.
+
+        Only targets entries still using MangaDex covers after Jikan enrichment.
+        """
+        if not manga_list:
+            return manga_list
+
+        targets = [
+            manga for manga in manga_list
+            if self._is_mangadex_cover(manga.get('cover_url'))
+            and manga.get('title')
+        ]
+        if not targets:
+            return manga_list
+
+        async def _enrich():
+            try:
+                from manganegus_app.metadata.manager import get_metadata_manager
+                manager = await get_metadata_manager()
+            except Exception as exc:
+                self._log(f"Metadata manager unavailable: {exc}")
+                return manga_list
+
+            tasks = [
+                manager.get_enriched_metadata(manga.get('title'))
+                for manga in targets[:max_items]
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            updated = 0
+            for manga, metadata in zip(targets[:max_items], results):
+                if isinstance(metadata, Exception) or not metadata:
+                    continue
+
+                cover_override = (
+                    metadata.cover_image
+                    or metadata.cover_image_large
+                    or metadata.cover_image_medium
+                )
+                if cover_override:
+                    manga['cover_url'] = cover_override
+                    manga['cover_image'] = metadata.cover_image
+                    manga['cover_image_large'] = metadata.cover_image_large
+                    manga['cover_image_medium'] = metadata.cover_image_medium
+                    updated += 1
+
+                if metadata.mappings.get('mal') and not manga.get('mal_id'):
+                    manga['mal_id'] = metadata.mappings.get('mal')
+
+            if updated:
+                self._log(f"Metadata enrichment replaced covers for {updated} titles")
+
+            return manga_list
+
+        try:
+            return self._run_async(_enrich())
+        except Exception as e:
+            self._log(f"Metadata enrichment failed: {e}")
+            return manga_list
 
     def get_trending(self, page: int = 1, limit: int = 20) -> List[Dict]:
         """
@@ -402,7 +438,8 @@ class DiscoveryService:
         Algorithm: status=ongoing, order by latestUploadedChapter desc
         """
         # Check cache first
-        cached = self.cache.get('trending', page, limit, self.TTL_TRENDING)
+        key = self._cache_key('trending', page, limit)
+        cached = global_cache.get_json(key)
         if cached is not None:
             self._log(f"Trending page {page}: cache hit")
             return cached
@@ -435,9 +472,10 @@ class DiscoveryService:
                 self._log(f"Parse error: {e}")
                 continue
 
-        # Cache results (skip slow Jikan enrichment - use MangaDex covers directly)
         if results:
-            self.cache.set('trending', page, limit, results)
+            results = self._enrich_with_jikan(results)
+            results = self._enrich_with_metadata(results)
+            global_cache.set_json(key, results, self.TTL_TRENDING)
             self._log(f"Trending: cached {len(results)} results")
 
         return results
@@ -449,7 +487,8 @@ class DiscoveryService:
         Algorithm: offset 500+ to skip top popular, order by latestUploadedChapter desc
         """
         # Check cache first
-        cached = self.cache.get('discover', page, limit, self.TTL_DISCOVER)
+        key = self._cache_key('discover', page, limit)
+        cached = global_cache.get_json(key)
         if cached is not None:
             self._log(f"Discover page {page}: cache hit")
             return cached
@@ -483,9 +522,10 @@ class DiscoveryService:
                 self._log(f"Parse error: {e}")
                 continue
 
-        # Cache results (skip slow Jikan enrichment - use MangaDex covers directly)
         if results:
-            self.cache.set('discover', page, limit, results)
+            results = self._enrich_with_jikan(results)
+            results = self._enrich_with_metadata(results)
+            global_cache.set_json(key, results, self.TTL_DISCOVER)
             self._log(f"Discover: cached {len(results)} results")
 
         return results
@@ -497,7 +537,8 @@ class DiscoveryService:
         Algorithm: order by followedCount desc, prefer ongoing status
         """
         # Check cache first
-        cached = self.cache.get('popular', page, limit, self.TTL_POPULAR)
+        key = self._cache_key('popular', page, limit)
+        cached = global_cache.get_json(key)
         if cached is not None:
             self._log(f"Popular page {page}: cache hit")
             return cached
@@ -530,9 +571,10 @@ class DiscoveryService:
                 self._log(f"Parse error: {e}")
                 continue
 
-        # Cache results (skip slow Jikan enrichment - use MangaDex covers directly)
         if results:
-            self.cache.set('popular', page, limit, results)
+            results = self._enrich_with_jikan(results)
+            results = self._enrich_with_metadata(results)
+            global_cache.set_json(key, results, self.TTL_POPULAR)
             self._log(f"Popular: cached {len(results)} results")
 
         return results
@@ -572,7 +614,11 @@ class DiscoveryService:
 
     def cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring."""
-        return self.cache.stats()
+        return {
+            "type": "GlobalCache",
+            "is_redis": global_cache.is_redis
+        }
+
 
 
 # Singleton instance

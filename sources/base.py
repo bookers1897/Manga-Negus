@@ -25,6 +25,7 @@ from enum import Enum
 import time
 import threading
 import random
+from manganegus_app.cache import global_rate_limiter
 
 
 # =============================================================================
@@ -239,14 +240,16 @@ class BaseConnector(ABC):
         """
         Block until we have a token available for a request.
         
-        TOKEN BUCKET ALGORITHM:
-          - Bucket holds up to `rate_limit_burst` tokens
-          - Tokens regenerate at `rate_limit` per second
-          - Each request consumes 1 token
-          - If no tokens, we wait until one regenerates
-        
-        This prevents hammering servers and respects rate limits.
+        Uses GlobalRateLimiter (Redis-backed) if available to ensure shared limits
+        across Gunicorn workers. Falls back to internal token bucket.
         """
+        # 1. Global Rate Limit Check (Redis)
+        wait_time = global_rate_limiter.check(self.id, self.rate_limit, self.rate_limit_burst)
+        if wait_time > 0:
+            time.sleep(wait_time)
+            return
+
+        # 2. Local Fallback
         with self._lock:
             now = time.time()
             

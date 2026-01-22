@@ -386,6 +386,15 @@ class LuaRuntime:
         lua = self._lua
         g = lua.globals()
 
+        # Secure Sandbox: Remove dangerous I/O and OS functions
+        # This prevents RCE and file system access from malicious modules
+        g.os = None
+        g.io = None
+        g.package = None
+        g.dofile = None
+        g.loadfile = None
+        # keep require for FMD modules (we wrap it below)
+
         # Global objects
         g.HTTP = self.HTTP
         g.LINKS = self.LINKS

@@ -1,4 +1,4 @@
-const VERSION = 'v7';
+const VERSION = 'v8';
 const STATIC_CACHE = `manganegus-static-${VERSION}`;
 const DATA_CACHE = `manganegus-data-${VERSION}`;
 const IMAGE_CACHE = `manganegus-images-${VERSION}`;

@@ -68,8 +68,13 @@ export async function loadLibrary(filter = 'all') {
                 const cover = document.createElement('img');
                 cover.className = 'manga-card-cover';
 
+                // Prioritize metadata covers
+                const coverUrl = m.cover_image_large 
+                              || m.cover_image 
+                              || m.cover_image_medium 
+                              || m.cover;
+
                 // Don't proxy MAL images - use directly
-                const coverUrl = m.cover;
                 if (coverUrl && coverUrl.includes('myanimelist.net')) {
                     cover.src = coverUrl;
                 } else if (coverUrl) {

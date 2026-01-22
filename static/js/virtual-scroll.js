@@ -283,9 +283,10 @@ export function createMangaGrid(container, options = {}) {
                 node.innerHTML = renderCard(manga, index);
             } else {
                 // Default simple render
+                const cover = manga.cover_url || manga.cover_image || manga.cover || '';
                 node.innerHTML = `
                     <div class="manga-card" data-index="${index}">
-                        <img src="${manga.cover_url || ''}" alt="${manga.title || ''}" loading="lazy" />
+                        <img src="${cover}" alt="${manga.title || ''}" loading="lazy" />
                         <div class="card-title">${manga.title || 'Unknown'}</div>
                     </div>
                 `;

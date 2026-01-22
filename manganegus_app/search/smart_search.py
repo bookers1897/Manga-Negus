@@ -202,7 +202,7 @@ class SmartSearch:
         results: List[UnifiedSearchResult]
     ) -> List[UnifiedSearchResult]:
         """
-        Enrich results with external metadata.
+        Enrich results with external metadata concurrently.
 
         Fetches metadata from AniList, MAL, etc. for top results.
 
@@ -215,37 +215,50 @@ class SmartSearch:
         try:
             metadata_manager = await get_metadata_manager()
 
-            # Enrich first 10 results (to avoid rate limits)
-            for result in results[:10]:
-                try:
-                    metadata = await metadata_manager.get_enriched_metadata(
-                        result.title
-                    )
+            # Create enrichment tasks for top 10 results
+            tasks = [
+                metadata_manager.get_enriched_metadata(result.title)
+                for result in results[:10]
+            ]
+            
+            # Execute tasks in parallel
+            enrichment_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                    if metadata:
-                        result.metadata = {
-                            'rating': metadata.rating,
-                            'rating_anilist': metadata.rating_anilist,
-                            'rating_mal': metadata.rating_mal,
-                            'genres': metadata.genres,
-                            'tags': metadata.tags[:10],  # Limit tags
-                            'status': metadata.status.value if metadata.status else None,
-                            'year': metadata.year,
-                            'cover_image': metadata.cover_image,
-                            'synopsis': metadata.synopsis[:300] if metadata.synopsis else None,  # Preview
-                            'mappings': metadata.mappings
-                        }
-
-                        # Update confidence if we got good metadata
-                        if len(metadata.mappings) >= 2:
-                            result.match_confidence = 95.0
-
-                except Exception as e:
-                    logger.warning(f"Metadata enrichment failed for '{result.title}': {e}")
+            for result, metadata in zip(results[:10], enrichment_results):
+                if isinstance(metadata, Exception) or not metadata:
+                    if isinstance(metadata, Exception):
+                        logger.warning(f"Metadata enrichment failed for '{result.title}': {metadata}")
                     continue
 
+                result.metadata = {
+                    'rating': metadata.rating,
+                    'rating_anilist': metadata.rating_anilist,
+                    'rating_mal': metadata.rating_mal,
+                    'genres': metadata.genres,
+                    'tags': metadata.tags[:10],  # Limit tags
+                    'status': metadata.status.value if metadata.status else None,
+                    'year': metadata.year,
+                    'cover_image': metadata.cover_image,
+                    'cover_image_large': metadata.cover_image_large,
+                    'cover_image_medium': metadata.cover_image_medium,
+                    'synopsis': metadata.synopsis[:300] if metadata.synopsis else None,  # Preview
+                    'mappings': metadata.mappings
+                }
+
+                cover_override = (
+                    metadata.cover_image
+                    or metadata.cover_image_large
+                    or metadata.cover_image_medium
+                )
+                if cover_override:
+                    result.cover_url = cover_override
+
+                # Update confidence if we got good metadata
+                if len(metadata.mappings) >= 2:
+                    result.match_confidence = 95.0
+
         except Exception as e:
-            logger.error(f"Metadata enrichment failed: {e}")
+            logger.error(f"Global metadata enrichment failed: {e}")
 
         return results
 

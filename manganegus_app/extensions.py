@@ -29,6 +29,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "static", "downloads")
 LIBRARY_FILE = os.path.join(BASE_DIR, "library.json")
 HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
+QUEUE_FILE = os.path.join(BASE_DIR, "queue.json")
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 os.makedirs(os.path.join(BASE_DIR, "static", "images"), exist_ok=True)
@@ -190,7 +191,7 @@ class Library:
                     )
                     session.add(library_entry)
 
-                session.commit()
+        
                 log(f"📚 Added to library: {title}")
                 return key
 
@@ -275,7 +276,7 @@ class Library:
                     if library_entry:
                         library_entry.status = reading_status
                         library_entry.updated_at = datetime.now(timezone.utc)
-                        session.commit()
+                
         except Exception as e:
             log(f"❌ Database error: {e}")
             self._update_status_file(str(user_id) if user_id else None, key, status)
@@ -349,7 +350,7 @@ class Library:
                         if total_chapters is not None:
                             manga.chapters = int(total_chapters)
 
-                        session.commit()
+                
                         log(f"📖 Progress saved: Chapter {chapter} (page {page})")
         except Exception as e:
             log(f"❌ Database error: {e}")
@@ -424,7 +425,7 @@ class Library:
                     if library_entry:
                         title = manga.title
                         session.delete(library_entry)
-                        session.commit()
+                
                         log(f"🗑️ Removed: {title}")
         except Exception as e:
             log(f"❌ Database error: {e}")
@@ -501,10 +502,12 @@ class History:
         try:
             from .database import get_db_session
             from .models import HistoryEntry
+            from sqlalchemy.orm import joinedload
 
             with get_db_session() as session:
                 entries = (
                     session.query(HistoryEntry)
+                    .options(joinedload(HistoryEntry.manga))
                     .filter_by(user_id=str(user_id))
                     .order_by(HistoryEntry.last_viewed_at.desc())
                     .limit(limit)
@@ -612,7 +615,7 @@ class History:
                     )
                     session.add(entry)
 
-                session.commit()
+        
                 log(f"🕑 Tracked history: {title}")
                 return key
         except Exception as e:
@@ -693,6 +696,8 @@ class DownloadItem:
             "job_id": self.job_id,
             "title": self.title,
             "source": self.source_id,
+            "manga_id": self.manga_id,
+            "chapters": self.chapters,  # Include full chapter data for persistence
             "status": self.status,
             "chapters_total": len(self.chapters),
             "chapters_done": self.current_chapter_index,
@@ -722,8 +727,77 @@ class Downloader:
         self._lock = threading.Lock()
         # Stealth fingerprint for consistent browser identity
         self._fingerprint = SessionFingerprint() if HAS_STEALTH else None
+        
+        self._load_queue()
         self._start_worker()
-    
+
+    def _save_queue(self):
+        """Save queue to disk."""
+        try:
+            # Create a simplified copy of data to save, holding lock briefly
+            with self._lock:
+                queue_data = [item.to_dict(include_user=True) for item in self._queue]
+                paused = not self._pause_event.is_set()
+            
+            data = {
+                "queue": queue_data,
+                "paused": paused
+            }
+            
+            # Atomic write
+            tmp_file = QUEUE_FILE + ".tmp"
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp_file, QUEUE_FILE)
+        except Exception as e:
+            log(f"⚠️ Failed to save queue: {e}")
+
+    def _load_queue(self):
+        """Load queue from disk."""
+        if not os.path.exists(QUEUE_FILE):
+            return
+        try:
+            with open(QUEUE_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            if data.get("paused"):
+                self._pause_event.clear()
+            
+            queue_list = data.get("queue", [])
+            loaded_items = []
+            
+            for q in queue_list:
+                # Skip items that are definitely finished, but keep them if we want history? 
+                # Downloader memory queue usually keeps them for a session.
+                # Let's keep them but reset 'downloading' to 'queued'
+                
+                status = q.get('status', 'queued')
+                if status == 'downloading':
+                    status = 'queued'
+                
+                item = DownloadItem(
+                    job_id=q['job_id'],
+                    chapters=q.get('chapters', []),
+                    title=q['title'],
+                    source_id=q['source'],
+                    manga_id=q.get('manga_id', ''),
+                    user_id=q.get('user_id', '')
+                )
+                item.status = status
+                item.current_chapter_index = q.get('chapters_done', 0)
+                item.created_at = q.get('created_at', time.time())
+                item.completed_at = q.get('completed_at')
+                item.error = q.get('error')
+                
+                loaded_items.append(item)
+            
+            with self._lock:
+                self._queue = loaded_items
+                
+            log(f"📥 Loaded {len(loaded_items)} items from queue storage")
+        except Exception as e:
+            log(f"⚠️ Failed to load queue: {e}")
+
     def _sanitize(self, name: str) -> str:
         return "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
 
@@ -933,6 +1007,7 @@ class Downloader:
                     shutil.rmtree(temp_folder, ignore_errors=True)
                     item.status = "cancelled"
                     self._cancel_current.clear()
+                    self._save_queue()
                     return
 
                 # Write pages to disk in order
@@ -962,6 +1037,7 @@ class Downloader:
         # Completed all chapters
         item.status = "completed"
         item.completed_at = time.time()
+        self._save_queue()
         log("✨ All downloads completed!")
 
     def add_to_queue(self, chapters: List[Dict], title: str, source_id: str, manga_id: str = "", start_immediately: bool = True, user_id: str = "") -> str:
@@ -974,6 +1050,7 @@ class Downloader:
 
         with self._lock:
             self._queue.append(item)
+            self._save_queue()
 
         log(f"📥 Added to queue: {title} ({len(chapters)} chapters) - {'auto-start' if start_immediately else 'paused'}")
         return job_id
@@ -998,6 +1075,7 @@ class Downloader:
                     if user_id and item.user_id != user_id:
                         return False
                     item.status = "cancelled"
+                    self._save_queue()
                     log(f"⏹️ Cancelled: {item.title}")
                     return True
         return False
@@ -1008,6 +1086,7 @@ class Downloader:
             if user_id is not None:
                 return False
             self._pause_event.clear()
+            self._save_queue()
             log("⏸️ Downloads paused")
             return True
 
@@ -1017,6 +1096,7 @@ class Downloader:
                     return False
                 self._active_item.status = "paused"
                 self._pause_event.clear()
+                self._save_queue()
                 log(f"⏸️ Paused: {self._active_item.title}")
                 return True
         return False
@@ -1027,6 +1107,7 @@ class Downloader:
             if user_id is not None:
                 return False
             self._pause_event.set()
+            self._save_queue()
             log("▶️ Downloads resumed")
             return True
 
@@ -1036,6 +1117,7 @@ class Downloader:
                     return False
                 self._active_item.status = "downloading"
                 self._pause_event.set()
+                self._save_queue()
                 log(f"▶️ Resumed: {self._active_item.title}")
                 return True
 
@@ -1046,6 +1128,7 @@ class Downloader:
                         return False
                     item.status = "queued"
                     self._pause_event.set()
+                    self._save_queue()
                     return True
         return False
 
@@ -1104,6 +1187,7 @@ class Downloader:
                 self._queue = kept
                 return removed
             self._queue = [item for item in self._queue if item.status in ("queued", "downloading", "paused", "paused_queue")]
+            self._save_queue()
             return before - len(self._queue)
 
     def remove_from_queue(self, job_id: str, user_id: Optional[str] = None) -> bool:
@@ -1114,6 +1198,7 @@ class Downloader:
                     if user_id and item.user_id != user_id:
                         return False
                     del self._queue[i]
+                    self._save_queue()
                     return True
         return False
 

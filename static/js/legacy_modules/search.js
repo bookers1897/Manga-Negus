@@ -133,8 +133,15 @@ function createMangaCard(manga) {
     const cover = document.createElement('img');
     cover.className = 'manga-card-cover';
 
+    // Prioritize high-quality metadata covers if available
+    // This fixes the issue where MangaDex placeholders are used instead of AniList covers
+    const coverUrl = manga.cover_image_large 
+                  || manga.cover_image 
+                  || manga.cover_image_medium 
+                  || manga.cover_url 
+                  || manga.cover;
+
     // Jikan images don't need proxying - use directly from MAL CDN
-    const coverUrl = manga.cover_url || manga.cover;
     if (coverUrl && coverUrl.includes('myanimelist.net')) {
         cover.src = coverUrl;  // Direct URL for Jikan/MAL images
     } else if (coverUrl) {

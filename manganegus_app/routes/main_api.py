@@ -143,6 +143,10 @@ def proxy_image():
         # MyAnimeList CDN (Jikan covers)
         'cdn.myanimelist.net',
 
+        # AniList CDN (metadata covers)
+        's4.anilist.co',
+        '*.anilist.co',
+
         # WeebCentral V2 CDNs
         'official.lowee.us',
         'temp.compsci88.com',

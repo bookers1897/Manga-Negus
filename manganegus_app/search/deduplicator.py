@@ -35,7 +35,11 @@ from rapidfuzz import fuzz
 
 # Import MangaResult from sources (don't duplicate it)
 import sys
-sys.path.insert(0, '/home/kingwavy/projects/Manga-Negus')
+import os
+# Resolve project root dynamically
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 from sources.base import MangaResult
 
 logger = logging.getLogger(__name__)
@@ -96,38 +100,45 @@ class SearchDeduplicator:
       4. Merge into unified result
     """
 
-    # Source priority order (Phase 0 from CLAUDE.md)
+    # Source priority order (sync with sources/__init__.py)
     SOURCE_PRIORITY = {
-        'lua-weebcentral': 1,  # 1170 chapters for One Piece!
-        'mangadex': 2,
-        'manganato': 3,
-        'mangafire': 4,
-        'annas-archive': 5,
-        'comicx': 6,
-        'mangasee': 7,
-        'mangahere': 8,
-        'mangakakalot': 9,
-        'mangafreak': 10,
-        'mangakatana': 11,
-        'mangapark': 12,
-        'mangabuddy': 13,
-        'mangareader': 14,
-        'asurascans': 15,
-        'flamescans': 16,
-        'tcbscans': 17,
-        'reaperscans': 18,
-        'weebcentral': 19,
-        'comick': 20,
+        'weebcentral-v2': 1,   # Primary - HTMX breakthrough (curl_cffi)
+        'mangadex': 2,         # Secondary - Official API, reliable
+        'mangafreak': 3,       # Backup with good coverage
+        'mangasee-v2': 4,      # Cloudflare bypass
+        'manganato-v2': 5,     # Cloudflare bypass
+        'mangafire': 6,        # Solid backup
+        'comicx': 7,           # Recent addition
+        # Legacy/secondary sources
+        'lua-weebcentral': 20,
+        'manganato': 21,
+        'annas-archive': 22,
+        'mangasee': 23,
+        'mangahere': 24,
+        'mangakakalot': 25,
+        'mangakatana': 26,
+        'mangapark': 27,
+        'mangabuddy': 28,
+        'mangareader': 29,
+        'asurascans': 30,
+        'flamescans': 31,
+        'tcbscans': 32,
+        'reaperscans': 33,
+        'weebcentral': 34,
+        'comick': 35,
     }
 
     # Source display names
     SOURCE_NAMES = {
+        'weebcentral-v2': 'WeebCentral',
         'lua-weebcentral': 'WeebCentral',
         'mangadex': 'MangaDex',
         'manganato': 'MangaNato',
         'mangafire': 'MangaFire',
         'annas-archive': "Anna's Archive",
         'comicx': 'ComicX',
+        'manganato-v2': 'MangaNato',
+        'mangasee-v2': 'MangaSee',
         'mangasee': 'MangaSee',
         'mangahere': 'MangaHere',
         'mangakakalot': 'MangaKakalot',

@@ -16,39 +16,50 @@ manga_bp = Blueprint('manga_api', __name__, url_prefix='/api')
 _smart_search = SmartSearch()
 
 def _enrich_with_jikan(manga_list):
-    """Enrich manga list with Jikan metadata (MAL data)"""
+    """Enrich manga list with Jikan metadata (MAL data) concurrently."""
     try:
         jikan = get_jikan_client()
-        enriched = []
+        
+        from concurrent.futures import ThreadPoolExecutor
+        
+        def enrich_single(manga):
+            try:
+                # Search Jikan for this manga
+                jikan_results = jikan.search_manga(manga.get('title', ''), limit=1)
+                
+                if jikan_results:
+                    jikan_data = jikan_results[0]
+                    # Merge Jikan metadata
+                    manga_dict = manga if isinstance(manga, dict) else manga.to_dict()
+                    manga_dict.update({
+                        'cover_url': jikan_data['cover_url'],
+                        'synopsis': jikan_data.get('synopsis'),
+                        'rating': jikan_data.get('rating'),
+                        'genres': jikan_data.get('genres', []),
+                        'tags': jikan_data.get('tags', []),
+                        'author': jikan_data.get('author'),
+                        'status': jikan_data.get('status'),
+                        'type': jikan_data.get('type'),
+                        'year': jikan_data.get('year'),
+                        'volumes': jikan_data.get('volumes'),
+                        'mal_id': jikan_data.get('mal_id'),
+                    })
+                    return manga_dict
+                else:
+                    return manga if isinstance(manga, dict) else manga.to_dict()
+            except Exception as e:
+                log(f"⚠️ Single enrichment failed: {e}")
+                return manga if isinstance(manga, dict) else manga.to_dict()
 
-        for manga in manga_list:
-            # Search Jikan for this manga
-            jikan_results = jikan.search_manga(manga.get('title', ''), limit=1)
-
-            if jikan_results:
-                jikan_data = jikan_results[0]
-                # Merge Jikan metadata
-                manga_dict = manga if isinstance(manga, dict) else manga.to_dict()
-                manga_dict.update({
-                    'cover_url': jikan_data['cover_url'],
-                    'synopsis': jikan_data.get('synopsis'),
-                    'rating': jikan_data.get('rating'),
-                    'genres': jikan_data.get('genres', []),
-                    'tags': jikan_data.get('tags', []),
-                    'author': jikan_data.get('author'),
-                    'status': jikan_data.get('status'),
-                    'type': jikan_data.get('type'),
-                    'year': jikan_data.get('year'),
-                    'volumes': jikan_data.get('volumes'),
-                    'mal_id': jikan_data.get('mal_id'),
-                })
-                enriched.append(manga_dict)
-            else:
-                enriched.append(manga if isinstance(manga, dict) else manga.to_dict())
-
+        # Execute in parallel
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # map preserves order
+            enriched = list(executor.map(enrich_single, manga_list))
+            
         return enriched
+
     except Exception as e:
-        log(f"⚠️ Jikan enrichment failed: {e}")
+        log(f"⚠️ Jikan enrichment pool failed: {e}")
         # Return original data if enrichment fails
         return [m if isinstance(m, dict) else m.to_dict() for m in manga_list]
 
@@ -125,6 +136,12 @@ def search():
             results = []
             for item in smart_results:
                 metadata = item.get('metadata', {}) or {}
+                cover_override = (
+                    metadata.get('cover_image')
+                    or metadata.get('cover_image_large')
+                    or metadata.get('cover_image_medium')
+                )
+                cover_url = cover_override or item.get('cover_url', '')
 
                 # Get the primary source info
                 sources = item.get('sources', [])
@@ -135,8 +152,11 @@ def search():
                     'id': primary_source_info.get('manga_id', item.get('id', '')),
                     'source': item.get('primary_source_id', primary_source_info.get('source_id', '')),
                     'source_name': item.get('primary_source', primary_source_info.get('source_name', '')),
-                    'cover_url': item.get('cover_url', ''),
-                    'cover': item.get('cover_url', ''),
+                    'cover_url': cover_url,
+                    'cover': cover_url,
+                    'cover_image': metadata.get('cover_image'),
+                    'cover_image_large': metadata.get('cover_image_large'),
+                    'cover_image_medium': metadata.get('cover_image_medium'),
                     'synopsis': item.get('description') or metadata.get('synopsis', ''),
                     'rating': metadata.get('rating'),
                     'genres': metadata.get('genres', []),
