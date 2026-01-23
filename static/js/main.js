@@ -8657,9 +8657,10 @@ async function handleLogout() {
 async function checkAuthStatus() {
     state.auth.isLoading = true;
     try {
-        const user = await API.authMe();
-        if (user) {
-            state.auth.user = user;
+        const response = await API.authMe();
+        // API returns { authenticated: true, user: {...} } or { authenticated: false }
+        if (response && response.authenticated && response.user) {
+            state.auth.user = response.user;  // Extract just the user object
             state.auth.isLoggedIn = true;
         } else {
             state.auth.user = null;
