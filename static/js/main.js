@@ -1157,6 +1157,119 @@ const API = {
             method: 'POST',
             body: JSON.stringify(updates)
         });
+    },
+
+    // ========================================
+    // Reading Progress API (NEG-16, NEG-32, NEG-33)
+    // ========================================
+
+    /**
+     * Save reading progress for a chapter.
+     * @param {Object} params - Progress data
+     * @param {string} params.mangaId - Manga ID (source:id format)
+     * @param {string} params.chapterId - Chapter ID
+     * @param {number} params.currentPage - Current page number
+     * @param {number} [params.totalPages] - Total pages in chapter
+     * @param {string} [params.chapterNumber] - Chapter number/name
+     * @param {boolean} [params.isCompleted] - Whether chapter is completed
+     * @param {string} [params.mangaTitle] - Manga title (for history)
+     * @param {string} [params.mangaCover] - Manga cover URL (for history)
+     * @param {string} [params.chapterTitle] - Chapter title (for history)
+     */
+    async saveReadingProgressAPI(params) {
+        const payload = {
+            manga_id: params.mangaId,
+            chapter_id: params.chapterId,
+            current_page: params.currentPage || 1
+        };
+        if (params.source) payload.source = params.source;
+        if (params.totalPages) payload.total_pages = params.totalPages;
+        if (params.chapterNumber) payload.chapter_number = params.chapterNumber;
+        if (params.isCompleted !== undefined) payload.is_completed = params.isCompleted;
+        if (params.mangaTitle) payload.manga_title = params.mangaTitle;
+        if (params.mangaCover) payload.manga_cover = params.mangaCover;
+        if (params.chapterTitle) payload.chapter_title = params.chapterTitle;
+
+        return this.request('/api/progress/save', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    /**
+     * Get all chapter progress for a manga.
+     * @param {string} mangaId - Manga ID (source:id format)
+     * @returns {Promise<Object>} Progress data with chapters array
+     */
+    async getMangaProgress(mangaId) {
+        return this.request(`/api/progress/manga/${encodeURIComponent(mangaId)}`, { silent: true });
+    },
+
+    /**
+     * Get progress for a specific chapter.
+     * @param {string} chapterId - Chapter ID
+     * @param {string} [mangaId] - Optional manga ID filter
+     * @returns {Promise<Object|null>} Chapter progress or null
+     */
+    async getChapterProgress(chapterId, mangaId = null) {
+        let url = `/api/progress/chapter/${encodeURIComponent(chapterId)}`;
+        if (mangaId) url += `?manga_id=${encodeURIComponent(mangaId)}`;
+        return this.request(url, { silent: true });
+    },
+
+    /**
+     * Get reading history timeline.
+     * @param {number} [limit=20] - Number of entries
+     * @param {number} [offset=0] - Pagination offset
+     * @param {string} [mangaId] - Filter by manga ID
+     * @returns {Promise<Object>} History entries
+     */
+    async getReadingHistory(limit = 20, offset = 0, mangaId = null) {
+        let url = `/api/progress/history?limit=${limit}&offset=${offset}`;
+        if (mangaId) url += `&manga_id=${encodeURIComponent(mangaId)}`;
+        return this.request(url, { silent: true });
+    },
+
+    /**
+     * Get manga to continue reading.
+     * @param {number} [limit=10] - Number of entries
+     * @returns {Promise<Object>} Continue reading list
+     */
+    async getContinueReading(limit = 10) {
+        return this.request(`/api/progress/continue?limit=${limit}`, { silent: true });
+    },
+
+    /**
+     * Mark a chapter as fully read.
+     * @param {Object} params - Chapter data
+     */
+    async markChapterRead(params) {
+        const payload = {
+            manga_id: params.mangaId,
+            chapter_id: params.chapterId
+        };
+        if (params.source) payload.source = params.source;
+        if (params.chapterNumber) payload.chapter_number = params.chapterNumber;
+        if (params.totalPages) payload.total_pages = params.totalPages;
+        if (params.mangaTitle) payload.manga_title = params.mangaTitle;
+        if (params.mangaCover) payload.manga_cover = params.mangaCover;
+
+        return this.request('/api/progress/mark-read', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    /**
+     * Clear reading progress for a manga or all manga.
+     * @param {string} [mangaId] - Manga ID to clear (or all if not provided)
+     */
+    async clearReadingProgress(mangaId = null) {
+        const payload = mangaId ? { manga_id: mangaId } : {};
+        return this.request('/api/progress/clear', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
     }
 };
 
@@ -3223,6 +3336,39 @@ async function loadTrendingView(page = 1, { append = false } = {}) {
 // ========================================
 // Library Management
 // ========================================
+
+/**
+ * Load continue reading data from the progress API.
+ * Falls back to local library data if API fails.
+ * @param {number} limit - Number of items to fetch
+ * @returns {Promise<Array>} Continue reading items
+ */
+async function loadContinueReadingFromAPI(limit = 5) {
+    if (!state.auth.isLoggedIn) return [];
+
+    try {
+        const data = await API.getContinueReading(limit);
+        if (data && data.continue) {
+            return data.continue.map(item => ({
+                id: item.manga_id.split(':').slice(1).join(':') || item.manga_id,
+                manga_id: item.manga_id.split(':').slice(1).join(':') || item.manga_id,
+                source: item.source_id,
+                title: item.manga_title,
+                cover: item.manga_cover,
+                last_chapter: item.last_chapter_number,
+                last_chapter_id: item.last_chapter_id,
+                last_page: item.current_page,
+                last_page_total: item.total_pages,
+                last_read_at: item.last_read_at,
+                key: item.manga_id
+            }));
+        }
+    } catch (err) {
+        log(`Continue reading API failed: ${err.message}`);
+    }
+    return [];
+}
+
 function renderContinueReading() {
     if (!els.continueReading) return;
 
@@ -6104,6 +6250,8 @@ async function saveReadingProgress() {
             showToast('Progress saved offline');
             return;
         }
+
+        // Save to library progress API (per-manga tracking)
         await API.updateProgress(
             key,
             String(chapterValue),
@@ -6112,6 +6260,25 @@ async function saveReadingProgress() {
             totalChapters,
             pageTotal
         );
+
+        // Also save to reading progress API (per-chapter tracking) - NEG-16/32/33
+        // This enables granular chapter progress and continue reading features
+        if (state.currentChapterId) {
+            const isCompleted = pageTotal && pageValue >= pageTotal;
+            API.saveReadingProgressAPI({
+                mangaId: key,
+                source: state.currentManga.source,
+                chapterId: state.currentChapterId,
+                currentPage: pageValue,
+                totalPages: pageTotal,
+                chapterNumber: String(chapterValue),
+                isCompleted: isCompleted,
+                mangaTitle: state.currentManga.title,
+                mangaCover: state.currentManga.cover || state.currentManga.data?.cover_url,
+                chapterTitle: state.currentChapterTitle
+            }).catch(err => log(`Chapter progress save failed: ${err.message}`));
+        }
+
         const updateData = {
             last_chapter: String(chapterValue),
             last_page: pageValue,

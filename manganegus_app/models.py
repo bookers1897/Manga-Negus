@@ -73,7 +73,9 @@ class User(Base, FlaskLoginUserMixin, TimestampMixin):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     display_name = Column(String(100))
+    avatar_url = Column(String(500), nullable=True)  # Profile picture URL
     is_admin = Column(Boolean, default=False)
+    last_login = Column(DateTime, nullable=True)  # Track last login time
     preferences = Column(JSON, default={})
     
     # Relationships
@@ -92,8 +94,11 @@ class User(Base, FlaskLoginUserMixin, TimestampMixin):
             'id': self.id,
             'email': self.email,
             'display_name': self.display_name,
+            'avatar_url': self.avatar_url,
             'is_admin': self.is_admin,
-            'preferences': self.preferences
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'preferences': self.preferences,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 # =============================================================================
@@ -264,10 +269,112 @@ class MetadataCache(Base):
 class ChapterCache(Base):
     """Cache for chapter lists from sources."""
     __tablename__ = 'chapter_cache'
-    
+
     key = Column(String(255), primary_key=True) # e.g. "mangadex:c0ee..."
     chapters = Column(JSON, nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class SearchCache(Base):
+    """Cache for advanced search results."""
+    __tablename__ = 'search_cache'
+
+    key = Column(String(255), primary_key=True)
+    data = Column(JSON, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index('ix_search_cache_expires_at', 'expires_at'),
+    )
+
+
+# =============================================================================
+# READING PROGRESS & HISTORY (NEG-16, NEG-32, NEG-33)
+# =============================================================================
+
+class ReadingProgress(Base, TimestampMixin):
+    """
+    Tracks per-chapter reading progress.
+    Allows users to resume reading from exact page in any chapter.
+    """
+    __tablename__ = 'reading_progress'
+
+    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(UUIDType(), ForeignKey('users.id'), nullable=True)  # Optional for anon users
+    manga_id = Column(String(500), nullable=False)  # source:manga_id format
+    source_id = Column(String(50), nullable=False)
+    chapter_id = Column(String(500), nullable=False)
+    chapter_number = Column(String(50))  # e.g., "1", "1.5", "Special"
+    current_page = Column(Integer, default=1)
+    total_pages = Column(Integer)
+    is_completed = Column(Boolean, default=False)
+    last_read_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", backref="reading_progress")
+
+    __table_args__ = (
+        Index('idx_reading_progress_user_manga', 'user_id', 'manga_id'),
+        Index('idx_reading_progress_last_read', 'user_id', 'last_read_at'),
+        UniqueConstraint('user_id', 'manga_id', 'chapter_id', name='uq_user_manga_chapter'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'manga_id': self.manga_id,
+            'source_id': self.source_id,
+            'chapter_id': self.chapter_id,
+            'chapter_number': self.chapter_number,
+            'current_page': self.current_page,
+            'total_pages': self.total_pages,
+            'is_completed': self.is_completed,
+            'last_read_at': self.last_read_at.isoformat() if self.last_read_at else None
+        }
+
+
+class ReadingHistory(Base):
+    """
+    Reading history log for timeline view.
+    Records each chapter read for history tracking.
+    """
+    __tablename__ = 'reading_history'
+
+    id = Column(UUIDType(), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(UUIDType(), ForeignKey('users.id'), nullable=True)
+    manga_id = Column(String(500), nullable=False)  # source:manga_id format
+    source_id = Column(String(50), nullable=False)
+    manga_title = Column(String(500))
+    manga_cover = Column(String(500))
+    chapter_id = Column(String(500), nullable=False)
+    chapter_num = Column(String(50))
+    chapter_title = Column(String(500))
+    pages_read = Column(Integer, default=0)
+    total_pages = Column(Integer)
+    read_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User", backref="reading_history")
+
+    __table_args__ = (
+        Index('idx_reading_history_user', 'user_id', 'read_at'),
+        Index('idx_reading_history_manga', 'user_id', 'manga_id'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'manga_id': self.manga_id,
+            'source_id': self.source_id,
+            'manga_title': self.manga_title,
+            'manga_cover': self.manga_cover,
+            'chapter_id': self.chapter_id,
+            'chapter_num': self.chapter_num,
+            'chapter_title': self.chapter_title,
+            'pages_read': self.pages_read,
+            'total_pages': self.total_pages,
+            'read_at': self.read_at.isoformat() if self.read_at else None
+        }
 
 # Keep legacy names for now to avoid breaking imports during migration
 Manga = SourceLink

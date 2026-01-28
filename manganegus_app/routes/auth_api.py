@@ -79,6 +79,18 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def optional_login(f):
+    """
+    Decorator that populates g.current_user if authenticated, but doesn't require it.
+    Useful for endpoints that work for both anonymous and authenticated users.
+    """
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        # g.current_user is already set by set_current_user in before_request
+        # This decorator just documents that auth is optional
+        return f(*args, **kwargs)
+    return decorated_function
+
 def get_current_user():
     """Get the currently logged-in user from session (Legacy helper)."""
     return current_user if current_user.is_authenticated else None
@@ -210,24 +222,37 @@ def update_profile():
     """Update user profile."""
     data = request.get_json(silent=True) or {}
     display_name = data.get('display_name')
+    avatar_url = data.get('avatar_url')
     preferences = data.get('preferences')
     new_password = data.get('new_password')
     current_password = data.get('current_password')
-    
+
     try:
         with get_db_session() as db:
             # Need to re-fetch user within session to update
             user = db.query(User).get(current_user.id)
-            
+
             if display_name is not None:
                 user.display_name = str(display_name).strip()[:MAX_DISPLAY_NAME_LENGTH]
-            
+
+            # Update avatar URL (validate it's a safe URL)
+            if avatar_url is not None:
+                avatar_url = str(avatar_url).strip()
+                if avatar_url:
+                    # Only allow http/https URLs
+                    if avatar_url.startswith(('http://', 'https://')):
+                        user.avatar_url = avatar_url[:500]  # Limit length
+                    else:
+                        return jsonify({'error': 'Invalid avatar URL (must be http/https)'}), 400
+                else:
+                    user.avatar_url = None  # Allow clearing the avatar
+
             if isinstance(preferences, dict):
                 # Merge preferences
                 current_prefs = dict(user.preferences or {})
                 current_prefs.update(preferences)
                 user.preferences = current_prefs
-            
+
             if new_password:
                 if not current_password:
                     return jsonify({'error': 'Current password required'}), 400
@@ -247,13 +272,23 @@ def update_profile():
 @login_required
 def get_sessions():
     """Get active sessions (stub)."""
+    # Parse user agent for device info
+    ua = request.user_agent
+    device = 'Desktop'
+    if ua.platform:
+        if 'iphone' in ua.platform.lower() or 'android' in ua.platform.lower():
+            device = 'Mobile'
+        elif 'ipad' in ua.platform.lower():
+            device = 'Tablet'
+
     # In a real implementation, we'd query a sessions table
     return jsonify({
         'sessions': [{
             'id': 'current',
-            'current': True,
+            'is_current': True,
             'ip': request.remote_addr,
-            'ua': request.user_agent.string,
+            'device': device,
+            'browser': ua.browser or 'Unknown',
             'created_at': datetime.now(timezone.utc).isoformat()
         }]
     })
