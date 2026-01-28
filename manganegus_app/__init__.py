@@ -164,10 +164,11 @@ def create_app():
     from .routes.cloud_api import cloud_bp
     from .routes.auth_api import auth_bp
     from .routes.progress_api import progress_bp
-    from .routes.search_api import search_bp
+    from .routes.search_api import search_bp, search_legacy_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(search_bp)
+    app.register_blueprint(search_legacy_bp)
     app.register_blueprint(sources_bp)
     app.register_blueprint(manga_bp)
     app.register_blueprint(library_bp)
