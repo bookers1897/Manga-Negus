@@ -20,12 +20,39 @@ RATE LIMITING:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Callable
+from typing import List, Optional, Dict, Any, Callable, Union
 from enum import Enum
 import time
 import threading
 import random
 from manganegus_app.cache import global_rate_limiter
+
+
+# =============================================================================
+# USER AGENT ROTATION POOL
+# =============================================================================
+
+USER_AGENTS = [
+    # Chrome on Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    # Chrome on macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Chrome on Linux
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    # Firefox on Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+    # Firefox on macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0',
+    # Safari on macOS
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    # Edge on Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+]
 
 
 # =============================================================================
@@ -67,9 +94,6 @@ class SourceStatus(Enum):
 class MangaResult:
     """
     Standardized manga result that works across ALL sources.
-    
-    No matter if we're fetching from MangaDex API or scraping MangaKakalot,
-    the frontend always receives this same structure.
     """
     id: str                          # Unique ID (source-specific)
     title: str                       # Display title
@@ -150,13 +174,65 @@ class ChapterResult:
 
 @dataclass
 class PageResult:
-# ... (PageResult remains unchanged) ...
+    """Standardized page/image information."""
+    url: str                         # Image URL
+    index: int                       # Page number (0-indexed)
+    headers: Dict[str, str] = field(default_factory=dict)
+    referer: Optional[str] = None    # Required referer header
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to JSON-serializable dictionary."""
+        return {
+            "url": self.url,
+            "index": self.index,
+            "headers": self.headers,
+            "referer": self.referer
+        }
 
-# ... (BaseConnector class definition) ...
 
-    # =========================================================================
-    # INITIALIZATION
-    # =========================================================================
+# =============================================================================
+# BASE CONNECTOR CLASS
+# =============================================================================
+
+class BaseConnector(ABC):
+    """
+    Abstract base class for manga source connectors.
+
+    RATE LIMITING:
+        Uses GlobalRateLimiter (Redis-backed) if available to ensure shared limits
+        across Gunicorn workers. Falls back to internal token bucket.
+
+    RETRY LOGIC:
+        fetch_with_retry() provides exponential backoff with jitter and UA rotation
+        for handling transient failures, rate limits, and Cloudflare blocks.
+    """
+
+    id: str = "base"                 # Unique identifier
+    name: str = "Base Source"        # Display name
+    base_url: str = ""               # Root URL
+    icon: str = "📚"                 # Emoji for UI
+
+    # URL Detection
+    url_patterns: List[str] = []     # Regex patterns for URL matching
+
+    # Rate limiting
+    rate_limit: float = 2.0          # Sustained rate
+    rate_limit_burst: int = 5        # Burst allowance
+    request_timeout: int = 15        # Request timeout seconds
+
+    # Retry configuration
+    MAX_RETRIES: int = 4             # Maximum retry attempts
+    BACKOFF_BASE: float = 2.0        # Base seconds for exponential backoff
+    BACKOFF_MAX: float = 60.0        # Maximum backoff time
+
+    # Feature flags
+    supports_latest: bool = False
+    supports_popular: bool = False
+    requires_cloudflare: bool = False
+    is_file_source: bool = False
+
+    # Supported languages
+    languages: List[str] = ["en"]
     
     def __init__(self):
         """Initialize connector with rate limiter state."""
@@ -198,24 +274,178 @@ class PageResult:
         ]
         
         if any(sig in text_lower for sig in block_signatures):
-            # Double check it's not just a mention in content
-            if len(text) < 5000:  # Block pages are usually small
-                source_log(f"[{self.id}] 🚫 Blocked/Captcha detected at {url}")
+            if len(text) < 5000:
+                source_log(f"[{self.id}] Blocked/Captcha detected at {url}")
                 self._handle_cloudflare()
                 return False
-                
+
         return True
 
-    # =========================================================================
-    # RATE LIMITING (Token Bucket Algorithm)
-    # =========================================================================
-    
+    def _get_random_user_agent(self) -> str:
+        """Get a random User-Agent from the pool."""
+        return random.choice(USER_AGENTS)
+
+    def fetch_with_retry(
+        self,
+        url: str,
+        method: str = "GET",
+        validate_response: bool = True,
+        **kwargs
+    ) -> Any:
+        """
+        Fetch URL with exponential backoff, jitter, and UA rotation.
+
+        Args:
+            url: The URL to fetch
+            method: HTTP method (GET or POST)
+            validate_response: Whether to check for Cloudflare/block signatures
+            **kwargs: Additional arguments passed to session.request()
+
+        Returns:
+            Response object on success
+
+        Raises:
+            Last exception encountered after all retries exhausted
+        """
+        if not self.session:
+            raise RuntimeError(f"[{self.id}] Session not initialized")
+
+        last_error: Optional[Exception] = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                # Wait for rate limit before each attempt
+                self._wait_for_rate_limit()
+
+                # Rotate User-Agent on each attempt
+                headers = kwargs.get('headers', {}).copy()
+                if 'User-Agent' not in headers:
+                    headers['User-Agent'] = self._get_random_user_agent()
+                kwargs['headers'] = headers
+
+                # Set timeout if not specified
+                if 'timeout' not in kwargs:
+                    kwargs['timeout'] = self.request_timeout
+
+                # Make the request
+                if method.upper() == "POST":
+                    response = self.session.post(url, **kwargs)
+                else:
+                    response = self.session.get(url, **kwargs)
+
+                # Handle rate limiting (429)
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get('Retry-After', 5))
+                    source_log(f"[{self.id}] Rate limited (429), waiting {retry_after}s")
+                    self._handle_rate_limit(retry_after)
+                    time.sleep(retry_after)
+                    continue
+
+                # Handle Cloudflare/forbidden (403)
+                if response.status_code == 403:
+                    source_log(f"[{self.id}] Forbidden (403) at {url}, attempt {attempt + 1}/{self.MAX_RETRIES}")
+                    self._handle_cloudflare()
+                    wait = min(self.BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 1), self.BACKOFF_MAX)
+                    time.sleep(wait)
+                    continue
+
+                # Handle server errors (5xx)
+                if response.status_code >= 500:
+                    source_log(f"[{self.id}] Server error ({response.status_code}) at {url}, attempt {attempt + 1}/{self.MAX_RETRIES}")
+                    wait = min(self.BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 1), self.BACKOFF_MAX)
+                    time.sleep(wait)
+                    continue
+
+                # Raise for other client errors
+                response.raise_for_status()
+
+                # Validate response content for soft blocks
+                if validate_response and hasattr(response, 'text'):
+                    if not self._validate_response(response.text, url):
+                        wait = min(self.BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 1), self.BACKOFF_MAX)
+                        time.sleep(wait)
+                        continue
+
+                # Success
+                self._handle_success()
+                return response
+
+            except Exception as e:
+                last_error = e
+                self._handle_error(str(e))
+                source_log(f"[{self.id}] Request failed ({type(e).__name__}): {e}, attempt {attempt + 1}/{self.MAX_RETRIES}")
+
+                # Exponential backoff with jitter
+                wait = min(self.BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 1), self.BACKOFF_MAX)
+                time.sleep(wait)
+
+        # All retries exhausted
+        source_log(f"[{self.id}] All {self.MAX_RETRIES} retries exhausted for {url}")
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"[{self.id}] Failed to fetch {url} after {self.MAX_RETRIES} retries")
+
+    def fetch_image_with_retry(
+        self,
+        url: str,
+        referer: Optional[str] = None,
+        extra_headers: Optional[Dict[str, str]] = None,
+        **kwargs
+    ) -> bytes:
+        """
+        Fetch image with retry logic optimized for image loading.
+
+        Handles common image loading failures:
+        - 403 Forbidden (hotlink protection, requires referer)
+        - 503 Service Unavailable (server overload)
+        - Cloudflare challenges
+        - Connection timeouts
+
+        Args:
+            url: Image URL to fetch
+            referer: Referer header (often required for hotlink protection)
+            extra_headers: Additional headers to include
+            **kwargs: Additional arguments passed to fetch_with_retry()
+
+        Returns:
+            Image content as bytes
+
+        Raises:
+            Exception on failure after all retries
+        """
+        headers = extra_headers.copy() if extra_headers else {}
+
+        # Set referer for hotlink protection bypass
+        if referer:
+            headers['Referer'] = referer
+        elif self.base_url:
+            headers['Referer'] = self.base_url
+
+        # Common image request headers
+        headers.setdefault('Accept', 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8')
+        headers.setdefault('Accept-Language', 'en-US,en;q=0.9')
+        headers.setdefault('Sec-Fetch-Dest', 'image')
+        headers.setdefault('Sec-Fetch-Mode', 'no-cors')
+        headers.setdefault('Sec-Fetch-Site', 'cross-site')
+
+        # Use longer timeout for images
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = 30
+
+        # Don't validate response text for binary image data
+        response = self.fetch_with_retry(
+            url,
+            headers=headers,
+            validate_response=False,
+            **kwargs
+        )
+
+        return response.content
+
     def _wait_for_rate_limit(self) -> None:
         """
         Block until we have a token available for a request.
-        
-        Uses GlobalRateLimiter (Redis-backed) if available to ensure shared limits
-        across Gunicorn workers. Falls back to internal token bucket.
+        Uses GlobalRateLimiter (Redis-backed) if available.
         """
         # 1. Global Rate Limit Check (Redis)
         wait_time = global_rate_limiter.check(self.id, self.rate_limit, self.rate_limit_burst)
@@ -227,37 +457,36 @@ class PageResult:
         with self._lock:
             now = time.time()
             
-            # Check if we're in cooldown (from 429/ban)
+            # Check cooldown
             if now < self._cooldown_until:
                 wait_time = self._cooldown_until - now
                 time.sleep(wait_time)
                 now = time.time()
             
-            # Regenerate tokens based on time elapsed
+            # Regenerate tokens
             time_passed = now - self._last_request
             self._tokens = min(
                 self.rate_limit_burst,
                 self._tokens + time_passed * self.rate_limit
             )
             
-            # If no tokens, calculate wait time
+            # Wait if no tokens
             if self._tokens < 1:
                 wait_time = (1 - self._tokens) / self.rate_limit
-                # Add small jitter to prevent thundering herd
                 wait_time += random.uniform(0.05, 0.15)
                 time.sleep(wait_time)
                 self._tokens = 1
 
-            # Consume token (MUST be inside lock for thread safety)
+            # Consume token
             self._tokens -= 1
             self._last_request = time.time()
 
     def wait_for_rate_limit(self) -> None:
-        """Public wrapper for rate limiting (for downloader use)."""
+        """Public wrapper for rate limiting."""
         self._wait_for_rate_limit()
     
     def _set_cooldown(self, seconds: int) -> None:
-        """Set a cooldown period where no requests are made."""
+        """Set a cooldown period."""
         with self._lock:
             self._cooldown_until = time.time() + seconds
 
@@ -278,12 +507,7 @@ class PageResult:
         self.base_url = mirrors[next_idx]
         source_log(f"[{self.id}] 🔁 Switched mirror to {self.base_url} ({reason})")
     
-    # =========================================================================
-    # STATUS MANAGEMENT
-    # =========================================================================
-    
     def _handle_rate_limit(self, retry_after: int = 60) -> None:
-        """Handle 429 Too Many Requests response."""
         with self._lock:
             self._cooldown_until = time.time() + retry_after
             self._status = SourceStatus.RATE_LIMITED
@@ -291,21 +515,18 @@ class PageResult:
         self._rotate_mirror("rate_limited")
     
     def _handle_cloudflare(self) -> None:
-        """Handle Cloudflare protection detection."""
         with self._lock:
             self._status = SourceStatus.CLOUDFLARE
-            self._cooldown_until = time.time() + 300  # 5 min cooldown
+            self._cooldown_until = time.time() + 300
             self._failure_count += 1
         self._rotate_mirror("cloudflare")
     
     def _handle_success(self) -> None:
-        """Reset counters on successful request."""
         with self._lock:
             self._status = SourceStatus.ONLINE
             self._failure_count = 0
     
     def _handle_error(self, error: str) -> None:
-        """Track errors for fallback decisions."""
         with self._lock:
             self._last_error = error
             self._failure_count += 1
@@ -317,7 +538,6 @@ class PageResult:
     
     @property
     def status(self) -> SourceStatus:
-        """Get current source status, accounting for cooldown expiry."""
         if self._cooldown_until > 0 and time.time() >= self._cooldown_until:
             with self._lock:
                 self._status = SourceStatus.UNKNOWN
@@ -326,11 +546,9 @@ class PageResult:
     
     @property
     def is_available(self) -> bool:
-        """Check if source can accept requests."""
         return self.status in (SourceStatus.ONLINE, SourceStatus.UNKNOWN)
     
     def get_health_info(self) -> Dict[str, Any]:
-        """Get health info for status display."""
         return {
             "id": self.id,
             "name": self.name,
@@ -346,7 +564,6 @@ class PageResult:
         }
     
     def reset(self) -> None:
-        """Reset all error states."""
         with self._lock:
             self._status = SourceStatus.UNKNOWN
             self._failure_count = 0
@@ -354,141 +571,50 @@ class PageResult:
             self._last_error = None
             self._tokens = float(self.rate_limit_burst)
     
-    # =========================================================================
-    # ABSTRACT METHODS (Must implement in subclass)
-    # =========================================================================
-    
     @abstractmethod
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
-        """
-        Search for manga by title.
-        
-        Args:
-            query: Search term
-            page: Page number (1-indexed)
-            
-        Returns:
-            List of MangaResult matching the query
-        """
         pass
     
     @abstractmethod
-    def get_chapters(
-        self,
-        manga_id: str,
-        language: str = "en"
-    ) -> List[ChapterResult]:
-        """
-        Get all chapters for a manga.
-        
-        Args:
-            manga_id: Source-specific manga identifier
-            language: ISO language code
-            
-        Returns:
-            List of ChapterResult sorted by chapter number (ascending)
-        """
+    def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
         pass
     
     @abstractmethod
-    def get_pages(self, chapter_id: str) -> List[PageResult]:
-        """
-        Get page image URLs for a chapter.
-        
-        Args:
-            chapter_id: Source-specific chapter identifier
-            
-        Returns:
-            List of PageResult with image URLs
-        """
+    def get_pages(self, chapter_id: str) -> List["PageResult"]:
         pass
-    
-    # =========================================================================
-    # OPTIONAL METHODS (Override if source supports)
-    # =========================================================================
     
     def get_popular(self, page: int = 1) -> List[MangaResult]:
-        """Get popular/trending manga."""
         return []
     
     def get_latest(self, page: int = 1) -> List[MangaResult]:
-        """Get recently updated manga."""
         return []
     
     def get_manga_details(self, manga_id: str) -> Optional[MangaResult]:
-        """Get full details for a specific manga."""
         return None
 
     def get_download_session(self):
-        """Return the preferred session for downloading page images."""
         return self.session
     
-    # =========================================================================
-    # UTILITY METHODS
-    # =========================================================================
-    
     def _absolute_url(self, url: str) -> str:
-        """Convert relative URL to absolute."""
-        if not url:
-            return ""
-        if url.startswith(("http://", "https://")):
-            return url
-        if url.startswith("//"):
-            return "https:" + url
-        if url.startswith("/"):
-            return self.base_url.rstrip("/") + url
+        if not url: return ""
+        if url.startswith(("http://", "https://")): return url
+        if url.startswith("//"): return "https:" + url
+        if url.startswith("/"): return self.base_url.rstrip("/") + url
         return self.base_url.rstrip("/") + "/" + url
     
-    
-    # =========================================================================
-    # URL DETECTION METHODS
-    # =========================================================================
-    
     def matches_url(self, url: str) -> bool:
-        """
-        Check if this source can handle the given URL.
-        
-        Args:
-            url: Full manga URL to check
-            
-        Returns:
-            True if this source recognizes the URL pattern
-        """
         import re
-        if not self.url_patterns:
-            return False
-        
+        if not self.url_patterns: return False
         for pattern in self.url_patterns:
-            if re.search(pattern, url, re.IGNORECASE):
-                return True
+            if re.search(pattern, url, re.IGNORECASE): return True
         return False
     
     def extract_id_from_url(self, url: str) -> Optional[str]:
-        """
-        Extract manga ID from a URL.
-        
-        Tries all url_patterns and returns the first captured group (manga ID).
-        
-        Args:
-            url: Full manga URL
-            
-        Returns:
-            Manga ID if extracted, None otherwise
-            
-        Example:
-            pattern: r'https?://mangadex\\.org/title/([a-f0-9-]+)'
-            URL: 'https://mangadex.org/title/abc-123-def'
-            Returns: 'abc-123-def'
-        """
         import re
-        if not self.url_patterns:
-            return None
-        
+        if not self.url_patterns: return None
         for pattern in self.url_patterns:
             match = re.search(pattern, url, re.IGNORECASE)
-            if match and match.groups():
-                return match.group(1)  # Return first captured group
-        
+            if match and match.groups(): return match.group(1)
         return None
 
     def __repr__(self) -> str:

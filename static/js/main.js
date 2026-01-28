@@ -1163,10 +1163,51 @@ const API = {
 // ========================================
 // UI Utilities
 // ========================================
+
+/**
+ * Escape HTML entities to prevent XSS attacks.
+ * Use this for any user-controlled data inserted into HTML.
+ */
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/**
+ * Sanitize a string for use in CSS class names.
+ * Allows only alphanumeric, hyphen, and underscore.
+ */
+function sanitizeClassName(str) {
+    if (str == null) return '';
+    return String(str).replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+/**
+ * Validate and sanitize URLs. Returns empty string for invalid/dangerous URLs.
+ * Allows http, https, and data URLs (for images).
+ */
+function sanitizeUrl(url) {
+    if (url == null || url === '') return '';
+    const str = String(url).trim();
+    // Allow only http, https, and data URLs
+    if (/^https?:\/\//i.test(str) || /^data:image\//i.test(str)) {
+        return str;
+    }
+    // Reject javascript:, vbscript:, and other dangerous protocols
+    return '';
+}
+
+/**
+ * Escape a string for safe use in HTML attribute values.
+ * This is an alias for escapeHtml since we escape quotes.
+ */
+function escapeAttr(text) {
+    return escapeHtml(text);
 }
 
 function safeCreateIcons() {
@@ -1461,8 +1502,10 @@ function renderDownloadQueue() {
 }
 
 function renderQueueItem(item, isPausedSection) {
-    const statusClass = item.status === 'paused_queue' ? 'paused' : item.status;
-    const statusLabel = item.status === 'paused_queue' ? 'paused' : item.status;
+    // Sanitize status for use in class names and labels to prevent XSS
+    const rawStatus = item.status === 'paused_queue' ? 'paused' : item.status;
+    const statusClass = sanitizeClassName(rawStatus);
+    const statusLabel = escapeHtml(rawStatus);
     const totalChapters = Number.isFinite(item.chapters_total)
         ? item.chapters_total
         : (item.chapters?.length || 0);
@@ -1747,10 +1790,10 @@ function renderNav() {
             const count = item.count || 0;
 
             return `
-                <button data-view="${item.id}" class="nav-item ${isActive ? 'active' : ''}">
-                    <i data-lucide="${item.icon}"></i>
+                <button data-view="${escapeHtml(item.id)}" class="nav-item ${isActive ? 'active' : ''}">
+                    <i data-lucide="${escapeHtml(item.icon)}"></i>
                     <span class="nav-text">${escapeHtml(item.label)}</span>
-                    ${count > 0 ? `<span class="nav-count">${count}</span>` : ''}
+                    ${count > 0 ? `<span class="nav-count">${escapeHtml(String(count))}</span>` : ''}
                 </button>
             `;
         }).join('');
@@ -2590,7 +2633,9 @@ function clearImageObserver() {
 function loadLazyImage(img) {
     if (!img || !img.dataset?.src) return;
     img.dataset.srcLoaded = '1';
-    img.src = img.dataset.src;
+    // Sanitize URL to prevent javascript: or other dangerous protocols
+    const safeUrl = sanitizeUrl(img.dataset.src);
+    img.src = safeUrl || PLACEHOLDER_COVER;
     img.removeAttribute('data-src');
 }
 
@@ -3204,7 +3249,8 @@ function renderContinueReading() {
     }
 
     state.continueEntry = mostRecent;
-    const coverUrl = mostRecent.cover || PLACEHOLDER_COVER;
+    // Sanitize cover URL to prevent dangerous protocols
+    const coverUrl = sanitizeUrl(mostRecent.cover) || PLACEHOLDER_COVER;
     if (els.continueCover.dataset.src !== coverUrl) {
         els.continueCover.src = coverUrl;
         els.continueCover.dataset.src = coverUrl;
@@ -3460,7 +3506,7 @@ async function renderLibraryFromState() {
         
     } catch (error) {
         console.error('Library filtering failed:', error);
-        els.libraryGrid.innerHTML = `<div class="error-message">Failed to load library: ${error.message}</div>`;
+        els.libraryGrid.innerHTML = `<div class="error-message">Failed to load library: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -4678,8 +4724,10 @@ function generateCardHtml(item) {
     const author = item.author || 'Unknown Author';
     const tags = item.tags || item.genres || ['Manga'];
     const tag = Array.isArray(tags) ? tags[0] : tags;
-    const coverMarkup = coverUrl
-        ? `<img src="${PLACEHOLDER_COVER}" data-src="${escapeHtml(coverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async" width="220" height="300" class="card-image lazy-image" onload="if (this.dataset.srcLoaded === '1') { this.classList.add('loaded'); }" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />`
+    // Sanitize cover URL to prevent javascript: or other dangerous protocols
+    const safeCoverUrl = sanitizeUrl(coverUrl);
+    const coverMarkup = safeCoverUrl
+        ? `<img src="${PLACEHOLDER_COVER}" data-src="${escapeHtml(safeCoverUrl)}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async" width="220" height="300" class="card-image lazy-image" onload="if (this.dataset.srcLoaded === '1') { this.classList.add('loaded'); }" onerror="this.src='${PLACEHOLDER_COVER}'; this.onerror=null;" />`
         : '<i data-lucide="book-open" width="48" height="48"></i>';
 
     let progressHtml = '';
@@ -4731,7 +4779,7 @@ function generateCardHtml(item) {
         }
     }
     const statusHtml = isLibraryView && statusLabel
-        ? `<div class="status-row">${statusIcon ? `<i data-lucide="${statusIcon}"></i>` : ''}<span class="status-pill status-${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></div>`
+        ? `<div class="status-row">${statusIcon ? `<i data-lucide="${escapeHtml(statusIcon)}"></i>` : ''}<span class="status-pill status-${sanitizeClassName(status)}">${escapeHtml(statusLabel)}</span></div>`
         : '';
 
     return `
@@ -5162,7 +5210,8 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
 
     // Set cover (avoid stale image when data is missing)
     const coverInfo = getCoverUrlsForItem(mangaData || {});
-    els.detailsCoverImg.src = coverInfo.display || PLACEHOLDER_COVER;
+    // Sanitize cover URL to prevent dangerous protocols
+    els.detailsCoverImg.src = sanitizeUrl(coverInfo.display) || PLACEHOLDER_COVER;
 
     // Update "Add to Library" button state
     const inLibrary = isInLibrary(mangaId, source);
@@ -7978,11 +8027,11 @@ function createCardMenu(context, mangaId, source, key, title, coverUrl) {
 
     menu.innerHTML = items.map(item => `
         <button class="menu-item ${item.danger ? 'danger' : ''}"
-                data-action="${item.action}"
+                data-action="${escapeHtml(item.action)}"
                 role="menuitem"
                 tabindex="-1">
-            <i data-lucide="${item.icon}" aria-hidden="true"></i>
-            ${item.label}
+            <i data-lucide="${escapeHtml(item.icon)}" aria-hidden="true"></i>
+            ${escapeHtml(item.label)}
         </button>
     `).join('');
 
@@ -8687,7 +8736,8 @@ function updateAuthUI() {
         const user = state.auth.user;
         const email = user.email || '';
         const displayName = user.display_name || (email.includes('@') ? email.split('@')[0] : 'User');
-        const avatarUrl = user.avatar_url || DEFAULT_AVATAR;
+        // Sanitize avatar URL to prevent dangerous protocols
+        const avatarUrl = sanitizeUrl(user.avatar_url) || DEFAULT_AVATAR;
 
         // Hide guest login button, show account menu
         if (els.loginBtnGuest) els.loginBtnGuest.classList.add('hidden');
@@ -8864,7 +8914,8 @@ function populateAccountSettings() {
     const DEFAULT_AVATAR = '/static/images/default-avatar.png';
 
     if (els.settingsAvatarPreview) {
-        els.settingsAvatarPreview.src = user.avatar_url || DEFAULT_AVATAR;
+        // Sanitize avatar URL to prevent dangerous protocols
+        els.settingsAvatarPreview.src = sanitizeUrl(user.avatar_url) || DEFAULT_AVATAR;
     }
     if (els.settingsAvatarUrl) {
         els.settingsAvatarUrl.value = user.avatar_url || '';
@@ -8911,7 +8962,14 @@ function previewAvatar() {
     const DEFAULT_AVATAR = '/static/images/default-avatar.png';
 
     if (url && els.settingsAvatarPreview) {
-        els.settingsAvatarPreview.src = url;
+        // Sanitize URL to prevent dangerous protocols
+        const safeUrl = sanitizeUrl(url);
+        if (!safeUrl) {
+            els.settingsAvatarPreview.src = DEFAULT_AVATAR;
+            showToast('Invalid avatar URL');
+            return;
+        }
+        els.settingsAvatarPreview.src = safeUrl;
         els.settingsAvatarPreview.onerror = () => {
             els.settingsAvatarPreview.src = DEFAULT_AVATAR;
             showToast('Invalid avatar URL');
@@ -10114,7 +10172,7 @@ async function safeInit() {
         if (body) {
             const errorDiv = document.createElement('div');
             errorDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a1a;color:#fff;padding:2rem;border-radius:8px;z-index:9999;text-align:center;';
-            errorDiv.innerHTML = `<h2>Initialization Error</h2><p>${error.message}</p><button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1rem;cursor:pointer;">Reload</button>`;
+            errorDiv.innerHTML = `<h2>Initialization Error</h2><p>${escapeHtml(error.message)}</p><button onclick="location.reload()" style="margin-top:1rem;padding:0.5rem 1rem;cursor:pointer;">Reload</button>`;
             body.appendChild(errorDiv);
         }
     }

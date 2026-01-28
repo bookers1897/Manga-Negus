@@ -38,30 +38,92 @@ ALLOWED_IMAGE_TYPES = {
     'image/x-icon'
 }
 
+# Whitelist of allowed image hosting domains (SSRF protection)
+ALLOWED_IMAGE_DOMAINS = {
+    'mangadex.org',
+    'uploads.mangadex.org',
+    'weebcentral.com',
+    'cdn.weebcentral.com',
+    'manganato.com',
+    'mangasee123.com',
+    'mangafire.to',
+    'i.imgur.com',
+    's3.amazonaws.com',
+    'cdn.jsdelivr.net',
+    'asuracomics.com',
+    'asuracomic.net',
+    'asuratoon.com',
+    'flamescans.org',
+    'luminousscans.com',
+    'realmscans.com',
+    'imgur.com',
+    'i.redd.it',
+    'dynasty-scans.com',
+    'mangakakalot.com',
+    'manganelo.com',
+    'chapmanganato.to',
+    'readmanganato.com',
+    'nelo.mangakakalot.com'
+}
+
 
 def _validate_image_url(url: str) -> Tuple[bool, str]:
-    """Validate image URL is safe to proxy."""
+    """Validate image URL is safe to proxy with domain whitelist and DNS rebinding protection."""
     if not url:
         return False, 'Empty URL'
-    
+
     if not url.startswith(('http://', 'https://')):
         return False, 'Invalid URL scheme'
-    
-    # Check for localhost/private IPs (security)
+
     from urllib.parse import urlparse
+    import socket
+
     try:
         parsed = urlparse(url)
         hostname = parsed.hostname or ''
-        
-        # Block private IP ranges
-        if hostname.startswith(('127.', '192.168.', '10.', '172.')):
-            return False, 'Private IP not allowed'
-        
-        if hostname in ('localhost', '0.0.0.0'):
+
+        # Check domain whitelist (SSRF protection)
+        is_whitelisted = any(
+            hostname.endswith(domain) or hostname == domain
+            for domain in ALLOWED_IMAGE_DOMAINS
+        )
+        if not is_whitelisted:
+            return False, f'Domain not whitelisted: {hostname}'
+
+        # DNS rebinding protection - resolve and check IP
+        try:
+            ip = socket.gethostbyname(hostname)
+
+            # Block comprehensive private IP ranges
+            # RFC 1918 private networks
+            if ip.startswith(('192.168.', '10.', '172.16.', '172.17.', '172.18.',
+                              '172.19.', '172.20.', '172.21.', '172.22.', '172.23.',
+                              '172.24.', '172.25.', '172.26.', '172.27.', '172.28.',
+                              '172.29.', '172.30.', '172.31.')):
+                return False, f'Private IP not allowed: {ip}'
+
+            # Loopback
+            if ip.startswith('127.'):
+                return False, f'Loopback IP not allowed: {ip}'
+
+            # Link-local (169.254.0.0/16)
+            if ip.startswith('169.254.'):
+                return False, f'Link-local IP not allowed: {ip}'
+
+            # Special addresses
+            if ip in ('0.0.0.0', '255.255.255.255'):
+                return False, f'Reserved IP not allowed: {ip}'
+
+        except socket.gaierror as e:
+            return False, f'DNS resolution failed: {str(e)}'
+
+        # Block localhost variations
+        if hostname.lower() in ('localhost', '0.0.0.0', '127.0.0.1'):
             return False, 'Localhost not allowed'
-    except Exception:
-        return False, 'Invalid URL'
-    
+
+    except Exception as e:
+        return False, f'Invalid URL: {str(e)}'
+
     return True, ''
 
 
@@ -159,11 +221,16 @@ def proxy_image():
     except ValueError:
         return jsonify({'error': 'Invalid quality or timeout parameter'}), 400
     
-    # Validate inputs
+    # Validate inputs (security logging)
     is_valid, error = _validate_image_url(image_url)
     if not is_valid:
-        log(f'🚫 Invalid URL in proxy: {error}')
+        log(f'🚫 [SECURITY] Proxy rejected URL: {error} | URL: {image_url[:100]}')
         return jsonify({'error': f'Invalid URL: {error}'}), 400
+
+    # Log successful validation for security monitoring
+    from urllib.parse import urlparse
+    hostname = urlparse(image_url).hostname or 'unknown'
+    log(f'✅ [SECURITY] Proxy allowed: {hostname} | URL: {image_url[:100]}')
     
     # Validate format
     if output_format and output_format not in ['webp', 'jpeg', 'jpg', 'png']:
@@ -194,7 +261,15 @@ def proxy_image():
             verify=True  # SSL verification
         )
         response.raise_for_status()
-        
+
+        # Check for redirects and validate destination (DNS rebinding/open redirect protection)
+        if response.url != image_url:
+            is_valid, error = _validate_image_url(response.url)
+            if not is_valid:
+                log(f'🚫 Redirect to disallowed URL: {error} (from {image_url[:60]}... to {response.url[:60]}...)')
+                return jsonify({'error': f'Redirect blocked: {error}'}), 400
+            log(f'↪️ Redirect validated: {image_url[:60]}... → {response.url[:60]}...')
+
         # Validate response is actually an image
         is_image, error = _validate_image_content(response)
         if not is_image:

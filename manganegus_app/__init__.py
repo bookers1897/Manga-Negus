@@ -106,6 +106,7 @@ def create_app():
             if start_time:
                 duration_ms = int((time.time() - start_time) * 1000)
             user = getattr(g, 'current_user', None)
+            is_auth = user and hasattr(user, 'is_authenticated') and user.is_authenticated
             debug_log_event({
                 'event': 'request',
                 'request_id': getattr(g, 'request_id', None),
@@ -115,8 +116,8 @@ def create_app():
                 'status': response.status_code,
                 'duration_ms': duration_ms,
                 'remote_addr': request.remote_addr,
-                'user_id': str(user.id) if user else None,
-                'user_email': getattr(user, 'email', None) if user else None
+                'user_id': str(user.id) if is_auth else None,
+                'user_email': getattr(user, 'email', None) if is_auth else None
             })
         except Exception as exc:
             log(f"⚠️ Debug log error: {exc}")

@@ -16,9 +16,10 @@ Uses curl_cffi for industry-standard TLS fingerprint bypass.
 """
 
 import time
+import random
 from typing import List, Optional, Dict, Any
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus, USER_AGENTS
 )
 
 # Try curl_cffi first (better Cloudflare bypass)
@@ -40,6 +41,12 @@ class ComicKConnector(BaseConnector):
     """
     ComicK.io API connector with Cloudflare bypass.
     Uses curl_cffi (preferred) or cloudscraper for TLS fingerprint bypass.
+
+    Features:
+      - User-agent rotation from pool
+      - Exponential backoff retry (3 retries, 0.3 backoff factor)
+      - 30 second timeout
+      - Session persistence with cookie handling
     """
 
     # =========================================================================
@@ -61,7 +68,9 @@ class ComicKConnector(BaseConnector):
 
     languages = ["en", "ja", "ko", "zh", "es", "fr", "de", "it", "pt-br", "ru"]
 
-    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    # Retry configuration
+    MAX_RETRIES = 3
+    BACKOFF_FACTOR = 0.3  # Exponential backoff: 0.3 * (2 ** attempt)
 
     def __init__(self):
         super().__init__()
