@@ -223,10 +223,10 @@ class MetadataManager:
         Get enriched metadata by searching all providers and merging results.
 
         This is the main "MetaForge" operation:
-          1. Search AniList first (best for ID mapping)
-          2. If confident match found, fetch from other providers using IDs
-          3. Merge all data (ratings, genres, etc.)
-          4. Return unified metadata
+          1. Search Jikan (MAL) first (Primary - requested by user)
+          2. Fallback to AniList
+          3. Fetch from other providers
+          4. Merge all data (ratings, genres, etc.)
 
         Args:
             title: Manga title
@@ -243,55 +243,99 @@ class MetadataManager:
 
         cache = get_cache()
         cached_mapping = cache.get(title)
-
-        # Step 1: Search AniList (best for initial match and ID mapping)
-        anilist = self.providers.get('anilist')
-        if not anilist:
-            logger.error("AniList provider not available - cannot enrich metadata")
-            return None
-
         matcher = TitleMatcher()
         primary_result = None
 
-        if cached_mapping and cached_mapping.anilist_id:
-            primary_result = await anilist.get_by_id(cached_mapping.anilist_id)
+        # --- PRIORITY 1: Jikan (MyAnimeList) ---
+        mal = self.providers.get('mal')
+        if mal:
+            # Try ID fetch from cache first
+            if cached_mapping and cached_mapping.mal_id:
+                try:
+                    primary_result = await mal.get_by_id(cached_mapping.mal_id)
+                except Exception as e:
+                    logger.warning(f"Cached MAL ID fetch failed: {e}")
+
+            # If no ID or fetch failed, search by title
+            if not primary_result:
+                try:
+                    mal_results = await mal.search_series(title, limit=5)
+                    if mal_results:
+                        primary_result = max(
+                            mal_results,
+                            key=lambda r: matcher.calculate_similarity(
+                                title, r.get_primary_title()
+                            )
+                        )
+                except Exception as e:
+                    logger.error(f"Jikan search failed: {e}")
+
+        # --- PRIORITY 2: AniList (Fallback) ---
+        if not primary_result:
+            logger.info(f"No MAL results for '{title}', falling back to AniList...")
+            anilist = self.providers.get('anilist')
+            if anilist:
+                # Try ID fetch from cache
+                if cached_mapping and cached_mapping.anilist_id:
+                    try:
+                        primary_result = await anilist.get_by_id(cached_mapping.anilist_id)
+                    except Exception:
+                        pass
+
+                # Search by title
+                if not primary_result:
+                    try:
+                        anilist_results = await anilist.search_series(title, limit=5)
+                        if anilist_results:
+                            primary_result = max(
+                                anilist_results,
+                                key=lambda r: matcher.calculate_similarity(
+                                    title, r.get_primary_title()
+                                )
+                            )
+                    except Exception as e:
+                        logger.error(f"AniList fallback search failed: {e}")
 
         if not primary_result:
-            anilist_results = await anilist.search_series(title, limit=5)
-            if not anilist_results:
-                logger.warning(f"No AniList results for '{title}'")
-                return None
-
-            primary_result = max(
-                anilist_results,
-                key=lambda r: matcher.calculate_similarity(
-                    title, r.get_primary_title()
-                )
-            )
+            logger.warning(f"No metadata found for '{title}' on any provider")
+            return None
 
         logger.info(f"Primary match: {primary_result.get_primary_title()} "
-                   f"(AniList ID: {primary_result.mappings.get('anilist')})")
+                   f"(Source: {primary_result.primary_source})")
 
-        # Step 2: Fetch from other providers using MAL ID if available
-        mal_id = primary_result.mappings.get('mal')
-
+        # --- Step 2: Fetch from Secondary Providers ---
         secondary_results = []
+        fetched_sources = {primary_result.primary_source}
 
-        if mal_id:
-            # Fetch from MAL (we already have ID)
-            mal = self.providers.get('mal')
-            if mal:
+        # 2a. Fetch MAL if not primary (and we have ID)
+        if 'mal' not in fetched_sources:
+            mal_id = primary_result.mappings.get('mal')
+            if mal_id and mal:
                 try:
-                    mal_data = await mal.get_by_id(mal_id)
-                    if mal_data:
-                        secondary_results.append(mal_data)
+                    res = await mal.get_by_id(mal_id)
+                    if res:
+                        secondary_results.append(res)
+                        fetched_sources.add('mal')
                 except Exception as e:
-                    logger.error(f"MAL fetch failed: {e}")
+                    logger.error(f"Secondary MAL fetch failed: {e}")
 
-        # Search other providers by title (in parallel)
+        # 2b. Fetch AniList if not primary (and we have ID)
+        if 'anilist' not in fetched_sources:
+            anilist_id = primary_result.mappings.get('anilist')
+            anilist = self.providers.get('anilist')
+            if anilist_id and anilist:
+                try:
+                    res = await anilist.get_by_id(anilist_id)
+                    if res:
+                        secondary_results.append(res)
+                        fetched_sources.add('anilist')
+                except Exception:
+                    pass
+
+        # 2c. Search other providers by title (parallel)
         other_providers = [
             p for p_id, p in self.providers.items()
-            if p_id not in ['anilist', 'mal']
+            if p_id not in fetched_sources
         ]
 
         if other_providers:
@@ -300,8 +344,14 @@ class MetadataManager:
 
             for result in results:
                 if not isinstance(result, Exception) and result:
-                    # Use first match from each provider
-                    secondary_results.append(result[0])
+                    # Use best match from each provider
+                    best = max(
+                        result,
+                        key=lambda r: matcher.calculate_similarity(
+                            title, r.get_primary_title()
+                        )
+                    )
+                    secondary_results.append(best)
 
         # Step 3: Merge all results
         merged = self._merge_metadata(primary_result, secondary_results)

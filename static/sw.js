@@ -1,4 +1,4 @@
-const VERSION = 'v10';
+const VERSION = 'v11';
 const STATIC_CACHE = `manganegus-static-${VERSION}`;
 const DATA_CACHE = `manganegus-data-${VERSION}`;
 const IMAGE_CACHE = `manganegus-images-${VERSION}`;
@@ -12,7 +12,7 @@ const STATIC_ASSETS = [
   '/static/js/main.js',
   '/static/js/reader.js',
   '/static/images/sharingan.png',
-  '/static/images/placeholder.png'
+  '/static/images/placeholder.svg'
 ];
 
 self.addEventListener('install', (event) => {

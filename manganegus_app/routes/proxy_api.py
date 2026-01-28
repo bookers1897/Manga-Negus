@@ -42,6 +42,8 @@ ALLOWED_IMAGE_TYPES = {
 ALLOWED_IMAGE_DOMAINS = {
     'mangadex.org',
     'uploads.mangadex.org',
+    'cdn.myanimelist.net',
+    'myanimelist.net',
     'weebcentral.com',
     'cdn.weebcentral.com',
     'manganato.com',
@@ -63,7 +65,9 @@ ALLOWED_IMAGE_DOMAINS = {
     'manganelo.com',
     'chapmanganato.to',
     'readmanganato.com',
-    'nelo.mangakakalot.com'
+    'nelo.mangakakalot.com',
+    'gg.asuracam.net',
+    'cdn.mangabuddy.com'
 }
 
 

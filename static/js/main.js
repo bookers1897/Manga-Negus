@@ -105,6 +105,7 @@ const state = {
         trending: [],
     },
     isLoadingFeed: false,
+    pendingFeedLoad: null,
     readerPages: [],
     readerCurrentPage: 0,
     readerMode: 'strip', // 'strip', 'paged', or 'webtoon'
@@ -323,7 +324,7 @@ function runFilterTask(taskType, payload) {
     });
 }
 
-const PLACEHOLDER_COVER = '/static/images/placeholder.png';
+const PLACEHOLDER_COVER = '/static/images/placeholder.svg';
 
 // ========================================
 // Performance: Chunked Rendering
@@ -1309,6 +1310,13 @@ function sanitizeUrl(url) {
     const str = String(url).trim();
     // Allow only http, https, and data URLs
     if (/^https?:\/\//i.test(str) || /^data:image\//i.test(str)) {
+        return str;
+    }
+    // Allow same-origin relative URLs (e.g., /api/proxy/image?...).
+    if (str.startsWith('/') && !str.startsWith('//')) {
+        return str;
+    }
+    if (str.startsWith('./')) {
         return str;
     }
     // Reject javascript:, vbscript:, and other dangerous protocols
@@ -2992,6 +3000,29 @@ function handleShareTarget() {
     window.history.replaceState({}, document.title, window.location.pathname);
 }
 
+function queueFeedLoad(view, page, options = {}) {
+    state.pendingFeedLoad = { view, page, options };
+}
+
+function flushPendingFeedLoad() {
+    if (state.isLoadingFeed || !state.pendingFeedLoad) return;
+    const { view, page, options } = state.pendingFeedLoad;
+    state.pendingFeedLoad = null;
+    switch (view) {
+        case 'popular':
+            loadPopular(page, options);
+            break;
+        case 'discover':
+            loadDiscover(page, options);
+            break;
+        case 'trending':
+            loadTrendingView(page, options);
+            break;
+        default:
+            break;
+    }
+}
+
 async function loadPopular(page = 1, { append = false } = {}) {
     if (!append) {
         renderGridSkeleton(els.discoverGrid, 12);
@@ -3001,7 +3032,10 @@ async function loadPopular(page = 1, { append = false } = {}) {
 
     log('Loading popular manga from Jikan (MyAnimeList)...');
 
-    if (state.isLoadingFeed) return [];
+    if (state.isLoadingFeed) {
+        queueFeedLoad('popular', page, { append });
+        return [];
+    }
     state.isLoadingFeed = true;
 
     try {
@@ -3044,6 +3078,7 @@ async function loadPopular(page = 1, { append = false } = {}) {
         }
     } finally {
         state.isLoadingFeed = false;
+        flushPendingFeedLoad();
     }
     return [];
 }
@@ -3055,7 +3090,10 @@ async function loadDiscover(page = 1, { append = false } = {}) {
     }
     log('Loading discover feed (hidden gems - lesser-known quality manga)...');
 
-    if (state.isLoadingFeed) return [];
+    if (state.isLoadingFeed) {
+        queueFeedLoad('discover', page, { append });
+        return [];
+    }
     state.isLoadingFeed = true;
 
     try {
@@ -3103,6 +3141,7 @@ async function loadDiscover(page = 1, { append = false } = {}) {
         }
     } finally {
         state.isLoadingFeed = false;
+        flushPendingFeedLoad();
     }
     return [];
 }
@@ -3289,7 +3328,10 @@ async function loadTrendingView(page = 1, { append = false } = {}) {
 
     log(`Loading trending page ${page}...`);
 
-    if (state.isLoadingFeed) return [];
+    if (state.isLoadingFeed) {
+        queueFeedLoad('trending', page, { append });
+        return [];
+    }
     state.isLoadingFeed = true;
 
     try {
@@ -3329,6 +3371,7 @@ async function loadTrendingView(page = 1, { append = false } = {}) {
         }
     } finally {
         state.isLoadingFeed = false;
+        flushPendingFeedLoad();
     }
     return [];
 }
@@ -4745,37 +4788,15 @@ async function updateLibraryStatus(key, status) {
 // Manga Grid Rendering
 // ========================================
 function getOptimizedCoverUrl(url) {
-    if (!url || !state.filters.dataSaver) return url;
-    try {
-        const host = new URL(url, window.location.origin).hostname;
-        if (!COVER_PROXY_HOSTS.has(host)) return url;
-    } catch {
-        return url;
-    }
-    return `/api/proxy/image?url=${encodeURIComponent(url)}&format=webp&quality=70&w=220&h=300`;
+    if (!url) return '';
+    // Always proxy to ensure headers/referer are correct and avoid CORS/hotlink issues
+    const quality = state.filters.dataSaver ? 70 : 90;
+    return `/api/proxy/image?url=${encodeURIComponent(url)}&format=webp&quality=${quality}&w=220&h=300`;
 }
 
 function getCoverProxyUrl(url, { quality = 80, width = 220, height = 300 } = {}) {
     if (!url) return '';
-    try {
-        const host = new URL(url, window.location.origin).hostname;
-        let allowed = COVER_PROXY_HOSTS.has(host);
-        if (!allowed) {
-            // Check wildcards
-            for (const domain of COVER_PROXY_HOSTS) {
-                if (domain.startsWith('*.')) {
-                    const suffix = domain.slice(2); // Remove *.
-                    if (host.endsWith(suffix) || host === suffix) {
-                        allowed = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (!allowed) return '';
-    } catch {
-        return '';
-    }
+    
     const qualityParam = quality ? `&quality=${quality}` : '';
     const widthParam = width ? `&w=${width}` : '';
     const heightParam = height ? `&h=${height}` : '';

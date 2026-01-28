@@ -1,10 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300">
-  <rect fill="#1a1a2e" width="200" height="300"/>
-  <rect fill="#16213e" x="10" y="10" width="180" height="280" rx="8"/>
-  <g transform="translate(100, 130)">
-    <rect fill="#2a2a4e" x="-40" y="-20" width="80" height="60" rx="4"/>
-    <path fill="#4a4a6a" d="M-25,-5 L-25,15 L-15,10 L-5,15 L-5,-5 Z"/>
-    <path fill="#5a5a7a" d="M5,-5 L5,15 L15,10 L25,15 L25,-5 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="300" viewBox="0 0 220 300" role="img" aria-label="No cover">
+  <rect width="220" height="300" fill="#14171f"/>
+  <rect x="14" y="14" width="192" height="272" rx="12" fill="#1f2430" stroke="#2b3142" stroke-width="2"/>
+  <g fill="none" stroke="#5c637a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="74" y="86" width="72" height="100" rx="8"/>
+    <path d="M86 104h48"/>
+    <path d="M86 124h48"/>
+    <path d="M86 144h32"/>
   </g>
-  <text x="100" y="180" text-anchor="middle" fill="#4a4a6a" font-family="Arial, sans-serif" font-size="12">No Cover</text>
+  <text x="110" y="220" text-anchor="middle" fill="#8b94a7" font-family="Arial, sans-serif" font-size="12">No cover</text>
 </svg>

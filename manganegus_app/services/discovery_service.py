@@ -338,11 +338,23 @@ class DiscoveryService:
                             break
 
                 if matched_jikan:
+                    jikan_cover = matched_jikan.get('cover_url') or manga.get('cover_url')
+                    jikan_cover_large = matched_jikan.get('cover_url_large') or matched_jikan.get('cover_url')
+                    jikan_cover_medium = matched_jikan.get('cover_url_medium') or matched_jikan.get('cover_url')
+                    jikan_cover_small = matched_jikan.get('cover_url_small')
                     # Merge Jikan metadata but keep MangaDex id and source
                     enriched_manga = {
                         **manga,  # Keep all MangaDex data (id, source, url)
                         # Replace with Jikan data for better covers/metadata
-                        'cover_url': matched_jikan.get('cover_url') or manga.get('cover_url'),
+                        'cover_url': jikan_cover,
+                        # Map Jikan covers into cover_image_* to align frontend priority
+                        'cover_image_large': jikan_cover_large,
+                        'cover_image_medium': jikan_cover_medium,
+                        'cover_image': jikan_cover,
+                        # Preserve original Jikan sizes for compatibility
+                        'cover_url_large': jikan_cover_large,
+                        'cover_url_medium': jikan_cover_medium,
+                        'cover_url_small': jikan_cover_small,
                         'synopsis': matched_jikan.get('synopsis') or manga.get('synopsis'),
                         'rating': matched_jikan.get('rating') or manga.get('rating'),
                         'genres': matched_jikan.get('genres') or manga.get('genres', []),
