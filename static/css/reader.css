@@ -46,7 +46,7 @@ body.reader-page[data-reader-bg="white"] {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px 24px;
+  padding: calc(16px + var(--safe-top)) calc(24px + var(--safe-right)) 16px calc(24px + var(--safe-left));
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border-glass);
   backdrop-filter: blur(18px);
@@ -323,8 +323,8 @@ body.reader-page[data-reader-fit="fit-screen"] .reader-pages .reader-page {
 
 .reader-settings-toggle {
   position: fixed;
-  bottom: 24px;
-  left: 24px;
+  bottom: calc(24px + var(--safe-bottom));
+  left: calc(24px + var(--safe-left));
   width: 44px;
   height: 44px;
   border-radius: 14px;
@@ -375,7 +375,7 @@ body.reader-page[data-reader-direction="rtl"] .reader-pages {
   }
 
   .reader-pages {
-    padding: 20px 12px 80px;
+    padding: 20px 12px calc(80px + var(--safe-bottom));
   }
 
   .reader-settings {

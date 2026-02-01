@@ -66,34 +66,45 @@ class WeebCentralV2Connector(BaseConnector):
     languages = ["en"]
 
     def __init__(self):
-        """Initialize WeebCentral adapter."""
+        """Initialize WeebCentral adapter (lazy initialization - no blocking calls)."""
         super().__init__()
+        self._session = None
+        self._initialized = False
+
+    def _ensure_session(self) -> bool:
+        """Lazy initialization - create session and get cookies on first use."""
+        if self._initialized:
+            return self._session is not None
+
+        self._initialized = True
 
         if not HAS_CURL_CFFI:
             source_log(f"[{self.id}] curl_cffi not installed!")
-            return
+            return False
 
         if not HAS_BS4:
             source_log(f"[{self.id}] BeautifulSoup not installed!")
-            return
+            return False
 
         # Create curl_cffi session
         self._session = curl_requests.Session()
 
-        # Initialize by getting cookies
+        # Get cookies on first request (lazy)
         try:
             self._session.get(
                 f"{self.base_url}/search",
                 impersonate="chrome120",
                 timeout=self.request_timeout
             )
-            source_log(f"[{self.id}] Initialized with Chrome impersonation")
+            source_log(f"[{self.id}] Initialized with Chrome impersonation (lazy)")
         except Exception as e:
             source_log(f"[{self.id}] Init error: {e}")
 
+        return self._session is not None
+
     def _get(self, url: str, params: Dict = None, htmx: bool = False) -> Optional[str]:
         """Make GET request with Chrome impersonation."""
-        if not HAS_CURL_CFFI:
+        if not self._ensure_session():
             return None
 
         self._wait_for_rate_limit()
@@ -123,6 +134,25 @@ class WeebCentralV2Connector(BaseConnector):
             self._handle_error(str(e))
             source_log(f"[{self.id}] Request error: {e}")
             return None
+
+    def _pick_srcset_url(self, srcset: str) -> Optional[str]:
+        """Pick a usable URL from a srcset string."""
+        if not srcset:
+            return None
+        parts = [p.strip() for p in srcset.split(',') if p.strip()]
+        if not parts:
+            return None
+        candidate = parts[-1].split()[0]
+        return candidate or None
+
+    def _normalize_cover(self, url: Optional[str]) -> Optional[str]:
+        """Normalize cover URL to absolute https URL."""
+        if not url:
+            return None
+        url = url.strip()
+        if url.startswith('//'):
+            url = f"https:{url}"
+        return urljoin(self.base_url, url)
 
     def get_download_session(self):
         """Use curl_cffi session for downloads when available."""
@@ -168,7 +198,13 @@ class WeebCentralV2Connector(BaseConnector):
 
             # Get cover
             picture = link.select_one('picture source')
-            cover = picture.get('srcset', '') if picture else None
+            cover = self._pick_srcset_url(picture.get('srcset', '')) if picture else None
+            if not cover and img:
+                cover = img.get('data-src') or img.get('data-lazy-src') or img.get('src')
+            cover = self._normalize_cover(cover)
+
+            if not href.startswith("http"):
+                href = urljoin(self.base_url, href)
 
             results.append(MangaResult(
                 id=series_id,

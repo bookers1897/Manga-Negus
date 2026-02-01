@@ -92,6 +92,7 @@ const state = {
         trending: 1,
         history: 1,
     },
+    lastDiscoverSubtitle: '',
     viewScrollPositions: {
         discover: 0,
         popular: 0,
@@ -2196,7 +2197,7 @@ function setView(viewId) {
     switch (viewId) {
         case 'discover':
             els.discoverView.classList.remove('hidden');
-            els.discoverTitle.textContent = 'Discover';
+            els.discoverTitle.textContent = isMobileLayout() ? 'Manga Negus' : 'Discover';
             state.viewPages.discover = state.viewPages.discover || 1;
             if (!state.searchQuery) {
                 loadDiscover(state.viewPages.discover);
@@ -2266,7 +2267,32 @@ function setView(viewId) {
 
 function updateDiscoverSubtitle(text) {
     if (els.discoverSubtitle) {
+        if (text) {
+            state.lastDiscoverSubtitle = text;
+        }
+        if (state.activeView === 'discover' && isMobileLayout()) {
+            els.discoverSubtitle.textContent = 'Discover';
+            return;
+        }
         els.discoverSubtitle.textContent = text;
+    }
+}
+
+function isMobileLayout() {
+    return window.matchMedia('(max-width: 640px)').matches;
+}
+
+function applyMobileDiscoverHeader() {
+    if (!els.discoverTitle || !els.discoverSubtitle) return;
+    if (state.activeView !== 'discover') return;
+    if (isMobileLayout()) {
+        els.discoverTitle.textContent = 'Manga Negus';
+        els.discoverSubtitle.textContent = 'Discover';
+        return;
+    }
+    els.discoverTitle.textContent = 'Discover';
+    if (state.lastDiscoverSubtitle) {
+        els.discoverSubtitle.textContent = state.lastDiscoverSubtitle;
     }
 }
 
@@ -2449,15 +2475,23 @@ function applyFiltersToList(list, { skipSourceFilter = false } = {}) {
 
 function syncFilterModal() {
     if (!els.filterModal) return;
-    if (els.filterGenres) els.filterGenres.value = state.filters.genres.join(', ');
-    if (els.filterExclude) els.filterExclude.value = state.filters.exclude.join(', ');
-    if (els.filterDemographics) els.filterDemographics.value = state.filters.demographics.join(', ');
+
+    // Multi-selects
+    if (els.filterGenres) setMultiSelectValues(els.filterGenres, state.filters.genres || []);
+    if (els.filterExclude) setMultiSelectValues(els.filterExclude, state.filters.exclude || []);
+    if (els.filterDemographics) setMultiSelectValues(els.filterDemographics, state.filters.demographics || []);
+
+    // Year pickers
+    if (els.filterYearStart) setYearPickerValue(els.filterYearStart, state.filters.yearStart || '');
+    if (els.filterYearEnd) setYearPickerValue(els.filterYearEnd, state.filters.yearEnd || '');
+
+    // Star ratings
+    if (els.filterScoreMin) setStarRatingValue(els.filterScoreMin, parseInt(state.filters.scoreMin) || 0);
+    if (els.filterScoreMax) setStarRatingValue(els.filterScoreMax, parseInt(state.filters.scoreMax) || 0);
+
+    // Keep existing dropdown syncs
     if (els.filterStatus) els.filterStatus.value = state.filters.status || '';
     if (els.filterType) els.filterType.value = state.filters.type || '';
-    if (els.filterYearStart) els.filterYearStart.value = state.filters.yearStart || '';
-    if (els.filterYearEnd) els.filterYearEnd.value = state.filters.yearEnd || '';
-    if (els.filterScoreMin) els.filterScoreMin.value = state.filters.scoreMin || '';
-    if (els.filterScoreMax) els.filterScoreMax.value = state.filters.scoreMax || '';
     if (els.filterSort) els.filterSort.value = state.filters.sort || 'popularity';
     if (els.filterOrder) els.filterOrder.value = state.filters.order || 'desc';
     if (els.filterDensity) els.filterDensity.value = state.filters.density || 'normal';
@@ -2510,6 +2544,8 @@ function resetFilters() {
         pagination: 'paged',
         source: ''
     };
+    // Sync the UI components with the reset state
+    syncFilterModal();
     saveFilters();
     applyGridDensity();
     updateFilterButtonState();
@@ -2518,15 +2554,22 @@ function resetFilters() {
 }
 
 function applyFiltersFromModal() {
-    state.filters.genres = parseFilterList(els.filterGenres?.value);
-    state.filters.exclude = parseFilterList(els.filterExclude?.value);
-    state.filters.demographics = parseFilterList(els.filterDemographics?.value);
+    // Multi-selects
+    state.filters.genres = els.filterGenres ? getMultiSelectValues(els.filterGenres) : [];
+    state.filters.exclude = els.filterExclude ? getMultiSelectValues(els.filterExclude) : [];
+    state.filters.demographics = els.filterDemographics ? getMultiSelectValues(els.filterDemographics) : [];
+
+    // Year pickers
+    state.filters.yearStart = els.filterYearStart ? getYearPickerValue(els.filterYearStart) : '';
+    state.filters.yearEnd = els.filterYearEnd ? getYearPickerValue(els.filterYearEnd) : '';
+
+    // Star ratings
+    state.filters.scoreMin = els.filterScoreMin ? getStarRatingValue(els.filterScoreMin) : '';
+    state.filters.scoreMax = els.filterScoreMax ? getStarRatingValue(els.filterScoreMax) : '';
+
+    // Keep existing dropdown reads
     state.filters.status = (els.filterStatus?.value || '').toLowerCase();
     state.filters.type = (els.filterType?.value || '').toLowerCase();
-    state.filters.yearStart = els.filterYearStart?.value || '';
-    state.filters.yearEnd = els.filterYearEnd?.value || '';
-    state.filters.scoreMin = els.filterScoreMin?.value || '';
-    state.filters.scoreMax = els.filterScoreMax?.value || '';
     state.filters.sort = els.filterSort?.value || 'popularity';
     state.filters.order = els.filterOrder?.value || 'desc';
     state.filters.density = els.filterDensity?.value || 'normal';
@@ -2534,6 +2577,7 @@ function applyFiltersFromModal() {
     state.filters.dataSaver = (els.filterDataSaver?.value || 'off') === 'on';
     state.filters.source = els.filterSource?.value || '';
     state.filters.pagination = els.filterPagination?.value || 'paged';
+
     saveFilters();
     applyGridDensity();
     updateFilterButtonState();
@@ -4794,6 +4838,23 @@ function getOptimizedCoverUrl(url) {
     return `/api/proxy/image?url=${encodeURIComponent(url)}&format=webp&quality=${quality}&w=220&h=300`;
 }
 
+function normalizeCoverUrl(url) {
+    if (!url) return '';
+    const str = String(url).trim();
+    // Handle srcset strings like "url 1x, url 2x"
+    if (str.includes(',') && /\s\d/.test(str)) {
+        const parts = str.split(',').map(part => part.trim()).filter(Boolean);
+        if (parts.length) {
+            const candidate = parts[parts.length - 1].split(/\s+/)[0];
+            if (candidate) return candidate;
+        }
+    }
+    if (str.startsWith('//')) {
+        return `https:${str}`;
+    }
+    return str;
+}
+
 function getCoverProxyUrl(url, { quality = 80, width = 220, height = 300 } = {}) {
     if (!url) return '';
     
@@ -4819,8 +4880,9 @@ function getCoverUrlsForItem(item) {
     const rawCoverUrl = state.filters.dataSaver
         ? (coverCandidates[2] || coverCandidates[3] || coverCandidates[0] || PLACEHOLDER_COVER)
         : (coverCandidates[0] || coverCandidates[1] || coverCandidates[2] || PLACEHOLDER_COVER);
-    const displayUrl = getOptimizedCoverUrl(rawCoverUrl) || rawCoverUrl;
-    return { raw: rawCoverUrl, display: displayUrl };
+    const normalizedRaw = normalizeCoverUrl(rawCoverUrl);
+    const displayUrl = getOptimizedCoverUrl(normalizedRaw) || normalizedRaw;
+    return { raw: normalizedRaw, display: displayUrl };
 }
 
 function prefetchCoverImages(items, limit = 8) {
@@ -7553,6 +7615,272 @@ function showLibraryStatusModal(mangaId, source, title, coverUrl, libraryKey = n
 }
 
 // ========================================
+// Filter Component Initialization (Multi-select, Year Picker, Star Rating)
+// ========================================
+function initFilterComponents() {
+    // Initialize multi-selects
+    document.querySelectorAll('.multi-select').forEach(initMultiSelect);
+
+    // Initialize year pickers
+    document.querySelectorAll('.year-picker').forEach(initYearPicker);
+
+    // Initialize star ratings
+    document.querySelectorAll('.star-rating').forEach(initStarRating);
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.multi-select')) {
+            document.querySelectorAll('.multi-select.open').forEach(el => el.classList.remove('open'));
+        }
+        if (!e.target.closest('.year-picker') && !e.target.closest('.year-picker-dropdown')) {
+            document.querySelectorAll('.year-picker.open').forEach(el => el.classList.remove('open'));
+        }
+    });
+
+    // Close dropdowns on scroll (they're fixed position so would look wrong)
+    const filterBody = document.querySelector('.filter-body');
+    if (filterBody) {
+        filterBody.addEventListener('scroll', () => {
+            document.querySelectorAll('.multi-select.open').forEach(el => el.classList.remove('open'));
+            document.querySelectorAll('.year-picker.open').forEach(el => el.classList.remove('open'));
+        });
+    }
+
+    // Close on window resize
+    window.addEventListener('resize', () => {
+        document.querySelectorAll('.multi-select.open').forEach(el => el.classList.remove('open'));
+        document.querySelectorAll('.year-picker.open').forEach(el => el.classList.remove('open'));
+    });
+}
+
+function initMultiSelect(container) {
+    const display = container.querySelector('.multi-select-display');
+    const dropdown = container.querySelector('.multi-select-dropdown');
+
+    if (!display || !dropdown) return;
+
+    display.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Close other open multi-selects
+        document.querySelectorAll('.multi-select.open').forEach(el => {
+            if (el !== container) el.classList.remove('open');
+        });
+
+        const isOpening = !container.classList.contains('open');
+        container.classList.toggle('open');
+
+        // Position the dropdown (fixed positioning)
+        if (isOpening) {
+            positionDropdown(display, dropdown);
+        }
+    });
+
+    // Handle option clicks
+    container.querySelectorAll('.multi-select-option').forEach(option => {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        const label = option.querySelector('label');
+
+        option.addEventListener('click', (e) => {
+            if (e.target !== checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
+            updateMultiSelectDisplay(container);
+        });
+    });
+}
+
+function updateMultiSelectDisplay(container) {
+    const display = container.querySelector('.multi-select-display');
+    if (!display) return;
+
+    const placeholder = display.querySelector('.multi-select-placeholder');
+    const arrow = display.querySelector('.multi-select-arrow');
+    const selected = [];
+
+    container.querySelectorAll('.multi-select-option input:checked').forEach(cb => {
+        selected.push({
+            value: cb.closest('.multi-select-option').dataset.value,
+            label: cb.nextElementSibling.textContent
+        });
+    });
+
+    // Clear existing pills
+    display.querySelectorAll('.multi-select-pill').forEach(p => p.remove());
+
+    if (selected.length === 0) {
+        if (placeholder) placeholder.style.display = '';
+    } else {
+        if (placeholder) placeholder.style.display = 'none';
+        selected.forEach(item => {
+            const pill = document.createElement('span');
+            pill.className = 'multi-select-pill';
+            pill.innerHTML = `${item.label}<span class="multi-select-pill-remove" data-value="${item.value}">\u00d7</span>`;
+            display.insertBefore(pill, arrow);
+        });
+
+        // Handle pill removal
+        display.querySelectorAll('.multi-select-pill-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const value = btn.dataset.value;
+                const checkbox = container.querySelector(`.multi-select-option[data-value="${value}"] input`);
+                if (checkbox) checkbox.checked = false;
+                updateMultiSelectDisplay(container);
+            });
+        });
+    }
+}
+
+function getMultiSelectValues(container) {
+    if (!container) return [];
+    const values = [];
+    container.querySelectorAll('.multi-select-option input:checked').forEach(cb => {
+        values.push(cb.closest('.multi-select-option').dataset.value);
+    });
+    return values;
+}
+
+function setMultiSelectValues(container, values) {
+    if (!container) return;
+    container.querySelectorAll('.multi-select-option input').forEach(cb => {
+        const value = cb.closest('.multi-select-option').dataset.value;
+        cb.checked = values.includes(value);
+    });
+    updateMultiSelectDisplay(container);
+}
+
+function initYearPicker(container) {
+    const display = container.querySelector('.year-display');
+    const dropdown = container.querySelector('.year-picker-dropdown');
+
+    if (!display || !dropdown) return;
+
+    display.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.year-picker.open').forEach(el => {
+            if (el !== container) el.classList.remove('open');
+        });
+
+        const isOpening = !container.classList.contains('open');
+        container.classList.toggle('open');
+
+        // Position the dropdown (fixed positioning)
+        if (isOpening) {
+            positionDropdown(display, dropdown);
+        }
+    });
+
+    container.querySelectorAll('.year-option').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const year = btn.dataset.year;
+            setYearPickerValue(container, year);
+            container.classList.remove('open');
+        });
+    });
+}
+
+// Helper function to position fixed dropdowns below their trigger
+function positionDropdown(trigger, dropdown) {
+    const rect = trigger.getBoundingClientRect();
+    const dropdownHeight = dropdown.offsetHeight || 250;
+    const viewportHeight = window.innerHeight;
+
+    // Position below trigger by default
+    let top = rect.bottom + 4;
+    let left = rect.left;
+
+    // If dropdown would overflow bottom of viewport, show above trigger
+    if (top + dropdownHeight > viewportHeight - 20) {
+        top = rect.top - dropdownHeight - 4;
+    }
+
+    // Ensure dropdown doesn't go off left edge
+    if (left < 10) left = 10;
+
+    // Ensure dropdown doesn't go off right edge
+    const dropdownWidth = dropdown.offsetWidth || 200;
+    if (left + dropdownWidth > window.innerWidth - 10) {
+        left = window.innerWidth - dropdownWidth - 10;
+    }
+
+    dropdown.style.top = `${Math.max(10, top)}px`;
+    dropdown.style.left = `${left}px`;
+    dropdown.style.width = `${rect.width}px`;
+}
+
+function setYearPickerValue(container, year) {
+    if (!container) return;
+    const display = container.querySelector('.year-display');
+    if (display) {
+        display.textContent = year || 'Any';
+    }
+    container.dataset.value = year || '';
+
+    container.querySelectorAll('.year-option').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.year === year);
+    });
+}
+
+function getYearPickerValue(container) {
+    if (!container) return '';
+    return container.dataset.value || '';
+}
+
+function initStarRating(container) {
+    const stars = container.querySelectorAll('.star');
+    const clearBtn = container.querySelector('.star-clear');
+    const valueDisplay = container.querySelector('.star-value');
+
+    stars.forEach(star => {
+        star.addEventListener('mouseenter', () => {
+            const rating = parseInt(star.dataset.star);
+            stars.forEach(s => {
+                const sRating = parseInt(s.dataset.star);
+                s.classList.toggle('preview', sRating <= rating && !s.classList.contains('filled'));
+            });
+        });
+
+        star.addEventListener('mouseleave', () => {
+            stars.forEach(s => s.classList.remove('preview'));
+        });
+
+        star.addEventListener('click', () => {
+            const rating = parseInt(star.dataset.star);
+            setStarRatingValue(container, rating);
+        });
+    });
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            setStarRatingValue(container, 0);
+        });
+    }
+}
+
+function setStarRatingValue(container, rating) {
+    if (!container) return;
+    container.dataset.value = rating || '';
+    const stars = container.querySelectorAll('.star');
+    const valueDisplay = container.querySelector('.star-value');
+
+    stars.forEach(star => {
+        const sRating = parseInt(star.dataset.star);
+        star.classList.toggle('filled', sRating <= rating);
+        star.classList.remove('preview');
+    });
+
+    if (valueDisplay) {
+        valueDisplay.textContent = rating ? rating.toString() : 'Any';
+    }
+}
+
+function getStarRatingValue(container) {
+    if (!container) return '';
+    return container.dataset.value || '';
+}
+
+// ========================================
 // DOM Element Initialization
 // ========================================
 function initElements() {
@@ -9509,6 +9837,9 @@ async function init() {
     // Initialize DOM elements first
     initElements();
 
+    // Initialize filter UI components (multi-select, year picker, star rating)
+    initFilterComponents();
+
     // Initialize IndexedDB storage (async, handles migration from localStorage)
     try {
         await Storage.init();
@@ -10326,6 +10657,7 @@ async function init() {
     // Window resize
     window.addEventListener('resize', () => {
         if (window.innerWidth < 1024) closeSidebar();
+        applyMobileDiscoverHeader();
     });
 
     // Start title cycling

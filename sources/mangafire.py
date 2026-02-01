@@ -215,6 +215,41 @@ class MangaFireConnector(BaseConnector):
         match = re.search(r'[Cc]h(?:apter)?\.?\s*(\d+(?:\.\d+)?)', text)
         return match.group(1) if match else "0"
 
+    def _pick_srcset_url(self, srcset: str) -> Optional[str]:
+        """Pick a usable URL from a srcset string."""
+        if not srcset:
+            return None
+        parts = [p.strip() for p in srcset.split(',') if p.strip()]
+        if not parts:
+            return None
+        candidate = parts[-1].split()[0]
+        return candidate or None
+
+    def _normalize_cover(self, url: Optional[str]) -> Optional[str]:
+        """Normalize cover URL to absolute https URL."""
+        if not url:
+            return None
+        url = url.strip()
+        if url.startswith('//'):
+            url = f"https:{url}"
+        if not url.startswith('http'):
+            url = urljoin(self.base_url, url)
+        return url
+
+    def _extract_cover(self, img) -> Optional[str]:
+        if not img:
+            return None
+        srcset = img.get('data-srcset') or img.get('srcset') or ''
+        cover = self._pick_srcset_url(srcset)
+        if not cover:
+            cover = (
+                img.get('data-src')
+                or img.get('data-lazy-src')
+                or img.get('data-original')
+                or img.get('src')
+            )
+        return self._normalize_cover(cover)
+
     def _extract_manga_id(self, url: str) -> str:
         """Extract manga ID from URL."""
         # MangaFire URLs: /manga/title.id or /read/title.id/chapter
@@ -268,11 +303,7 @@ class MangaFireConnector(BaseConnector):
 
                 # Get cover
                 img = item.select_one('img')
-                cover = None
-                if img:
-                    cover = img.get('src') or img.get('data-src')
-                    if cover and not cover.startswith('http'):
-                        cover = urljoin(self.base_url, cover)
+                cover = self._extract_cover(img)
 
                 # Get type/status
                 type_elem = item.select_one('.type, .status')
@@ -338,11 +369,7 @@ class MangaFireConnector(BaseConnector):
                 title = title_elem.get_text(strip=True) if title_elem else manga_id.split('.')[0].replace('-', ' ').title()
 
                 img = item.select_one('img')
-                cover = None
-                if img:
-                    cover = img.get('src') or img.get('data-src')
-                    if cover and not cover.startswith('http'):
-                        cover = urljoin(self.base_url, cover)
+                cover = self._extract_cover(img)
 
                 results.append(MangaResult(
                     id=manga_id,

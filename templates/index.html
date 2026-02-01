@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Manga Negus - Redesign</title>
     <meta name="theme-color" content="#0b0b0f" />
     <link rel="manifest" href="/static/manifest.json" />
@@ -535,14 +535,232 @@
             </div>
             <div class="modal-body filter-body">
                 <div class="filter-grid">
+                    <!-- Genres Multi-Select -->
                     <div class="filter-field">
-                        <label for="filter-genres">Genres (include)</label>
-                        <input id="filter-genres" type="text" placeholder="Action, Romance" />
+                        <label>Genres (include)</label>
+                        <div class="multi-select" id="filter-genres">
+                            <div class="multi-select-display" tabindex="0">
+                                <span class="multi-select-placeholder">Select genres...</span>
+                                <span class="multi-select-arrow">▼</span>
+                            </div>
+                            <div class="multi-select-dropdown">
+                                <div class="multi-select-option" data-value="action">
+                                    <input type="checkbox" id="genre-action">
+                                    <label for="genre-action">Action</label>
+                                </div>
+                                <div class="multi-select-option" data-value="adventure">
+                                    <input type="checkbox" id="genre-adventure">
+                                    <label for="genre-adventure">Adventure</label>
+                                </div>
+                                <div class="multi-select-option" data-value="comedy">
+                                    <input type="checkbox" id="genre-comedy">
+                                    <label for="genre-comedy">Comedy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="drama">
+                                    <input type="checkbox" id="genre-drama">
+                                    <label for="genre-drama">Drama</label>
+                                </div>
+                                <div class="multi-select-option" data-value="fantasy">
+                                    <input type="checkbox" id="genre-fantasy">
+                                    <label for="genre-fantasy">Fantasy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="horror">
+                                    <input type="checkbox" id="genre-horror">
+                                    <label for="genre-horror">Horror</label>
+                                </div>
+                                <div class="multi-select-option" data-value="isekai">
+                                    <input type="checkbox" id="genre-isekai">
+                                    <label for="genre-isekai">Isekai</label>
+                                </div>
+                                <div class="multi-select-option" data-value="martial-arts">
+                                    <input type="checkbox" id="genre-martial-arts">
+                                    <label for="genre-martial-arts">Martial Arts</label>
+                                </div>
+                                <div class="multi-select-option" data-value="mecha">
+                                    <input type="checkbox" id="genre-mecha">
+                                    <label for="genre-mecha">Mecha</label>
+                                </div>
+                                <div class="multi-select-option" data-value="mystery">
+                                    <input type="checkbox" id="genre-mystery">
+                                    <label for="genre-mystery">Mystery</label>
+                                </div>
+                                <div class="multi-select-option" data-value="psychological">
+                                    <input type="checkbox" id="genre-psychological">
+                                    <label for="genre-psychological">Psychological</label>
+                                </div>
+                                <div class="multi-select-option" data-value="romance">
+                                    <input type="checkbox" id="genre-romance">
+                                    <label for="genre-romance">Romance</label>
+                                </div>
+                                <div class="multi-select-option" data-value="school">
+                                    <input type="checkbox" id="genre-school">
+                                    <label for="genre-school">School</label>
+                                </div>
+                                <div class="multi-select-option" data-value="sci-fi">
+                                    <input type="checkbox" id="genre-sci-fi">
+                                    <label for="genre-sci-fi">Sci-Fi</label>
+                                </div>
+                                <div class="multi-select-option" data-value="seinen">
+                                    <input type="checkbox" id="genre-seinen">
+                                    <label for="genre-seinen">Seinen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="shoujo">
+                                    <input type="checkbox" id="genre-shoujo">
+                                    <label for="genre-shoujo">Shoujo</label>
+                                </div>
+                                <div class="multi-select-option" data-value="shounen">
+                                    <input type="checkbox" id="genre-shounen">
+                                    <label for="genre-shounen">Shounen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="slice-of-life">
+                                    <input type="checkbox" id="genre-slice-of-life">
+                                    <label for="genre-slice-of-life">Slice of Life</label>
+                                </div>
+                                <div class="multi-select-option" data-value="sports">
+                                    <input type="checkbox" id="genre-sports">
+                                    <label for="genre-sports">Sports</label>
+                                </div>
+                                <div class="multi-select-option" data-value="supernatural">
+                                    <input type="checkbox" id="genre-supernatural">
+                                    <label for="genre-supernatural">Supernatural</label>
+                                </div>
+                                <div class="multi-select-option" data-value="thriller">
+                                    <input type="checkbox" id="genre-thriller">
+                                    <label for="genre-thriller">Thriller</label>
+                                </div>
+                                <div class="multi-select-option" data-value="tragedy">
+                                    <input type="checkbox" id="genre-tragedy">
+                                    <label for="genre-tragedy">Tragedy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="yaoi">
+                                    <input type="checkbox" id="genre-yaoi">
+                                    <label for="genre-yaoi">Yaoi</label>
+                                </div>
+                                <div class="multi-select-option" data-value="yuri">
+                                    <input type="checkbox" id="genre-yuri">
+                                    <label for="genre-yuri">Yuri</label>
+                                </div>
+                                <div class="multi-select-option" data-value="josei">
+                                    <input type="checkbox" id="genre-josei">
+                                    <label for="genre-josei">Josei</label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Exclude Tags Multi-Select -->
                     <div class="filter-field">
-                        <label for="filter-exclude">Exclude tags</label>
-                        <input id="filter-exclude" type="text" placeholder="Horror, Gore" />
+                        <label>Exclude tags</label>
+                        <div class="multi-select" id="filter-exclude">
+                            <div class="multi-select-display" tabindex="0">
+                                <span class="multi-select-placeholder">Select to exclude...</span>
+                                <span class="multi-select-arrow">▼</span>
+                            </div>
+                            <div class="multi-select-dropdown">
+                                <div class="multi-select-option" data-value="action">
+                                    <input type="checkbox" id="exclude-action">
+                                    <label for="exclude-action">Action</label>
+                                </div>
+                                <div class="multi-select-option" data-value="adventure">
+                                    <input type="checkbox" id="exclude-adventure">
+                                    <label for="exclude-adventure">Adventure</label>
+                                </div>
+                                <div class="multi-select-option" data-value="comedy">
+                                    <input type="checkbox" id="exclude-comedy">
+                                    <label for="exclude-comedy">Comedy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="drama">
+                                    <input type="checkbox" id="exclude-drama">
+                                    <label for="exclude-drama">Drama</label>
+                                </div>
+                                <div class="multi-select-option" data-value="fantasy">
+                                    <input type="checkbox" id="exclude-fantasy">
+                                    <label for="exclude-fantasy">Fantasy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="horror">
+                                    <input type="checkbox" id="exclude-horror">
+                                    <label for="exclude-horror">Horror</label>
+                                </div>
+                                <div class="multi-select-option" data-value="isekai">
+                                    <input type="checkbox" id="exclude-isekai">
+                                    <label for="exclude-isekai">Isekai</label>
+                                </div>
+                                <div class="multi-select-option" data-value="martial-arts">
+                                    <input type="checkbox" id="exclude-martial-arts">
+                                    <label for="exclude-martial-arts">Martial Arts</label>
+                                </div>
+                                <div class="multi-select-option" data-value="mecha">
+                                    <input type="checkbox" id="exclude-mecha">
+                                    <label for="exclude-mecha">Mecha</label>
+                                </div>
+                                <div class="multi-select-option" data-value="mystery">
+                                    <input type="checkbox" id="exclude-mystery">
+                                    <label for="exclude-mystery">Mystery</label>
+                                </div>
+                                <div class="multi-select-option" data-value="psychological">
+                                    <input type="checkbox" id="exclude-psychological">
+                                    <label for="exclude-psychological">Psychological</label>
+                                </div>
+                                <div class="multi-select-option" data-value="romance">
+                                    <input type="checkbox" id="exclude-romance">
+                                    <label for="exclude-romance">Romance</label>
+                                </div>
+                                <div class="multi-select-option" data-value="school">
+                                    <input type="checkbox" id="exclude-school">
+                                    <label for="exclude-school">School</label>
+                                </div>
+                                <div class="multi-select-option" data-value="sci-fi">
+                                    <input type="checkbox" id="exclude-sci-fi">
+                                    <label for="exclude-sci-fi">Sci-Fi</label>
+                                </div>
+                                <div class="multi-select-option" data-value="seinen">
+                                    <input type="checkbox" id="exclude-seinen">
+                                    <label for="exclude-seinen">Seinen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="shoujo">
+                                    <input type="checkbox" id="exclude-shoujo">
+                                    <label for="exclude-shoujo">Shoujo</label>
+                                </div>
+                                <div class="multi-select-option" data-value="shounen">
+                                    <input type="checkbox" id="exclude-shounen">
+                                    <label for="exclude-shounen">Shounen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="slice-of-life">
+                                    <input type="checkbox" id="exclude-slice-of-life">
+                                    <label for="exclude-slice-of-life">Slice of Life</label>
+                                </div>
+                                <div class="multi-select-option" data-value="sports">
+                                    <input type="checkbox" id="exclude-sports">
+                                    <label for="exclude-sports">Sports</label>
+                                </div>
+                                <div class="multi-select-option" data-value="supernatural">
+                                    <input type="checkbox" id="exclude-supernatural">
+                                    <label for="exclude-supernatural">Supernatural</label>
+                                </div>
+                                <div class="multi-select-option" data-value="thriller">
+                                    <input type="checkbox" id="exclude-thriller">
+                                    <label for="exclude-thriller">Thriller</label>
+                                </div>
+                                <div class="multi-select-option" data-value="tragedy">
+                                    <input type="checkbox" id="exclude-tragedy">
+                                    <label for="exclude-tragedy">Tragedy</label>
+                                </div>
+                                <div class="multi-select-option" data-value="yaoi">
+                                    <input type="checkbox" id="exclude-yaoi">
+                                    <label for="exclude-yaoi">Yaoi</label>
+                                </div>
+                                <div class="multi-select-option" data-value="yuri">
+                                    <input type="checkbox" id="exclude-yuri">
+                                    <label for="exclude-yuri">Yuri</label>
+                                </div>
+                                <div class="multi-select-option" data-value="josei">
+                                    <input type="checkbox" id="exclude-josei">
+                                    <label for="exclude-josei">Josei</label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
                     <div class="filter-field">
                         <label for="filter-status">Status</label>
                         <select id="filter-status">
@@ -564,32 +782,189 @@
                             <option value="one-shot">One-shot</option>
                         </select>
                     </div>
+
+                    <!-- Demographics Multi-Select -->
                     <div class="filter-field">
-                        <label for="filter-demographics">Demographics</label>
-                        <input id="filter-demographics" type="text" placeholder="Shounen, Seinen" />
+                        <label>Demographics</label>
+                        <div class="multi-select" id="filter-demographics">
+                            <div class="multi-select-display" tabindex="0">
+                                <span class="multi-select-placeholder">Select demographics...</span>
+                                <span class="multi-select-arrow">▼</span>
+                            </div>
+                            <div class="multi-select-dropdown">
+                                <div class="multi-select-option" data-value="shounen">
+                                    <input type="checkbox" id="demo-shounen">
+                                    <label for="demo-shounen">Shounen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="shoujo">
+                                    <input type="checkbox" id="demo-shoujo">
+                                    <label for="demo-shoujo">Shoujo</label>
+                                </div>
+                                <div class="multi-select-option" data-value="seinen">
+                                    <input type="checkbox" id="demo-seinen">
+                                    <label for="demo-seinen">Seinen</label>
+                                </div>
+                                <div class="multi-select-option" data-value="josei">
+                                    <input type="checkbox" id="demo-josei">
+                                    <label for="demo-josei">Josei</label>
+                                </div>
+                                <div class="multi-select-option" data-value="kids">
+                                    <input type="checkbox" id="demo-kids">
+                                    <label for="demo-kids">Kids</label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
                     <div class="filter-field">
                         <label for="filter-source">Search Source</label>
                         <select id="filter-source">
                             <option value="">All Sources</option>
                         </select>
                     </div>
+
+                    <!-- Year From Picker -->
                     <div class="filter-field">
-                        <label for="filter-year-start">Year From</label>
-                        <input id="filter-year-start" type="number" min="1900" max="2100" placeholder="1999" />
+                        <label>Year From</label>
+                        <div class="year-picker" id="filter-year-start">
+                            <button type="button" class="year-display">Any</button>
+                            <div class="year-picker-dropdown">
+                                <button type="button" class="year-option year-any" data-year="">Any</button>
+                                <div class="year-grid">
+                                    <button type="button" class="year-option" data-year="2026">2026</button>
+                                    <button type="button" class="year-option" data-year="2025">2025</button>
+                                    <button type="button" class="year-option" data-year="2024">2024</button>
+                                    <button type="button" class="year-option" data-year="2023">2023</button>
+                                    <button type="button" class="year-option" data-year="2022">2022</button>
+                                    <button type="button" class="year-option" data-year="2021">2021</button>
+                                    <button type="button" class="year-option" data-year="2020">2020</button>
+                                    <button type="button" class="year-option" data-year="2019">2019</button>
+                                    <button type="button" class="year-option" data-year="2018">2018</button>
+                                    <button type="button" class="year-option" data-year="2017">2017</button>
+                                    <button type="button" class="year-option" data-year="2016">2016</button>
+                                    <button type="button" class="year-option" data-year="2015">2015</button>
+                                    <button type="button" class="year-option" data-year="2014">2014</button>
+                                    <button type="button" class="year-option" data-year="2013">2013</button>
+                                    <button type="button" class="year-option" data-year="2012">2012</button>
+                                    <button type="button" class="year-option" data-year="2011">2011</button>
+                                    <button type="button" class="year-option" data-year="2010">2010</button>
+                                    <button type="button" class="year-option" data-year="2009">2009</button>
+                                    <button type="button" class="year-option" data-year="2008">2008</button>
+                                    <button type="button" class="year-option" data-year="2007">2007</button>
+                                    <button type="button" class="year-option" data-year="2006">2006</button>
+                                    <button type="button" class="year-option" data-year="2005">2005</button>
+                                    <button type="button" class="year-option" data-year="2004">2004</button>
+                                    <button type="button" class="year-option" data-year="2003">2003</button>
+                                    <button type="button" class="year-option" data-year="2002">2002</button>
+                                    <button type="button" class="year-option" data-year="2001">2001</button>
+                                    <button type="button" class="year-option" data-year="2000">2000</button>
+                                    <button type="button" class="year-option" data-year="1999">1999</button>
+                                    <button type="button" class="year-option" data-year="1998">1998</button>
+                                    <button type="button" class="year-option" data-year="1997">1997</button>
+                                    <button type="button" class="year-option" data-year="1996">1996</button>
+                                    <button type="button" class="year-option" data-year="1995">1995</button>
+                                    <button type="button" class="year-option" data-year="1994">1994</button>
+                                    <button type="button" class="year-option" data-year="1993">1993</button>
+                                    <button type="button" class="year-option" data-year="1992">1992</button>
+                                    <button type="button" class="year-option" data-year="1991">1991</button>
+                                    <button type="button" class="year-option" data-year="1990">1990</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Year To Picker -->
                     <div class="filter-field">
-                        <label for="filter-year-end">Year To</label>
-                        <input id="filter-year-end" type="number" min="1900" max="2100" placeholder="2025" />
+                        <label>Year To</label>
+                        <div class="year-picker" id="filter-year-end">
+                            <button type="button" class="year-display">Any</button>
+                            <div class="year-picker-dropdown">
+                                <button type="button" class="year-option year-any" data-year="">Any</button>
+                                <div class="year-grid">
+                                    <button type="button" class="year-option" data-year="2026">2026</button>
+                                    <button type="button" class="year-option" data-year="2025">2025</button>
+                                    <button type="button" class="year-option" data-year="2024">2024</button>
+                                    <button type="button" class="year-option" data-year="2023">2023</button>
+                                    <button type="button" class="year-option" data-year="2022">2022</button>
+                                    <button type="button" class="year-option" data-year="2021">2021</button>
+                                    <button type="button" class="year-option" data-year="2020">2020</button>
+                                    <button type="button" class="year-option" data-year="2019">2019</button>
+                                    <button type="button" class="year-option" data-year="2018">2018</button>
+                                    <button type="button" class="year-option" data-year="2017">2017</button>
+                                    <button type="button" class="year-option" data-year="2016">2016</button>
+                                    <button type="button" class="year-option" data-year="2015">2015</button>
+                                    <button type="button" class="year-option" data-year="2014">2014</button>
+                                    <button type="button" class="year-option" data-year="2013">2013</button>
+                                    <button type="button" class="year-option" data-year="2012">2012</button>
+                                    <button type="button" class="year-option" data-year="2011">2011</button>
+                                    <button type="button" class="year-option" data-year="2010">2010</button>
+                                    <button type="button" class="year-option" data-year="2009">2009</button>
+                                    <button type="button" class="year-option" data-year="2008">2008</button>
+                                    <button type="button" class="year-option" data-year="2007">2007</button>
+                                    <button type="button" class="year-option" data-year="2006">2006</button>
+                                    <button type="button" class="year-option" data-year="2005">2005</button>
+                                    <button type="button" class="year-option" data-year="2004">2004</button>
+                                    <button type="button" class="year-option" data-year="2003">2003</button>
+                                    <button type="button" class="year-option" data-year="2002">2002</button>
+                                    <button type="button" class="year-option" data-year="2001">2001</button>
+                                    <button type="button" class="year-option" data-year="2000">2000</button>
+                                    <button type="button" class="year-option" data-year="1999">1999</button>
+                                    <button type="button" class="year-option" data-year="1998">1998</button>
+                                    <button type="button" class="year-option" data-year="1997">1997</button>
+                                    <button type="button" class="year-option" data-year="1996">1996</button>
+                                    <button type="button" class="year-option" data-year="1995">1995</button>
+                                    <button type="button" class="year-option" data-year="1994">1994</button>
+                                    <button type="button" class="year-option" data-year="1993">1993</button>
+                                    <button type="button" class="year-option" data-year="1992">1992</button>
+                                    <button type="button" class="year-option" data-year="1991">1991</button>
+                                    <button type="button" class="year-option" data-year="1990">1990</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+
+                    <!-- Score Min Star Rating -->
                     <div class="filter-field">
-                        <label for="filter-score-min">Score Min</label>
-                        <input id="filter-score-min" type="number" step="0.1" min="0" max="10" placeholder="7.5" />
+                        <label>Score Min</label>
+                        <div class="star-rating" id="filter-score-min" data-value="">
+                            <div class="star-container">
+                                <span class="star" data-star="1">★</span>
+                                <span class="star" data-star="2">★</span>
+                                <span class="star" data-star="3">★</span>
+                                <span class="star" data-star="4">★</span>
+                                <span class="star" data-star="5">★</span>
+                                <span class="star" data-star="6">★</span>
+                                <span class="star" data-star="7">★</span>
+                                <span class="star" data-star="8">★</span>
+                                <span class="star" data-star="9">★</span>
+                                <span class="star" data-star="10">★</span>
+                            </div>
+                            <button type="button" class="star-clear" title="Clear">×</button>
+                            <span class="star-value">Any</span>
+                        </div>
                     </div>
+
+                    <!-- Score Max Star Rating -->
                     <div class="filter-field">
-                        <label for="filter-score-max">Score Max</label>
-                        <input id="filter-score-max" type="number" step="0.1" min="0" max="10" placeholder="9.5" />
+                        <label>Score Max</label>
+                        <div class="star-rating" id="filter-score-max" data-value="">
+                            <div class="star-container">
+                                <span class="star" data-star="1">★</span>
+                                <span class="star" data-star="2">★</span>
+                                <span class="star" data-star="3">★</span>
+                                <span class="star" data-star="4">★</span>
+                                <span class="star" data-star="5">★</span>
+                                <span class="star" data-star="6">★</span>
+                                <span class="star" data-star="7">★</span>
+                                <span class="star" data-star="8">★</span>
+                                <span class="star" data-star="9">★</span>
+                                <span class="star" data-star="10">★</span>
+                            </div>
+                            <button type="button" class="star-clear" title="Clear">×</button>
+                            <span class="star-value">Any</span>
+                        </div>
                     </div>
+
                     <div class="filter-field">
                         <label for="filter-sort">Sort</label>
                         <select id="filter-sort">

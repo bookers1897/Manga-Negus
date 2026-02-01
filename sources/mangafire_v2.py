@@ -66,60 +66,72 @@ class MangaFireV2Connector(BaseConnector):
     languages = ["en"]
 
     def __init__(self):
-        """Initialize MangaFire V2 with playwright."""
+        """Initialize MangaFire V2 (lazy initialization - no browser launch)."""
         super().__init__()
 
         # THREAD SAFETY: Playwright is NOT thread-safe, use lock
         self._playwright_lock = threading.Lock()
+        self._playwright = None
+        self._browser = None
+        self._page = None
+        self._initialized = False
 
-        if not HAS_PLAYWRIGHT:
-            source_log(f"[{self.id}] playwright not installed! Run: pip install playwright playwright-stealth")
-            self._playwright = None
-            self._browser = None
-            self._page = None
-            return
+    def _ensure_browser(self) -> bool:
+        """Lazy initialization - launch browser on first use only."""
+        if self._initialized:
+            return self._page is not None
 
-        if not HAS_BS4:
-            source_log(f"[{self.id}] BeautifulSoup not installed!")
-            self._playwright = None
-            self._browser = None
-            self._page = None
-            return
+        with self._playwright_lock:
+            # Double-check after acquiring lock
+            if self._initialized:
+                return self._page is not None
 
-        try:
-            # Initialize playwright
-            self._playwright = sync_playwright().start()
+            self._initialized = True
 
-            # Launch browser (headless for production)
-            self._browser = self._playwright.chromium.launch(
-                headless=True,
-                args=[
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                    '--no-sandbox'
-                ]
-            )
+            if not HAS_PLAYWRIGHT:
+                source_log(f"[{self.id}] playwright not installed! Run: pip install playwright playwright-stealth")
+                return False
 
-            # Create page with stealth mode
-            self._page = self._browser.new_page(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent=(
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            if not HAS_BS4:
+                source_log(f"[{self.id}] BeautifulSoup not installed!")
+                return False
+
+            try:
+                # Initialize playwright (LAZY - only on first use)
+                self._playwright = sync_playwright().start()
+
+                # Launch browser (headless for production)
+                self._browser = self._playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox'
+                    ]
                 )
-            )
 
-            # Apply stealth mode to hide automation
-            stealth_config = Stealth()
-            stealth_config.apply_stealth_sync(self._page)
+                # Create page with stealth mode
+                self._page = self._browser.new_page(
+                    viewport={'width': 1920, 'height': 1080},
+                    user_agent=(
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    )
+                )
 
-            source_log(f"[{self.id}] Initialized with playwright-stealth (thread-safe)")
+                # Apply stealth mode to hide automation
+                stealth_config = Stealth()
+                stealth_config.apply_stealth_sync(self._page)
 
-        except Exception as e:
-            source_log(f"[{self.id}] Init error: {e}")
-            self._playwright = None
-            self._browser = None
-            self._page = None
+                source_log(f"[{self.id}] Initialized with playwright-stealth (lazy, thread-safe)")
+                return True
+
+            except Exception as e:
+                source_log(f"[{self.id}] Init error: {e}")
+                self._playwright = None
+                self._browser = None
+                self._page = None
+                return False
 
     def __del__(self):
         """Cleanup playwright resources (thread-safe)."""
@@ -167,7 +179,7 @@ class MangaFireV2Connector(BaseConnector):
         Returns:
             HTML content or None on failure
         """
-        if not self._page:
+        if not self._ensure_browser():
             return None
 
         self._wait_for_rate_limit()
@@ -210,7 +222,7 @@ class MangaFireV2Connector(BaseConnector):
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
         """Search MangaFire for manga."""
-        if not HAS_BS4 or not self._page:
+        if not HAS_BS4 or not self._ensure_browser():
             return []
 
         source_log(f"[{self.id}] Searching: {query}")
@@ -266,7 +278,7 @@ class MangaFireV2Connector(BaseConnector):
 
     def get_popular(self, page: int = 1) -> List[MangaResult]:
         """Get popular manga from MangaFire."""
-        if not HAS_BS4 or not self._page:
+        if not HAS_BS4 or not self._ensure_browser():
             return []
 
         url = f"{self.base_url}/filter?sort=most_views&page={page}"
@@ -313,7 +325,7 @@ class MangaFireV2Connector(BaseConnector):
 
     def get_latest(self, page: int = 1) -> List[MangaResult]:
         """Get latest manga updates from MangaFire."""
-        if not HAS_BS4 or not self._page:
+        if not HAS_BS4 or not self._ensure_browser():
             return []
 
         url = f"{self.base_url}/filter?sort=recently_updated&page={page}"
@@ -359,7 +371,7 @@ class MangaFireV2Connector(BaseConnector):
 
     def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
         """Get chapters for a manga."""
-        if not HAS_BS4 or not self._page:
+        if not HAS_BS4 or not self._ensure_browser():
             return []
 
         source_log(f"[{self.id}] Getting chapters for: {manga_id}")
@@ -409,7 +421,7 @@ class MangaFireV2Connector(BaseConnector):
 
     def get_pages(self, chapter_id: str) -> List[PageResult]:
         """Get page images for a chapter."""
-        if not self._page:
+        if not self._ensure_browser():
             return []
 
         source_log(f"[{self.id}] Getting pages for chapter")

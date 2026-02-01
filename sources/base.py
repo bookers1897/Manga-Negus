@@ -442,6 +442,34 @@ class BaseConnector(ABC):
 
         return response.content
 
+    def fetch_html_raw(self, url: str) -> str:
+        """
+        Hard scrap: Fetch raw HTML using robust retry logic and browser impersonation.
+        This ensures we get the content even if standard requests struggle.
+        """
+        response = self.fetch_with_retry(url, method="GET", validate_response=True)
+        return response.text
+
+    def extract_images_raw(self, html: str) -> List[str]:
+        """
+        Fallback: Extract potential image URLs from raw HTML using regex.
+        Useful when DOM parsing fails due to broken HTML, JS rendering, or anti-bot obfuscation.
+        """
+        import re
+        # Look for common image extensions in quotes (broad pattern)
+        pattern = r'[\"\'](https?://[^"\']+\.(?:jpg|jpeg|png|webp|avif)[^"\']*)[\"\']'
+        matches = re.findall(pattern, html, re.IGNORECASE)
+        
+        # Clean up matches
+        cleaned = []
+        for m in matches:
+            # Remove backslashes from escaped JSON
+            url = m.replace('\\', '')
+            if 'http' in url:
+                cleaned.append(url)
+        
+        return list(set(cleaned))
+
     def _wait_for_rate_limit(self) -> None:
         """
         Block until we have a token available for a request.

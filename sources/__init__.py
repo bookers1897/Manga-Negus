@@ -199,13 +199,23 @@ class SourceManager:
         self._session.mount("https://", adapter)
 
     def _init_result_caches(self) -> None:
-        """Initialize result caches with environment-configurable TTLs."""
-        self._search_cache = self._create_cache("SEARCH", ttl_default=300, max_default=512)
-        self._popular_cache = self._create_cache("POPULAR", ttl_default=300, max_default=256)
-        self._latest_cache = self._create_cache("LATEST", ttl_default=300, max_default=256)
-        self._chapters_cache = self._create_cache("CHAPTERS", ttl_default=900, max_default=2048)
-        self._pages_cache = self._create_cache("PAGES", ttl_default=300, max_default=4096)
-        self._details_cache = self._create_cache("DETAILS", ttl_default=900, max_default=1024)
+        """Initialize result caches with environment-configurable TTLs.
+
+        Increased defaults (Jan 2026) for better user experience:
+        - Search: 10 min TTL, 1024 entries (users repeat searches often)
+        - Popular/Latest: 15 min TTL, 512 entries (changes infrequently)
+        - Chapters: 30 min TTL, 4096 entries (rarely changes)
+        - Pages: 10 min TTL, 8192 entries (high volume, image URLs)
+        - Details: 30 min TTL, 2048 entries (manga metadata is stable)
+
+        Override via env vars: {PREFIX}_CACHE_TTL and {PREFIX}_CACHE_MAX
+        """
+        self._search_cache = self._create_cache("SEARCH", ttl_default=600, max_default=1024)
+        self._popular_cache = self._create_cache("POPULAR", ttl_default=900, max_default=512)
+        self._latest_cache = self._create_cache("LATEST", ttl_default=900, max_default=512)
+        self._chapters_cache = self._create_cache("CHAPTERS", ttl_default=1800, max_default=4096)
+        self._pages_cache = self._create_cache("PAGES", ttl_default=600, max_default=8192)
+        self._details_cache = self._create_cache("DETAILS", ttl_default=1800, max_default=2048)
 
     def _create_cache(self, prefix: str, ttl_default: int, max_default: int) -> Optional[TTLCache]:
         ttl = int(os.environ.get(f"{prefix}_CACHE_TTL", str(ttl_default)))
@@ -225,6 +235,53 @@ class SourceManager:
             return
         with self._cache_lock:
             cache[key] = value
+
+    def _normalize_manga_results(self, results: Any, source_id: str) -> Any:
+        """Ensure manga results include source id and normalized cover URLs."""
+        if not isinstance(results, list):
+            return results
+        source = self._sources.get(source_id)
+
+        def _pick_srcset(url_value: str) -> str:
+            if not url_value:
+                return url_value
+            if ',' not in url_value:
+                return url_value
+            parts = [p.strip() for p in url_value.split(',') if p.strip()]
+            if not parts:
+                return url_value
+            return parts[-1].split()[0] or url_value
+
+        def _normalize_url(url_value: Optional[str]) -> Optional[str]:
+            if not url_value:
+                return url_value
+            if not isinstance(url_value, str):
+                return url_value
+            url_value = _pick_srcset(url_value.strip())
+            if url_value.startswith('//'):
+                url_value = f"https:{url_value}"
+            if source and not url_value.startswith(('http://', 'https://')):
+                return source._absolute_url(url_value)
+            return url_value
+
+        for item in results:
+            if isinstance(item, MangaResult):
+                if not item.source:
+                    item.source = source_id
+                item.cover_url = _normalize_url(item.cover_url)
+                if item.url:
+                    item.url = _normalize_url(item.url)
+            elif isinstance(item, dict):
+                if not item.get('source'):
+                    item['source'] = source_id
+                cover = item.get('cover_url') or item.get('cover')
+                cover = _normalize_url(cover)
+                if cover:
+                    item['cover_url'] = cover
+                    item['cover'] = cover
+                if item.get('url'):
+                    item['url'] = _normalize_url(item.get('url'))
+        return results
 
     def _clear_result_caches(self) -> None:
         """Clear all result caches (search/popular/latest/chapters/pages/details)."""
@@ -658,6 +715,7 @@ class SourceManager:
             start_time = time.time()
             try:
                 result = operation(source)
+                result = self._normalize_manga_results(result, source.id)
                 response_time = time.time() - start_time
 
                 # Check if result has actual data
@@ -732,6 +790,7 @@ class SourceManager:
             start_time = time.time()
             try:
                 results = source.search(query, page)
+                results = self._normalize_manga_results(results, source.id)
                 response_time = time.time() - start_time
                 return (source.id, results, response_time, None)
             except Exception as e:
@@ -824,6 +883,7 @@ class SourceManager:
             source = self._sources.get(source_id)
             if source:
                 results = source.search(query, page)
+                results = self._normalize_manga_results(results, source_id)
                 self._cache_set(self._search_cache, cache_key, results)
                 return results
             return []
@@ -856,6 +916,7 @@ class SourceManager:
             source = self._sources.get(source_id)
             if source and source.supports_popular:
                 results = source.get_popular(page)
+                results = self._normalize_manga_results(results, source_id)
                 if results:
                     self._cache_set(self._popular_cache, cache_key, results)
                 return results
@@ -890,6 +951,7 @@ class SourceManager:
             source = self._sources.get(source_id)
             if source and source.supports_latest:
                 results = source.get_latest(page)
+                results = self._normalize_manga_results(results, source_id)
                 if results:
                     self._cache_set(self._latest_cache, cache_key, results)
                 return results

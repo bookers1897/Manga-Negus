@@ -1,4 +1,4 @@
-# CLAUDE.md
+#; CLAUDE.md
 
 **MangaNegus v4.0** - Complete AI Assistant Guide
 

@@ -164,6 +164,25 @@ class WeebCentralConnector(BaseConnector):
         # Remove special characters that WeebCentral doesn't like
         return re.sub(r'[!#:()]', '', query)
 
+    def _pick_srcset_url(self, srcset: str) -> Optional[str]:
+        """Pick a usable URL from a srcset string."""
+        if not srcset:
+            return None
+        parts = [p.strip() for p in srcset.split(',') if p.strip()]
+        if not parts:
+            return None
+        candidate = parts[-1].split()[0]
+        return candidate or None
+
+    def _normalize_cover(self, url: Optional[str]) -> Optional[str]:
+        """Normalize cover URL to absolute https URL."""
+        if not url:
+            return None
+        url = url.strip()
+        if url.startswith('//'):
+            url = f"https:{url}"
+        return urljoin(self.base_url, url)
+
     def _extract_chapter_num(self, text: str) -> str:
         """Extract chapter number from text."""
         match = re.search(r'[Cc]h(?:apter)?\.?\s*(\d+(?:\.\d+)?)', text)
@@ -210,7 +229,10 @@ class WeebCentralConnector(BaseConnector):
                 img = link.select_one('img')
                 title = img.get('alt', '').replace(' cover', '') if img else slug.replace('-', ' ').title()
                 picture = link.select_one('picture source')
-                cover = picture.get('srcset', '') if picture else None
+                cover = self._pick_srcset_url(picture.get('srcset', '')) if picture else None
+                if not cover and img:
+                    cover = img.get('data-src') or img.get('data-lazy-src') or img.get('src')
+                cover = self._normalize_cover(cover)
 
                 if not href.startswith("http"):
                     href = urljoin(self.base_url, href)
