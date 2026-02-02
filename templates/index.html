@@ -1,9 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Manga Negus - Redesign</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Manga Negus</title>
     <meta name="theme-color" content="#0b0b0f" />
     <link rel="manifest" href="/static/manifest.json" />
 
@@ -11,9 +13,9 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <!-- Redesign Styles -->
-    <link rel="stylesheet" href="/static/css/styles.css">
-</head>
-<body>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
     <!-- Background Orbs -->
     <div class="bg-blob blob-1"></div>
     <div class="bg-blob blob-2"></div>
@@ -21,121 +23,174 @@
 
     <!-- Header -->
     <header class="header">
-        <button id="menu-btn" class="menu-btn">
-            <i data-lucide="menu"></i>
+      <button id="menu-btn" class="menu-btn">
+        <i data-lucide="menu"></i>
+      </button>
+
+      <div class="brand" id="brand-btn">
+        <div class="brand-logo brand-logo-image">
+          <img src="/static/images/sharingan.png" alt="MangaNegus Logo" />
+        </div>
+        <div class="brand-text app-title">Manga<span>Negus</span></div>
+      </div>
+
+      <div class="search-container">
+        <div class="search-wrapper">
+          <button
+            id="search-mode-btn"
+            class="search-mode-btn"
+            title="Switch Mode">
+            <i id="search-mode-icon" data-lucide="search" width="18"></i>
+          </button>
+          <div class="divider-v"></div>
+          <input
+            id="search-input"
+            type="text"
+            class="search-input"
+            placeholder="Search titles..."
+            autocomplete="off"
+            aria-label="Search manga" />
+          <button
+            id="clear-search"
+            class="clear-btn hidden"
+            aria-label="Clear search">
+            <i data-lucide="x" width="16"></i>
+          </button>
+          <button
+            id="search-btn"
+            class="icon-btn"
+            style="margin-left: 4px"
+            aria-label="Search">
+            <i data-lucide="arrow-right" width="20"></i>
+          </button>
+        </div>
+        <div id="search-suggestions" class="search-suggestions hidden"></div>
+      </div>
+
+      <div class="header-actions">
+        <button
+          class="icon-btn"
+          id="theme-toggle-btn"
+          title="Change theme"
+          aria-label="Toggle theme">
+          <i data-lucide="sun" id="theme-icon"></i>
         </button>
+        <button
+          class="icon-btn"
+          id="filter-btn"
+          title="Filters"
+          aria-label="Open filters">
+          <i data-lucide="filter"></i>
+        </button>
+        <div class="divider-v"></div>
 
-        <div class="brand" id="brand-btn">
-            <div class="brand-logo brand-logo-image">
-                <img src="/static/images/sharingan.png" alt="MangaNegus Logo" />
+        <!-- Guest: Login Button -->
+        <button class="login-btn" id="login-btn-guest">LOGIN</button>
+
+        <!-- Logged In: Account Button with Dropdown -->
+        <div class="account-menu-container hidden" id="account-menu-container">
+          <button
+            class="account-btn"
+            id="account-btn"
+            aria-haspopup="true"
+            aria-expanded="false">
+            <img
+              id="account-avatar"
+              class="account-avatar"
+              src="/static/images/default-avatar.png"
+              alt="" />
+            <span id="account-name" class="account-name">User</span>
+            <i data-lucide="chevron-down" class="account-chevron"></i>
+          </button>
+
+          <!-- Account Dropdown Menu -->
+          <div
+            id="account-dropdown"
+            class="account-dropdown"
+            role="menu"
+            aria-label="Account menu">
+            <div class="account-dropdown-header">
+              <img
+                id="dropdown-avatar"
+                class="dropdown-avatar"
+                src="/static/images/default-avatar.png"
+                alt="" />
+              <div class="dropdown-user-info">
+                <span id="dropdown-name" class="dropdown-name"
+                  >Display Name</span
+                >
+                <span id="dropdown-email" class="dropdown-email"
+                  >email@example.com</span
+                >
+              </div>
             </div>
-            <div class="brand-text app-title">Manga<span>Negus</span></div>
-        </div>
-
-        <div class="search-container">
-            <div class="search-wrapper">
-                <button id="search-mode-btn" class="search-mode-btn" title="Switch Mode">
-                    <i id="search-mode-icon" data-lucide="search" width="18"></i>
-                </button>
-                <div class="divider-v"></div>
-                <input id="search-input" type="text" class="search-input" placeholder="Search titles..." autocomplete="off" aria-label="Search manga" />
-                <button id="clear-search" class="clear-btn hidden" aria-label="Clear search">
-                    <i data-lucide="x" width="16"></i>
-                </button>
-                <button id="search-btn" class="icon-btn" style="margin-left: 4px;" aria-label="Search">
-                    <i data-lucide="arrow-right" width="20"></i>
-                </button>
-            </div>
-            <div id="search-suggestions" class="search-suggestions hidden"></div>
-        </div>
-
-        <div class="header-actions">
-            <button class="icon-btn" id="theme-toggle-btn" title="Change theme" aria-label="Toggle theme">
-                <i data-lucide="sun" id="theme-icon"></i>
+            <div class="account-dropdown-divider"></div>
+            <button
+              class="account-dropdown-item"
+              data-action="profile"
+              role="menuitem">
+              <i data-lucide="user"></i>
+              <span>Profile</span>
             </button>
-            <button class="icon-btn" id="filter-btn" title="Filters" aria-label="Open filters">
-                <i data-lucide="filter"></i>
+            <button
+              class="account-dropdown-item"
+              data-action="settings"
+              role="menuitem">
+              <i data-lucide="settings"></i>
+              <span>Account Settings</span>
             </button>
-            <div class="divider-v"></div>
-
-            <!-- Guest: Login Button -->
-            <button class="login-btn" id="login-btn-guest">LOGIN</button>
-
-            <!-- Logged In: Account Button with Dropdown -->
-            <div class="account-menu-container hidden" id="account-menu-container">
-                <button class="account-btn" id="account-btn" aria-haspopup="true" aria-expanded="false">
-                    <img id="account-avatar" class="account-avatar" src="/static/images/default-avatar.png" alt="" />
-                    <span id="account-name" class="account-name">User</span>
-                    <i data-lucide="chevron-down" class="account-chevron"></i>
-                </button>
-
-                <!-- Account Dropdown Menu -->
-                <div id="account-dropdown" class="account-dropdown" role="menu" aria-label="Account menu">
-                    <div class="account-dropdown-header">
-                        <img id="dropdown-avatar" class="dropdown-avatar" src="/static/images/default-avatar.png" alt="" />
-                        <div class="dropdown-user-info">
-                            <span id="dropdown-name" class="dropdown-name">Display Name</span>
-                            <span id="dropdown-email" class="dropdown-email">email@example.com</span>
-                        </div>
-                    </div>
-                    <div class="account-dropdown-divider"></div>
-                    <button class="account-dropdown-item" data-action="profile" role="menuitem">
-                        <i data-lucide="user"></i>
-                        <span>Profile</span>
-                    </button>
-                    <button class="account-dropdown-item" data-action="settings" role="menuitem">
-                        <i data-lucide="settings"></i>
-                        <span>Account Settings</span>
-                    </button>
-                    <div class="account-dropdown-divider"></div>
-                    <button class="account-dropdown-item danger" data-action="logout" role="menuitem">
-                        <i data-lucide="log-out"></i>
-                        <span>Log Out</span>
-                    </button>
-                </div>
-            </div>
+            <div class="account-dropdown-divider"></div>
+            <button
+              class="account-dropdown-item danger"
+              data-action="logout"
+              role="menuitem">
+              <i data-lucide="log-out"></i>
+              <span>Log Out</span>
+            </button>
+          </div>
         </div>
+      </div>
     </header>
 
     <div id="offline-banner" class="offline-banner hidden">
-        You are offline. Some features may be unavailable.
+      You are offline. Some features may be unavailable.
     </div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
-        <div style="flex: 1; overflow-y: auto" class="no-scrollbar">
-            <div id="nav-list" style="padding-bottom: 24px">
-                <!-- Nav items injected here -->
-            </div>
-
-            <div style="margin-top: 32px">
-                <p class="nav-label">Sources</p>
-                <div id="source-list">
-                    <!-- Source buttons injected here -->
-                </div>
-            </div>
+      <div style="flex: 1; overflow-y: auto" class="no-scrollbar">
+        <div id="nav-list" style="padding-bottom: 24px">
+          <!-- Nav items injected here -->
         </div>
 
-        <div style="border-top: 1px solid var(--border-glass); padding-top: 16px">
-            <button class="nav-item" id="download-queue-btn">
-                <i data-lucide="download" aria-hidden="true"></i>
-                <span class="nav-text">Downloads</span>
-                <span id="queue-badge" class="queue-badge hidden">0</span>
-                <span id="paused-badge" class="paused-badge hidden">0</span>
-            </button>
-            <button class="nav-item" id="console-toggle-btn">
-                <i data-lucide="terminal"></i>
-                <span class="nav-text">Console</span>
-            </button>
-            <button class="nav-item" id="settings-btn">
-                <i data-lucide="settings"></i>
-                <span class="nav-text">Settings</span>
-            </button>
-            <button class="nav-item">
-                <i data-lucide="log-out"></i>
-                <span class="nav-text">Log Out</span>
-            </button>
+        <div style="margin-top: 32px">
+          <p class="nav-label">Sources</p>
+          <div id="source-list">
+            <!-- Source buttons injected here -->
+          </div>
         </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border-glass); padding-top: 16px">
+        <button class="nav-item" id="download-queue-btn">
+          <i data-lucide="download" aria-hidden="true"></i>
+          <span class="nav-text">Downloads</span>
+          <span id="queue-badge" class="queue-badge hidden">0</span>
+          <span id="paused-badge" class="paused-badge hidden">0</span>
+        </button>
+        <button class="nav-item" id="console-toggle-btn">
+          <i data-lucide="terminal"></i>
+          <span class="nav-text">Console</span>
+        </button>
+        <button class="nav-item" id="settings-btn">
+          <i data-lucide="settings"></i>
+          <span class="nav-text">Settings</span>
+        </button>
+        <button class="nav-item">
+          <i data-lucide="log-out"></i>
+          <span class="nav-text">Log Out</span>
+        </button>
+      </div>
     </aside>
 
     <!-- Mobile Overlay -->
@@ -143,1331 +198,1796 @@
 
     <!-- Main Content -->
     <main id="main-content" class="main-content">
-        <!-- Discover View -->
-        <section id="discover-view" class="view-section active">
-            <div class="page-header">
-                <div>
-                    <h1 id="discover-title">Discover</h1>
-                    <div id="discover-subtitle" class="subtitle">
-                        <div class="dot-red"></div>
-                        // LATEST UPDATES
-                    </div>
-                </div>
-                <div class="page-actions">
-                    <button class="control-btn" id="random-btn">
-                        <i data-lucide="shuffle"></i>
-                        Random
-                    </button>
-                </div>
+      <!-- Discover View -->
+      <section id="discover-view" class="view-section active">
+        <div class="page-header">
+          <div>
+            <h1 id="discover-title">Discover</h1>
+            <div id="discover-subtitle" class="subtitle">
+              <div class="dot-red"></div>
+              // LATEST UPDATES
             </div>
-
-            <div id="continue-reading" class="continue-reading hidden">
-                <div class="continue-info">
-                    <img id="continue-cover" src="" alt="Continue Reading Cover" />
-                    <div>
-                        <div class="continue-label">Continue Reading</div>
-                        <div id="continue-title" class="continue-title"></div>
-                        <div id="continue-progress" class="continue-progress"></div>
-                    </div>
-                </div>
-                <button id="continue-btn" class="control-btn primary">Resume</button>
-            </div>
-
-            <div id="recommendations-section" class="recommendations-section hidden">
-                <div class="section-header">
-                    <h3>Recommended for you</h3>
-                    <p id="recommendations-subtitle" class="subtitle">Based on your library</p>
-                </div>
-                <div id="recommendations-grid" class="manga-grid"></div>
-            </div>
-
-            <div id="history-tools" class="history-tools hidden">
-                <div id="history-on-this-day" class="history-on-this-day"></div>
-                <div class="history-actions">
-                    <button class="control-btn" id="history-export-btn">Export History CSV</button>
-                </div>
-            </div>
-            <div id="history-calendar" class="history-calendar hidden"></div>
-
-            <div id="discover-grid" class="manga-grid">
-                <div class="loading-state">
-                    <div class="spinner"></div>
-                    <span class="loading-text">Loading manga...</span>
-                </div>
-            </div>
-
-            <div id="discover-empty" class="empty-state hidden">
-                <div class="empty-icon-box">
-                    <i data-lucide="search" width="32" height="32"></i>
-                </div>
-                <p class="empty-title">No Results</p>
-                <p class="empty-text">TRY A DIFFERENT KEYWORD</p>
-            </div>
-
-            <div id="discover-pagination" class="pagination hidden"></div>
-        </section>
-
-        <!-- Library View -->
-        <section id="library-view" class="view-section hidden">
-            <div class="page-header">
-                <div>
-                    <h1>Library</h1>
-                    <div id="library-subtitle" class="subtitle">
-                        <div class="dot-red"></div>
-                        <span id="library-count">// 0 ENTRIES</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Library Filters -->
-            <div class="library-controls">
-                <div class="library-filters">
-                    <button class="control-btn active" data-filter="all">All</button>
-                    <button class="control-btn" data-filter="reading">Reading</button>
-                    <button class="control-btn" data-filter="completed">Completed</button>
-                    <button class="control-btn" data-filter="plan_to_read">Plan to Read</button>
-                    <button class="control-btn" data-filter="on_hold">On Hold</button>
-                    <button class="control-btn" data-filter="dropped">Dropped</button>
-                </div>
-                <div class="library-tools">
-                    <div class="select-wrap">
-                        <label for="library-collection">Collection</label>
-                        <select id="library-collection">
-                            <option value="">All</option>
-                        </select>
-                    </div>
-                    <div class="select-wrap">
-                        <label for="library-smart-filter">Smart</label>
-                        <select id="library-smart-filter">
-                            <option value="">None</option>
-                            <option value="unread_updates">Unread Updates</option>
-                            <option value="completed_unfinished">Completed but Unfinished</option>
-                            <option value="abandoned">Abandoned Plans</option>
-                        </select>
-                    </div>
-                    <div class="select-wrap">
-                        <label for="library-sort">Sort</label>
-                        <select id="library-sort">
-                            <option value="recent">Recently Added</option>
-                            <option value="last_read">Last Read</option>
-                            <option value="title_asc">Title A-Z</option>
-                            <option value="title_desc">Title Z-A</option>
-                            <option value="rating_desc">Rating High</option>
-                            <option value="rating_asc">Rating Low</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div id="library-grid" class="manga-grid">
-                <div class="loading-state">
-                    <div class="spinner"></div>
-                    <span class="loading-text">Loading library...</span>
-                </div>
-            </div>
-
-            <div id="library-empty" class="empty-state hidden">
-                <div class="empty-icon-box">
-                    <i data-lucide="book-open" width="32" height="32"></i>
-                </div>
-                <p class="empty-title">Library is Empty</p>
-                <p class="empty-text">ADD MANGA TO GET STARTED</p>
-            </div>
-        </section>
-
-        <!-- Details View -->
-        <section id="details-view" class="view-section hidden">
-            <div class="details-view">
-                <button class="control-btn" id="back-btn" style="margin-bottom: 24px;">
-                    <i data-lucide="arrow-left" width="16"></i>
-                    Back
-                </button>
-
-                <div class="details-header">
-                    <div class="details-cover">
-                        <img id="details-cover-img" src="" alt="Cover" />
-                    </div>
-                    <div class="details-info">
-                        <h2 class="details-title" id="details-title">Loading...</h2>
-                        <div class="details-meta" id="details-meta">
-                            <!-- Meta items injected here -->
-                        </div>
-                        <p class="details-description" id="details-description">No description available.</p>
-                        <div class="details-actions">
-                            <button class="action-btn" id="add-to-library-btn">
-                                <i data-lucide="heart" width="20"></i>
-                                Add to Library
-                            </button>
-                            <button class="action-btn secondary" id="favorite-btn">
-                                <i data-lucide="star" width="20"></i>
-                                Favorite
-                            </button>
-                            <button class="action-btn secondary" id="mark-all-read-btn">
-                                <i data-lucide="check-circle" width="20"></i>
-                                Mark All Read
-                            </button>
-                            <button class="action-btn secondary" id="download-next-btn">
-                                <i data-lucide="download" width="20"></i>
-                                Download Next 5
-                            </button>
-                            <button class="action-btn secondary" id="download-all-btn">
-                                <i data-lucide="download" width="20"></i>
-                                Download All
-                            </button>
-                        </div>
-                        <div id="details-sources" class="details-sources hidden">
-                            <span class="details-sources-label">Also available on</span>
-                            <div id="details-sources-list" class="details-sources-list"></div>
-                        </div>
-                        <div class="details-notes">
-                            <label for="notes-input">Notes</label>
-                            <textarea id="notes-input" placeholder="Add personal notes..."></textarea>
-                            <div class="details-rating">
-                                <label for="rating-input">Rating</label>
-                                <input id="rating-input" type="range" min="1" max="10" step="1" />
-                                <span id="rating-value">-</span>
-                            </div>
-                            <div class="details-review">
-                                <label for="review-input">Review</label>
-                                <textarea id="review-input" placeholder="Write a quick review..."></textarea>
-                                <div class="details-review-actions">
-                                    <button class="control-btn" id="share-review-btn">
-                                        <i data-lucide="share-2" width="14"></i>
-                                        Share Review
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="details-collections">
-                                <label for="collections-input">Collections</label>
-                                <input id="collections-input" type="text" placeholder="Action Favorites, To Re-read" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="chapters-section">
-                    <div class="chapters-header">
-                        <h3 class="chapters-title">Chapters</h3>
-                        <div class="chapters-controls">
-                            <button class="control-btn" id="select-all-chapters">
-                                <i data-lucide="check-square" width="14"></i>
-                                Select All
-                            </button>
-                            <button class="control-btn" id="deselect-all-chapters">
-                                <i data-lucide="square" width="14"></i>
-                                Deselect All
-                            </button>
-                            <button class="control-btn primary" id="download-selected-btn">
-                                <i data-lucide="download" width="14"></i>
-                                Download Selected
-                            </button>
-                            <button class="control-btn" id="download-next-chapters-btn">
-                                <i data-lucide="fast-forward" width="14"></i>
-                                Download Next 5
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="chapter-filters">
-                        <div class="select-wrap">
-                            <label for="chapter-language">Language</label>
-                            <select id="chapter-language">
-                                <option value="">All</option>
-                            </select>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="chapter-group">Group</label>
-                            <select id="chapter-group">
-                                <option value="">All</option>
-                            </select>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="chapter-translation">Translation</label>
-                            <select id="chapter-translation">
-                                <option value="">All</option>
-                                <option value="official">Official</option>
-                                <option value="fan">Fan</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div id="chapters-list" class="chapters-list">
-                        <div class="loading-state">
-                            <div class="spinner"></div>
-                            <span class="loading-text">Loading chapters...</span>
-                        </div>
-                    </div>
-
-                    <div id="chapters-pagination" class="pagination hidden">
-                        <!-- Pagination injected here -->
-                    </div>
-                </div>
-
-                <div class="similar-section">
-                    <h3 class="chapters-title">Similar Titles</h3>
-                    <div id="similar-grid" class="manga-grid"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Selection Action Bar (appears in multi-select mode) -->
-        <div id="selection-action-bar" class="selection-action-bar hidden">
-            <span id="selection-count" class="selection-count">0 selected</span>
-            <button id="btn-status-selected" class="btn-status-selected" type="button">
-                <i data-lucide="bookmark" width="18" aria-hidden="true"></i>
-                Change Status
+          </div>
+          <div class="page-actions">
+            <button class="control-btn" id="random-btn">
+              <i data-lucide="shuffle"></i>
+              Random
             </button>
-            <button id="btn-delete-selected" class="btn-delete-selected" type="button">
-                <i data-lucide="trash" width="18" aria-hidden="true"></i>
-                Delete Selected
-            </button>
-            <button id="btn-download-selected" class="btn-download-selected" type="button">
-                <i data-lucide="download" width="18" aria-hidden="true"></i>
-                Queue Selected
-            </button>
-            <button id="btn-cancel-selection" class="btn-cancel-selection" type="button">
-                Cancel
-            </button>
+          </div>
         </div>
+
+        <div id="continue-reading" class="continue-reading hidden">
+          <div class="continue-info">
+            <img id="continue-cover" src="" alt="Continue Reading Cover" />
+            <div>
+              <div class="continue-label">Continue Reading</div>
+              <div id="continue-title" class="continue-title"></div>
+              <div id="continue-progress" class="continue-progress"></div>
+            </div>
+          </div>
+          <button id="continue-btn" class="control-btn primary">Resume</button>
+        </div>
+
+        <div
+          id="recommendations-section"
+          class="recommendations-section hidden">
+          <div class="section-header">
+            <h3>Recommended for you</h3>
+            <p id="recommendations-subtitle" class="subtitle">
+              Based on your library
+            </p>
+          </div>
+          <div id="recommendations-grid" class="manga-grid"></div>
+        </div>
+
+        <div id="history-tools" class="history-tools hidden">
+          <div id="history-on-this-day" class="history-on-this-day"></div>
+          <div class="history-actions">
+            <button class="control-btn" id="history-export-btn">
+              Export History CSV
+            </button>
+          </div>
+        </div>
+        <div id="history-calendar" class="history-calendar hidden"></div>
+
+        <div id="discover-grid" class="manga-grid">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading manga...</span>
+          </div>
+        </div>
+
+        <div id="discover-empty" class="empty-state hidden">
+          <div class="empty-icon-box">
+            <i data-lucide="search" width="32" height="32"></i>
+          </div>
+          <p class="empty-title">No Results</p>
+          <p class="empty-text">TRY A DIFFERENT KEYWORD</p>
+        </div>
+
+        <div id="discover-pagination" class="pagination hidden"></div>
+      </section>
+
+      <!-- Library View -->
+      <section id="library-view" class="view-section hidden">
+        <div class="page-header">
+          <div>
+            <h1>Library</h1>
+            <div id="library-subtitle" class="subtitle">
+              <div class="dot-red"></div>
+              <span id="library-count">// 0 ENTRIES</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Library Filters -->
+        <div class="library-controls">
+          <div class="library-filters">
+            <button class="control-btn active" data-filter="all">All</button>
+            <button class="control-btn" data-filter="reading">Reading</button>
+            <button class="control-btn" data-filter="completed">
+              Completed
+            </button>
+            <button class="control-btn" data-filter="plan_to_read">
+              Plan to Read
+            </button>
+            <button class="control-btn" data-filter="on_hold">On Hold</button>
+            <button class="control-btn" data-filter="dropped">Dropped</button>
+          </div>
+          <div class="library-tools">
+            <div class="select-wrap">
+              <label for="library-collection">Collection</label>
+              <select id="library-collection">
+                <option value="">All</option>
+              </select>
+            </div>
+            <div class="select-wrap">
+              <label for="library-smart-filter">Smart</label>
+              <select id="library-smart-filter">
+                <option value="">None</option>
+                <option value="unread_updates">Unread Updates</option>
+                <option value="completed_unfinished">
+                  Completed but Unfinished
+                </option>
+                <option value="abandoned">Abandoned Plans</option>
+              </select>
+            </div>
+            <div class="select-wrap">
+              <label for="library-sort">Sort</label>
+              <select id="library-sort">
+                <option value="recent">Recently Added</option>
+                <option value="last_read">Last Read</option>
+                <option value="title_asc">Title A-Z</option>
+                <option value="title_desc">Title Z-A</option>
+                <option value="rating_desc">Rating High</option>
+                <option value="rating_asc">Rating Low</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="library-grid" class="manga-grid">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Loading library...</span>
+          </div>
+        </div>
+
+        <div id="library-empty" class="empty-state hidden">
+          <div class="empty-icon-box">
+            <i data-lucide="book-open" width="32" height="32"></i>
+          </div>
+          <p class="empty-title">Library is Empty</p>
+          <p class="empty-text">ADD MANGA TO GET STARTED</p>
+        </div>
+      </section>
+
+      <!-- Details View -->
+      <section id="details-view" class="view-section hidden">
+        <div class="details-view">
+          <button class="back-btn-mobile" id="back-btn">
+            <i data-lucide="arrow-left" width="18"></i>
+            Back
+          </button>
+
+          <div class="details-card">
+            <!-- Cover -->
+            <div class="details-cover">
+              <img id="details-cover-img" src="" alt="Cover" />
+            </div>
+
+            <!-- Title -->
+            <h2 class="details-title" id="details-title">Loading...</h2>
+
+            <!-- Meta -->
+            <div class="details-meta" id="details-meta"></div>
+
+            <!-- Description with expand -->
+            <div class="details-desc-wrap">
+              <p class="details-desc" id="details-description">No description available.</p>
+              <button class="details-expand-btn" id="expand-desc-btn">Show more</button>
+            </div>
+
+            <!-- Two buttons side by side -->
+            <div class="details-actions">
+              <button class="action-btn" id="add-to-library-btn">
+                <i data-lucide="heart" width="18"></i>
+                Add to Library
+              </button>
+              <button class="action-btn secondary" id="mark-all-read-btn">
+                <i data-lucide="check-circle" width="18"></i>
+                Mark All Read
+              </button>
+            </div>
+
+            <!-- Sources (hidden by default) -->
+            <div id="details-sources" class="details-sources hidden">
+              <span class="details-sources-label">Also available on</span>
+              <div id="details-sources-list" class="details-sources-list"></div>
+            </div>
+          </div>
+
+          <div class="chapters-section">
+            <div class="chapters-header">
+              <h3 class="chapters-title">Chapters</h3>
+              <div class="chapters-controls-grid">
+                <button class="chapter-action-btn" id="select-all-chapters">
+                  <i data-lucide="check-square" width="18"></i>
+                  <span>Select All</span>
+                </button>
+                <button class="chapter-action-btn" id="deselect-all-chapters">
+                  <i data-lucide="square" width="18"></i>
+                  <span>Deselect All</span>
+                </button>
+                <button class="chapter-action-btn primary" id="download-selected-btn">
+                  <i data-lucide="download" width="18"></i>
+                  <span>Download Selected</span>
+                </button>
+                <button class="chapter-action-btn" id="download-next-chapters-btn">
+                  <i data-lucide="fast-forward" width="18"></i>
+                  <span>Download Next 5</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="chapter-filters">
+              <div class="select-wrap">
+                <label for="chapter-language">Language</label>
+                <select id="chapter-language">
+                  <option value="">All</option>
+                </select>
+              </div>
+              <div class="select-wrap">
+                <label for="chapter-group">Group</label>
+                <select id="chapter-group">
+                  <option value="">All</option>
+                </select>
+              </div>
+              <div class="select-wrap">
+                <label for="chapter-translation">Translation</label>
+                <select id="chapter-translation">
+                  <option value="">All</option>
+                  <option value="official">Official</option>
+                  <option value="fan">Fan</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="chapters-list" class="chapters-list">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <span class="loading-text">Loading chapters...</span>
+              </div>
+            </div>
+
+            <div id="chapters-pagination" class="pagination hidden">
+              <!-- Pagination injected here -->
+            </div>
+          </div>
+
+          <div class="similar-section">
+            <h3 class="chapters-title">Similar Titles</h3>
+            <div id="similar-grid" class="manga-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Selection Action Bar (appears in multi-select mode) -->
+      <div id="selection-action-bar" class="selection-action-bar hidden">
+        <span id="selection-count" class="selection-count">0 selected</span>
+        <button
+          id="btn-status-selected"
+          class="btn-status-selected"
+          type="button">
+          <i data-lucide="bookmark" width="18" aria-hidden="true"></i>
+          Change Status
+        </button>
+        <button
+          id="btn-delete-selected"
+          class="btn-delete-selected"
+          type="button">
+          <i data-lucide="trash" width="18" aria-hidden="true"></i>
+          Delete Selected
+        </button>
+        <button
+          id="btn-download-selected"
+          class="btn-download-selected"
+          type="button">
+          <i data-lucide="download" width="18" aria-hidden="true"></i>
+          Queue Selected
+        </button>
+        <button
+          id="btn-cancel-selection"
+          class="btn-cancel-selection"
+          type="button">
+          Cancel
+        </button>
+      </div>
     </main>
 
     <!-- Reader Container -->
     <div id="reader-container" class="reader-container">
-        <div class="reader-header">
-            <button class="control-btn" id="close-reader-btn">
-                <i data-lucide="x" width="16"></i>
-                Close Reader
+      <div class="reader-header">
+        <button class="control-btn" id="close-reader-btn">
+          <i data-lucide="x" width="16"></i>
+          Close Reader
+        </button>
+        <span class="reader-title" id="reader-title">Chapter</span>
+        <div class="reader-controls">
+          <button
+            class="control-btn"
+            id="reader-mode-btn"
+            title="Toggle reader mode">
+            <span id="reader-mode-label">Strip</span>
+          </button>
+          <div class="reader-settings-dropdown">
+            <button
+              class="control-btn"
+              id="reader-settings-btn"
+              title="Reader settings">
+              <i data-lucide="settings" width="14"></i>
+              <span id="reader-fit-label">Fit Width</span>
             </button>
-            <span class="reader-title" id="reader-title">Chapter</span>
-            <div class="reader-controls">
-                <button class="control-btn" id="reader-mode-btn" title="Toggle reader mode">
-                    <span id="reader-mode-label">Strip</span>
-                </button>
-                <div class="reader-settings-dropdown">
-                    <button class="control-btn" id="reader-settings-btn" title="Reader settings">
-                        <i data-lucide="settings" width="14"></i>
-                        <span id="reader-fit-label">Fit Width</span>
-                    </button>
-                    <div class="reader-settings-menu" id="reader-settings-menu">
-                        <button data-fit="fit-width">Fit Width</button>
-                        <button data-fit="fit-height">Fit Height</button>
-                        <button data-fit="fit-screen">Fit Screen</button>
-                        <button data-fit="fit-original">Original Size</button>
-                        <div class="reader-settings-divider"></div>
-                        <button data-direction="ltr">Left to Right</button>
-                        <button data-direction="rtl">Right to Left</button>
-                        <div class="reader-settings-divider"></div>
-                        <button data-bg="dark">Background: Dark</button>
-                        <button data-bg="light">Background: Light</button>
-                        <button data-bg="sepia">Background: Sepia</button>
-                        <button data-bg="black">Background: Black</button>
-                        <button data-bg="white">Background: White</button>
-                        <div class="reader-settings-divider"></div>
-                        <button data-spread="toggle">Toggle Spread</button>
-                    </div>
-                </div>
-                <button class="icon-btn" id="reader-immersive-btn" title="Toggle immersive mode">
-                    <i data-lucide="maximize-2"></i>
-                </button>
-                <button class="icon-btn" id="prev-page-btn">
-                    <i data-lucide="chevron-left"></i>
-                </button>
-                <span class="reader-page-indicator" id="reader-page-indicator">1 / 1</span>
-                <button class="icon-btn" id="next-page-btn">
-                    <i data-lucide="chevron-right"></i>
-                </button>
+            <div class="reader-settings-menu" id="reader-settings-menu">
+              <button data-fit="fit-width">Fit Width</button>
+              <button data-fit="fit-height">Fit Height</button>
+              <button data-fit="fit-screen">Fit Screen</button>
+              <button data-fit="fit-original">Original Size</button>
+              <div class="reader-settings-divider"></div>
+              <button data-direction="ltr">Left to Right</button>
+              <button data-direction="rtl">Right to Left</button>
+              <div class="reader-settings-divider"></div>
+              <button data-bg="dark">Background: Dark</button>
+              <button data-bg="light">Background: Light</button>
+              <button data-bg="sepia">Background: Sepia</button>
+              <button data-bg="black">Background: Black</button>
+              <button data-bg="white">Background: White</button>
+              <div class="reader-settings-divider"></div>
+              <button data-spread="toggle">Toggle Spread</button>
             </div>
+          </div>
+          <button
+            class="icon-btn"
+            id="reader-immersive-btn"
+            title="Toggle immersive mode">
+            <i data-lucide="maximize-2"></i>
+          </button>
+          <button class="icon-btn" id="prev-page-btn">
+            <i data-lucide="chevron-left"></i>
+          </button>
+          <span class="reader-page-indicator" id="reader-page-indicator"
+            >1 / 1</span
+          >
+          <button class="icon-btn" id="next-page-btn">
+            <i data-lucide="chevron-right"></i>
+          </button>
         </div>
-        <div class="reader-content" id="reader-content">
-            <div class="loading-state">
-                <div class="spinner"></div>
-                <span class="loading-text">Loading pages...</span>
-            </div>
+      </div>
+      <div class="reader-content" id="reader-content">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span class="loading-text">Loading pages...</span>
         </div>
-        <div id="reader-tap-zones" class="reader-tap-zones" aria-hidden="true">
-            <button class="tap-zone left" data-zone="prev" aria-label="Previous page"></button>
-            <button class="tap-zone center" data-zone="menu" aria-label="Reader menu"></button>
-            <button class="tap-zone right" data-zone="next" aria-label="Next page"></button>
-        </div>
+      </div>
+      <div id="reader-tap-zones" class="reader-tap-zones" aria-hidden="true">
+        <button
+          class="tap-zone left"
+          data-zone="prev"
+          aria-label="Previous page"></button>
+        <button
+          class="tap-zone center"
+          data-zone="menu"
+          aria-label="Reader menu"></button>
+        <button
+          class="tap-zone right"
+          data-zone="next"
+          aria-label="Next page"></button>
+      </div>
     </div>
 
     <!-- Library Status Modal -->
     <div id="library-status-modal" class="modal-overlay">
-        <div class="modal-panel">
-            <button class="modal-close" id="close-library-modal">
-                <i data-lucide="x" width="16"></i>
-            </button>
-            <h2 class="modal-title">Add to Library</h2>
-            <p class="modal-subtitle">Select reading status</p>
-            <div class="status-options">
-                <button class="status-option-btn" data-status="reading">
-                    <i data-lucide="book-open"></i>
-                    <span>Reading</span>
-                </button>
-                <button class="status-option-btn" data-status="completed">
-                    <i data-lucide="check-circle"></i>
-                    <span>Completed</span>
-                </button>
-                <button class="status-option-btn" data-status="plan_to_read">
-                    <i data-lucide="bookmark"></i>
-                    <span>Plan to Read</span>
-                </button>
-                <button class="status-option-btn" data-status="on_hold">
-                    <i data-lucide="pause-circle"></i>
-                    <span>On Hold</span>
-                </button>
-                <button class="status-option-btn" data-status="dropped">
-                    <i data-lucide="x-circle"></i>
-                    <span>Dropped</span>
-                </button>
-            </div>
+      <div class="modal-panel">
+        <button class="modal-close" id="close-library-modal">
+          <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title">Add to Library</h2>
+        <p class="modal-subtitle">Select reading status</p>
+        <div class="status-options">
+          <button class="status-option-btn" data-status="reading">
+            <i data-lucide="book-open"></i>
+            <span>Reading</span>
+          </button>
+          <button class="status-option-btn" data-status="completed">
+            <i data-lucide="check-circle"></i>
+            <span>Completed</span>
+          </button>
+          <button class="status-option-btn" data-status="plan_to_read">
+            <i data-lucide="bookmark"></i>
+            <span>Plan to Read</span>
+          </button>
+          <button class="status-option-btn" data-status="on_hold">
+            <i data-lucide="pause-circle"></i>
+            <span>On Hold</span>
+          </button>
+          <button class="status-option-btn" data-status="dropped">
+            <i data-lucide="x-circle"></i>
+            <span>Dropped</span>
+          </button>
         </div>
+      </div>
     </div>
 
     <!-- Advanced Filters Modal -->
     <div id="filter-modal" class="modal-overlay">
-        <div class="modal-panel filter-modal">
-            <div class="modal-header">
-                <h3 class="modal-title">Filters</h3>
-                <button class="modal-close" id="close-filter-modal">
-                    <i data-lucide="x" width="18"></i>
-                </button>
-            </div>
-            <div class="modal-body filter-body">
-                <div class="filter-grid">
-                    <!-- Genres Multi-Select -->
-                    <div class="filter-field">
-                        <label>Genres (include)</label>
-                        <div class="multi-select" id="filter-genres">
-                            <div class="multi-select-display" tabindex="0">
-                                <span class="multi-select-placeholder">Select genres...</span>
-                                <span class="multi-select-arrow">▼</span>
-                            </div>
-                            <div class="multi-select-dropdown">
-                                <div class="multi-select-option" data-value="action">
-                                    <input type="checkbox" id="genre-action">
-                                    <label for="genre-action">Action</label>
-                                </div>
-                                <div class="multi-select-option" data-value="adventure">
-                                    <input type="checkbox" id="genre-adventure">
-                                    <label for="genre-adventure">Adventure</label>
-                                </div>
-                                <div class="multi-select-option" data-value="comedy">
-                                    <input type="checkbox" id="genre-comedy">
-                                    <label for="genre-comedy">Comedy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="drama">
-                                    <input type="checkbox" id="genre-drama">
-                                    <label for="genre-drama">Drama</label>
-                                </div>
-                                <div class="multi-select-option" data-value="fantasy">
-                                    <input type="checkbox" id="genre-fantasy">
-                                    <label for="genre-fantasy">Fantasy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="horror">
-                                    <input type="checkbox" id="genre-horror">
-                                    <label for="genre-horror">Horror</label>
-                                </div>
-                                <div class="multi-select-option" data-value="isekai">
-                                    <input type="checkbox" id="genre-isekai">
-                                    <label for="genre-isekai">Isekai</label>
-                                </div>
-                                <div class="multi-select-option" data-value="martial-arts">
-                                    <input type="checkbox" id="genre-martial-arts">
-                                    <label for="genre-martial-arts">Martial Arts</label>
-                                </div>
-                                <div class="multi-select-option" data-value="mecha">
-                                    <input type="checkbox" id="genre-mecha">
-                                    <label for="genre-mecha">Mecha</label>
-                                </div>
-                                <div class="multi-select-option" data-value="mystery">
-                                    <input type="checkbox" id="genre-mystery">
-                                    <label for="genre-mystery">Mystery</label>
-                                </div>
-                                <div class="multi-select-option" data-value="psychological">
-                                    <input type="checkbox" id="genre-psychological">
-                                    <label for="genre-psychological">Psychological</label>
-                                </div>
-                                <div class="multi-select-option" data-value="romance">
-                                    <input type="checkbox" id="genre-romance">
-                                    <label for="genre-romance">Romance</label>
-                                </div>
-                                <div class="multi-select-option" data-value="school">
-                                    <input type="checkbox" id="genre-school">
-                                    <label for="genre-school">School</label>
-                                </div>
-                                <div class="multi-select-option" data-value="sci-fi">
-                                    <input type="checkbox" id="genre-sci-fi">
-                                    <label for="genre-sci-fi">Sci-Fi</label>
-                                </div>
-                                <div class="multi-select-option" data-value="seinen">
-                                    <input type="checkbox" id="genre-seinen">
-                                    <label for="genre-seinen">Seinen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="shoujo">
-                                    <input type="checkbox" id="genre-shoujo">
-                                    <label for="genre-shoujo">Shoujo</label>
-                                </div>
-                                <div class="multi-select-option" data-value="shounen">
-                                    <input type="checkbox" id="genre-shounen">
-                                    <label for="genre-shounen">Shounen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="slice-of-life">
-                                    <input type="checkbox" id="genre-slice-of-life">
-                                    <label for="genre-slice-of-life">Slice of Life</label>
-                                </div>
-                                <div class="multi-select-option" data-value="sports">
-                                    <input type="checkbox" id="genre-sports">
-                                    <label for="genre-sports">Sports</label>
-                                </div>
-                                <div class="multi-select-option" data-value="supernatural">
-                                    <input type="checkbox" id="genre-supernatural">
-                                    <label for="genre-supernatural">Supernatural</label>
-                                </div>
-                                <div class="multi-select-option" data-value="thriller">
-                                    <input type="checkbox" id="genre-thriller">
-                                    <label for="genre-thriller">Thriller</label>
-                                </div>
-                                <div class="multi-select-option" data-value="tragedy">
-                                    <input type="checkbox" id="genre-tragedy">
-                                    <label for="genre-tragedy">Tragedy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="yaoi">
-                                    <input type="checkbox" id="genre-yaoi">
-                                    <label for="genre-yaoi">Yaoi</label>
-                                </div>
-                                <div class="multi-select-option" data-value="yuri">
-                                    <input type="checkbox" id="genre-yuri">
-                                    <label for="genre-yuri">Yuri</label>
-                                </div>
-                                <div class="multi-select-option" data-value="josei">
-                                    <input type="checkbox" id="genre-josei">
-                                    <label for="genre-josei">Josei</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Exclude Tags Multi-Select -->
-                    <div class="filter-field">
-                        <label>Exclude tags</label>
-                        <div class="multi-select" id="filter-exclude">
-                            <div class="multi-select-display" tabindex="0">
-                                <span class="multi-select-placeholder">Select to exclude...</span>
-                                <span class="multi-select-arrow">▼</span>
-                            </div>
-                            <div class="multi-select-dropdown">
-                                <div class="multi-select-option" data-value="action">
-                                    <input type="checkbox" id="exclude-action">
-                                    <label for="exclude-action">Action</label>
-                                </div>
-                                <div class="multi-select-option" data-value="adventure">
-                                    <input type="checkbox" id="exclude-adventure">
-                                    <label for="exclude-adventure">Adventure</label>
-                                </div>
-                                <div class="multi-select-option" data-value="comedy">
-                                    <input type="checkbox" id="exclude-comedy">
-                                    <label for="exclude-comedy">Comedy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="drama">
-                                    <input type="checkbox" id="exclude-drama">
-                                    <label for="exclude-drama">Drama</label>
-                                </div>
-                                <div class="multi-select-option" data-value="fantasy">
-                                    <input type="checkbox" id="exclude-fantasy">
-                                    <label for="exclude-fantasy">Fantasy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="horror">
-                                    <input type="checkbox" id="exclude-horror">
-                                    <label for="exclude-horror">Horror</label>
-                                </div>
-                                <div class="multi-select-option" data-value="isekai">
-                                    <input type="checkbox" id="exclude-isekai">
-                                    <label for="exclude-isekai">Isekai</label>
-                                </div>
-                                <div class="multi-select-option" data-value="martial-arts">
-                                    <input type="checkbox" id="exclude-martial-arts">
-                                    <label for="exclude-martial-arts">Martial Arts</label>
-                                </div>
-                                <div class="multi-select-option" data-value="mecha">
-                                    <input type="checkbox" id="exclude-mecha">
-                                    <label for="exclude-mecha">Mecha</label>
-                                </div>
-                                <div class="multi-select-option" data-value="mystery">
-                                    <input type="checkbox" id="exclude-mystery">
-                                    <label for="exclude-mystery">Mystery</label>
-                                </div>
-                                <div class="multi-select-option" data-value="psychological">
-                                    <input type="checkbox" id="exclude-psychological">
-                                    <label for="exclude-psychological">Psychological</label>
-                                </div>
-                                <div class="multi-select-option" data-value="romance">
-                                    <input type="checkbox" id="exclude-romance">
-                                    <label for="exclude-romance">Romance</label>
-                                </div>
-                                <div class="multi-select-option" data-value="school">
-                                    <input type="checkbox" id="exclude-school">
-                                    <label for="exclude-school">School</label>
-                                </div>
-                                <div class="multi-select-option" data-value="sci-fi">
-                                    <input type="checkbox" id="exclude-sci-fi">
-                                    <label for="exclude-sci-fi">Sci-Fi</label>
-                                </div>
-                                <div class="multi-select-option" data-value="seinen">
-                                    <input type="checkbox" id="exclude-seinen">
-                                    <label for="exclude-seinen">Seinen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="shoujo">
-                                    <input type="checkbox" id="exclude-shoujo">
-                                    <label for="exclude-shoujo">Shoujo</label>
-                                </div>
-                                <div class="multi-select-option" data-value="shounen">
-                                    <input type="checkbox" id="exclude-shounen">
-                                    <label for="exclude-shounen">Shounen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="slice-of-life">
-                                    <input type="checkbox" id="exclude-slice-of-life">
-                                    <label for="exclude-slice-of-life">Slice of Life</label>
-                                </div>
-                                <div class="multi-select-option" data-value="sports">
-                                    <input type="checkbox" id="exclude-sports">
-                                    <label for="exclude-sports">Sports</label>
-                                </div>
-                                <div class="multi-select-option" data-value="supernatural">
-                                    <input type="checkbox" id="exclude-supernatural">
-                                    <label for="exclude-supernatural">Supernatural</label>
-                                </div>
-                                <div class="multi-select-option" data-value="thriller">
-                                    <input type="checkbox" id="exclude-thriller">
-                                    <label for="exclude-thriller">Thriller</label>
-                                </div>
-                                <div class="multi-select-option" data-value="tragedy">
-                                    <input type="checkbox" id="exclude-tragedy">
-                                    <label for="exclude-tragedy">Tragedy</label>
-                                </div>
-                                <div class="multi-select-option" data-value="yaoi">
-                                    <input type="checkbox" id="exclude-yaoi">
-                                    <label for="exclude-yaoi">Yaoi</label>
-                                </div>
-                                <div class="multi-select-option" data-value="yuri">
-                                    <input type="checkbox" id="exclude-yuri">
-                                    <label for="exclude-yuri">Yuri</label>
-                                </div>
-                                <div class="multi-select-option" data-value="josei">
-                                    <input type="checkbox" id="exclude-josei">
-                                    <label for="exclude-josei">Josei</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="filter-status">Status</label>
-                        <select id="filter-status">
-                            <option value="">Any</option>
-                            <option value="publishing">Publishing</option>
-                            <option value="finished">Finished</option>
-                            <option value="hiatus">Hiatus</option>
-                            <option value="discontinued">Cancelled</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-type">Type</label>
-                        <select id="filter-type">
-                            <option value="">Any</option>
-                            <option value="manga">Manga</option>
-                            <option value="manhwa">Manhwa</option>
-                            <option value="manhua">Manhua</option>
-                            <option value="novel">Novel</option>
-                            <option value="one-shot">One-shot</option>
-                        </select>
-                    </div>
-
-                    <!-- Demographics Multi-Select -->
-                    <div class="filter-field">
-                        <label>Demographics</label>
-                        <div class="multi-select" id="filter-demographics">
-                            <div class="multi-select-display" tabindex="0">
-                                <span class="multi-select-placeholder">Select demographics...</span>
-                                <span class="multi-select-arrow">▼</span>
-                            </div>
-                            <div class="multi-select-dropdown">
-                                <div class="multi-select-option" data-value="shounen">
-                                    <input type="checkbox" id="demo-shounen">
-                                    <label for="demo-shounen">Shounen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="shoujo">
-                                    <input type="checkbox" id="demo-shoujo">
-                                    <label for="demo-shoujo">Shoujo</label>
-                                </div>
-                                <div class="multi-select-option" data-value="seinen">
-                                    <input type="checkbox" id="demo-seinen">
-                                    <label for="demo-seinen">Seinen</label>
-                                </div>
-                                <div class="multi-select-option" data-value="josei">
-                                    <input type="checkbox" id="demo-josei">
-                                    <label for="demo-josei">Josei</label>
-                                </div>
-                                <div class="multi-select-option" data-value="kids">
-                                    <input type="checkbox" id="demo-kids">
-                                    <label for="demo-kids">Kids</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="filter-source">Search Source</label>
-                        <select id="filter-source">
-                            <option value="">All Sources</option>
-                        </select>
-                    </div>
-
-                    <!-- Year From Picker -->
-                    <div class="filter-field">
-                        <label>Year From</label>
-                        <div class="year-picker" id="filter-year-start">
-                            <button type="button" class="year-display">Any</button>
-                            <div class="year-picker-dropdown">
-                                <button type="button" class="year-option year-any" data-year="">Any</button>
-                                <div class="year-grid">
-                                    <button type="button" class="year-option" data-year="2026">2026</button>
-                                    <button type="button" class="year-option" data-year="2025">2025</button>
-                                    <button type="button" class="year-option" data-year="2024">2024</button>
-                                    <button type="button" class="year-option" data-year="2023">2023</button>
-                                    <button type="button" class="year-option" data-year="2022">2022</button>
-                                    <button type="button" class="year-option" data-year="2021">2021</button>
-                                    <button type="button" class="year-option" data-year="2020">2020</button>
-                                    <button type="button" class="year-option" data-year="2019">2019</button>
-                                    <button type="button" class="year-option" data-year="2018">2018</button>
-                                    <button type="button" class="year-option" data-year="2017">2017</button>
-                                    <button type="button" class="year-option" data-year="2016">2016</button>
-                                    <button type="button" class="year-option" data-year="2015">2015</button>
-                                    <button type="button" class="year-option" data-year="2014">2014</button>
-                                    <button type="button" class="year-option" data-year="2013">2013</button>
-                                    <button type="button" class="year-option" data-year="2012">2012</button>
-                                    <button type="button" class="year-option" data-year="2011">2011</button>
-                                    <button type="button" class="year-option" data-year="2010">2010</button>
-                                    <button type="button" class="year-option" data-year="2009">2009</button>
-                                    <button type="button" class="year-option" data-year="2008">2008</button>
-                                    <button type="button" class="year-option" data-year="2007">2007</button>
-                                    <button type="button" class="year-option" data-year="2006">2006</button>
-                                    <button type="button" class="year-option" data-year="2005">2005</button>
-                                    <button type="button" class="year-option" data-year="2004">2004</button>
-                                    <button type="button" class="year-option" data-year="2003">2003</button>
-                                    <button type="button" class="year-option" data-year="2002">2002</button>
-                                    <button type="button" class="year-option" data-year="2001">2001</button>
-                                    <button type="button" class="year-option" data-year="2000">2000</button>
-                                    <button type="button" class="year-option" data-year="1999">1999</button>
-                                    <button type="button" class="year-option" data-year="1998">1998</button>
-                                    <button type="button" class="year-option" data-year="1997">1997</button>
-                                    <button type="button" class="year-option" data-year="1996">1996</button>
-                                    <button type="button" class="year-option" data-year="1995">1995</button>
-                                    <button type="button" class="year-option" data-year="1994">1994</button>
-                                    <button type="button" class="year-option" data-year="1993">1993</button>
-                                    <button type="button" class="year-option" data-year="1992">1992</button>
-                                    <button type="button" class="year-option" data-year="1991">1991</button>
-                                    <button type="button" class="year-option" data-year="1990">1990</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Year To Picker -->
-                    <div class="filter-field">
-                        <label>Year To</label>
-                        <div class="year-picker" id="filter-year-end">
-                            <button type="button" class="year-display">Any</button>
-                            <div class="year-picker-dropdown">
-                                <button type="button" class="year-option year-any" data-year="">Any</button>
-                                <div class="year-grid">
-                                    <button type="button" class="year-option" data-year="2026">2026</button>
-                                    <button type="button" class="year-option" data-year="2025">2025</button>
-                                    <button type="button" class="year-option" data-year="2024">2024</button>
-                                    <button type="button" class="year-option" data-year="2023">2023</button>
-                                    <button type="button" class="year-option" data-year="2022">2022</button>
-                                    <button type="button" class="year-option" data-year="2021">2021</button>
-                                    <button type="button" class="year-option" data-year="2020">2020</button>
-                                    <button type="button" class="year-option" data-year="2019">2019</button>
-                                    <button type="button" class="year-option" data-year="2018">2018</button>
-                                    <button type="button" class="year-option" data-year="2017">2017</button>
-                                    <button type="button" class="year-option" data-year="2016">2016</button>
-                                    <button type="button" class="year-option" data-year="2015">2015</button>
-                                    <button type="button" class="year-option" data-year="2014">2014</button>
-                                    <button type="button" class="year-option" data-year="2013">2013</button>
-                                    <button type="button" class="year-option" data-year="2012">2012</button>
-                                    <button type="button" class="year-option" data-year="2011">2011</button>
-                                    <button type="button" class="year-option" data-year="2010">2010</button>
-                                    <button type="button" class="year-option" data-year="2009">2009</button>
-                                    <button type="button" class="year-option" data-year="2008">2008</button>
-                                    <button type="button" class="year-option" data-year="2007">2007</button>
-                                    <button type="button" class="year-option" data-year="2006">2006</button>
-                                    <button type="button" class="year-option" data-year="2005">2005</button>
-                                    <button type="button" class="year-option" data-year="2004">2004</button>
-                                    <button type="button" class="year-option" data-year="2003">2003</button>
-                                    <button type="button" class="year-option" data-year="2002">2002</button>
-                                    <button type="button" class="year-option" data-year="2001">2001</button>
-                                    <button type="button" class="year-option" data-year="2000">2000</button>
-                                    <button type="button" class="year-option" data-year="1999">1999</button>
-                                    <button type="button" class="year-option" data-year="1998">1998</button>
-                                    <button type="button" class="year-option" data-year="1997">1997</button>
-                                    <button type="button" class="year-option" data-year="1996">1996</button>
-                                    <button type="button" class="year-option" data-year="1995">1995</button>
-                                    <button type="button" class="year-option" data-year="1994">1994</button>
-                                    <button type="button" class="year-option" data-year="1993">1993</button>
-                                    <button type="button" class="year-option" data-year="1992">1992</button>
-                                    <button type="button" class="year-option" data-year="1991">1991</button>
-                                    <button type="button" class="year-option" data-year="1990">1990</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Score Min Star Rating -->
-                    <div class="filter-field">
-                        <label>Score Min</label>
-                        <div class="star-rating" id="filter-score-min" data-value="">
-                            <div class="star-container">
-                                <span class="star" data-star="1">★</span>
-                                <span class="star" data-star="2">★</span>
-                                <span class="star" data-star="3">★</span>
-                                <span class="star" data-star="4">★</span>
-                                <span class="star" data-star="5">★</span>
-                                <span class="star" data-star="6">★</span>
-                                <span class="star" data-star="7">★</span>
-                                <span class="star" data-star="8">★</span>
-                                <span class="star" data-star="9">★</span>
-                                <span class="star" data-star="10">★</span>
-                            </div>
-                            <button type="button" class="star-clear" title="Clear">×</button>
-                            <span class="star-value">Any</span>
-                        </div>
-                    </div>
-
-                    <!-- Score Max Star Rating -->
-                    <div class="filter-field">
-                        <label>Score Max</label>
-                        <div class="star-rating" id="filter-score-max" data-value="">
-                            <div class="star-container">
-                                <span class="star" data-star="1">★</span>
-                                <span class="star" data-star="2">★</span>
-                                <span class="star" data-star="3">★</span>
-                                <span class="star" data-star="4">★</span>
-                                <span class="star" data-star="5">★</span>
-                                <span class="star" data-star="6">★</span>
-                                <span class="star" data-star="7">★</span>
-                                <span class="star" data-star="8">★</span>
-                                <span class="star" data-star="9">★</span>
-                                <span class="star" data-star="10">★</span>
-                            </div>
-                            <button type="button" class="star-clear" title="Clear">×</button>
-                            <span class="star-value">Any</span>
-                        </div>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="filter-sort">Sort</label>
-                        <select id="filter-sort">
-                            <option value="popularity">Popularity</option>
-                            <option value="score">Score</option>
-                            <option value="title">Title</option>
-                            <option value="chapters">Chapters</option>
-                            <option value="year">Year</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-order">Order</label>
-                        <select id="filter-order">
-                            <option value="desc">High → Low</option>
-                            <option value="asc">Low → High</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-density">Grid Density</label>
-                        <select id="filter-density">
-                            <option value="comfortable">Comfortable</option>
-                            <option value="normal" selected>Normal</option>
-                            <option value="compact">Compact</option>
-                            <option value="list">List</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-meta">Card Metadata</label>
-                        <select id="filter-meta">
-                            <option value="on">Show</option>
-                            <option value="off">Hide</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-pagination">Pagination</label>
-                        <select id="filter-pagination">
-                            <option value="paged">Paged</option>
-                            <option value="infinite">Infinite Scroll</option>
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="filter-data-saver">Data Saver</label>
-                        <select id="filter-data-saver">
-                            <option value="off">Off</option>
-                            <option value="on">On</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="control-btn" id="filter-reset">Reset</button>
-                <button class="control-btn primary" id="filter-apply">Apply</button>
-            </div>
+      <div class="modal-panel filter-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Filters</h3>
+          <button class="modal-close" id="close-filter-modal">
+            <i data-lucide="x" width="18"></i>
+          </button>
         </div>
+        <div class="modal-body filter-body">
+          <div class="filter-grid">
+            <!-- Genres Multi-Select -->
+            <div class="filter-field">
+              <label>Genres (include)</label>
+              <div class="multi-select" id="filter-genres">
+                <div class="multi-select-display" tabindex="0">
+                  <span class="multi-select-placeholder">Select genres...</span>
+                  <span class="multi-select-arrow">▼</span>
+                </div>
+                <div class="multi-select-dropdown">
+                  <div class="multi-select-option" data-value="action">
+                    <input type="checkbox" id="genre-action" />
+                    <label for="genre-action">Action</label>
+                  </div>
+                  <div class="multi-select-option" data-value="adventure">
+                    <input type="checkbox" id="genre-adventure" />
+                    <label for="genre-adventure">Adventure</label>
+                  </div>
+                  <div class="multi-select-option" data-value="comedy">
+                    <input type="checkbox" id="genre-comedy" />
+                    <label for="genre-comedy">Comedy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="drama">
+                    <input type="checkbox" id="genre-drama" />
+                    <label for="genre-drama">Drama</label>
+                  </div>
+                  <div class="multi-select-option" data-value="fantasy">
+                    <input type="checkbox" id="genre-fantasy" />
+                    <label for="genre-fantasy">Fantasy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="horror">
+                    <input type="checkbox" id="genre-horror" />
+                    <label for="genre-horror">Horror</label>
+                  </div>
+                  <div class="multi-select-option" data-value="isekai">
+                    <input type="checkbox" id="genre-isekai" />
+                    <label for="genre-isekai">Isekai</label>
+                  </div>
+                  <div class="multi-select-option" data-value="martial-arts">
+                    <input type="checkbox" id="genre-martial-arts" />
+                    <label for="genre-martial-arts">Martial Arts</label>
+                  </div>
+                  <div class="multi-select-option" data-value="mecha">
+                    <input type="checkbox" id="genre-mecha" />
+                    <label for="genre-mecha">Mecha</label>
+                  </div>
+                  <div class="multi-select-option" data-value="mystery">
+                    <input type="checkbox" id="genre-mystery" />
+                    <label for="genre-mystery">Mystery</label>
+                  </div>
+                  <div class="multi-select-option" data-value="psychological">
+                    <input type="checkbox" id="genre-psychological" />
+                    <label for="genre-psychological">Psychological</label>
+                  </div>
+                  <div class="multi-select-option" data-value="romance">
+                    <input type="checkbox" id="genre-romance" />
+                    <label for="genre-romance">Romance</label>
+                  </div>
+                  <div class="multi-select-option" data-value="school">
+                    <input type="checkbox" id="genre-school" />
+                    <label for="genre-school">School</label>
+                  </div>
+                  <div class="multi-select-option" data-value="sci-fi">
+                    <input type="checkbox" id="genre-sci-fi" />
+                    <label for="genre-sci-fi">Sci-Fi</label>
+                  </div>
+                  <div class="multi-select-option" data-value="seinen">
+                    <input type="checkbox" id="genre-seinen" />
+                    <label for="genre-seinen">Seinen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="shoujo">
+                    <input type="checkbox" id="genre-shoujo" />
+                    <label for="genre-shoujo">Shoujo</label>
+                  </div>
+                  <div class="multi-select-option" data-value="shounen">
+                    <input type="checkbox" id="genre-shounen" />
+                    <label for="genre-shounen">Shounen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="slice-of-life">
+                    <input type="checkbox" id="genre-slice-of-life" />
+                    <label for="genre-slice-of-life">Slice of Life</label>
+                  </div>
+                  <div class="multi-select-option" data-value="sports">
+                    <input type="checkbox" id="genre-sports" />
+                    <label for="genre-sports">Sports</label>
+                  </div>
+                  <div class="multi-select-option" data-value="supernatural">
+                    <input type="checkbox" id="genre-supernatural" />
+                    <label for="genre-supernatural">Supernatural</label>
+                  </div>
+                  <div class="multi-select-option" data-value="thriller">
+                    <input type="checkbox" id="genre-thriller" />
+                    <label for="genre-thriller">Thriller</label>
+                  </div>
+                  <div class="multi-select-option" data-value="tragedy">
+                    <input type="checkbox" id="genre-tragedy" />
+                    <label for="genre-tragedy">Tragedy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="yaoi">
+                    <input type="checkbox" id="genre-yaoi" />
+                    <label for="genre-yaoi">Yaoi</label>
+                  </div>
+                  <div class="multi-select-option" data-value="yuri">
+                    <input type="checkbox" id="genre-yuri" />
+                    <label for="genre-yuri">Yuri</label>
+                  </div>
+                  <div class="multi-select-option" data-value="josei">
+                    <input type="checkbox" id="genre-josei" />
+                    <label for="genre-josei">Josei</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Exclude Tags Multi-Select -->
+            <div class="filter-field">
+              <label>Exclude tags</label>
+              <div class="multi-select" id="filter-exclude">
+                <div class="multi-select-display" tabindex="0">
+                  <span class="multi-select-placeholder"
+                    >Select to exclude...</span
+                  >
+                  <span class="multi-select-arrow">▼</span>
+                </div>
+                <div class="multi-select-dropdown">
+                  <div class="multi-select-option" data-value="action">
+                    <input type="checkbox" id="exclude-action" />
+                    <label for="exclude-action">Action</label>
+                  </div>
+                  <div class="multi-select-option" data-value="adventure">
+                    <input type="checkbox" id="exclude-adventure" />
+                    <label for="exclude-adventure">Adventure</label>
+                  </div>
+                  <div class="multi-select-option" data-value="comedy">
+                    <input type="checkbox" id="exclude-comedy" />
+                    <label for="exclude-comedy">Comedy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="drama">
+                    <input type="checkbox" id="exclude-drama" />
+                    <label for="exclude-drama">Drama</label>
+                  </div>
+                  <div class="multi-select-option" data-value="fantasy">
+                    <input type="checkbox" id="exclude-fantasy" />
+                    <label for="exclude-fantasy">Fantasy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="horror">
+                    <input type="checkbox" id="exclude-horror" />
+                    <label for="exclude-horror">Horror</label>
+                  </div>
+                  <div class="multi-select-option" data-value="isekai">
+                    <input type="checkbox" id="exclude-isekai" />
+                    <label for="exclude-isekai">Isekai</label>
+                  </div>
+                  <div class="multi-select-option" data-value="martial-arts">
+                    <input type="checkbox" id="exclude-martial-arts" />
+                    <label for="exclude-martial-arts">Martial Arts</label>
+                  </div>
+                  <div class="multi-select-option" data-value="mecha">
+                    <input type="checkbox" id="exclude-mecha" />
+                    <label for="exclude-mecha">Mecha</label>
+                  </div>
+                  <div class="multi-select-option" data-value="mystery">
+                    <input type="checkbox" id="exclude-mystery" />
+                    <label for="exclude-mystery">Mystery</label>
+                  </div>
+                  <div class="multi-select-option" data-value="psychological">
+                    <input type="checkbox" id="exclude-psychological" />
+                    <label for="exclude-psychological">Psychological</label>
+                  </div>
+                  <div class="multi-select-option" data-value="romance">
+                    <input type="checkbox" id="exclude-romance" />
+                    <label for="exclude-romance">Romance</label>
+                  </div>
+                  <div class="multi-select-option" data-value="school">
+                    <input type="checkbox" id="exclude-school" />
+                    <label for="exclude-school">School</label>
+                  </div>
+                  <div class="multi-select-option" data-value="sci-fi">
+                    <input type="checkbox" id="exclude-sci-fi" />
+                    <label for="exclude-sci-fi">Sci-Fi</label>
+                  </div>
+                  <div class="multi-select-option" data-value="seinen">
+                    <input type="checkbox" id="exclude-seinen" />
+                    <label for="exclude-seinen">Seinen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="shoujo">
+                    <input type="checkbox" id="exclude-shoujo" />
+                    <label for="exclude-shoujo">Shoujo</label>
+                  </div>
+                  <div class="multi-select-option" data-value="shounen">
+                    <input type="checkbox" id="exclude-shounen" />
+                    <label for="exclude-shounen">Shounen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="slice-of-life">
+                    <input type="checkbox" id="exclude-slice-of-life" />
+                    <label for="exclude-slice-of-life">Slice of Life</label>
+                  </div>
+                  <div class="multi-select-option" data-value="sports">
+                    <input type="checkbox" id="exclude-sports" />
+                    <label for="exclude-sports">Sports</label>
+                  </div>
+                  <div class="multi-select-option" data-value="supernatural">
+                    <input type="checkbox" id="exclude-supernatural" />
+                    <label for="exclude-supernatural">Supernatural</label>
+                  </div>
+                  <div class="multi-select-option" data-value="thriller">
+                    <input type="checkbox" id="exclude-thriller" />
+                    <label for="exclude-thriller">Thriller</label>
+                  </div>
+                  <div class="multi-select-option" data-value="tragedy">
+                    <input type="checkbox" id="exclude-tragedy" />
+                    <label for="exclude-tragedy">Tragedy</label>
+                  </div>
+                  <div class="multi-select-option" data-value="yaoi">
+                    <input type="checkbox" id="exclude-yaoi" />
+                    <label for="exclude-yaoi">Yaoi</label>
+                  </div>
+                  <div class="multi-select-option" data-value="yuri">
+                    <input type="checkbox" id="exclude-yuri" />
+                    <label for="exclude-yuri">Yuri</label>
+                  </div>
+                  <div class="multi-select-option" data-value="josei">
+                    <input type="checkbox" id="exclude-josei" />
+                    <label for="exclude-josei">Josei</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-field">
+              <label for="filter-status">Status</label>
+              <select id="filter-status">
+                <option value="">Any</option>
+                <option value="publishing">Publishing</option>
+                <option value="finished">Finished</option>
+                <option value="hiatus">Hiatus</option>
+                <option value="discontinued">Cancelled</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-type">Type</label>
+              <select id="filter-type">
+                <option value="">Any</option>
+                <option value="manga">Manga</option>
+                <option value="manhwa">Manhwa</option>
+                <option value="manhua">Manhua</option>
+                <option value="novel">Novel</option>
+                <option value="one-shot">One-shot</option>
+              </select>
+            </div>
+
+            <!-- Demographics Multi-Select -->
+            <div class="filter-field">
+              <label>Demographics</label>
+              <div class="multi-select" id="filter-demographics">
+                <div class="multi-select-display" tabindex="0">
+                  <span class="multi-select-placeholder"
+                    >Select demographics...</span
+                  >
+                  <span class="multi-select-arrow">▼</span>
+                </div>
+                <div class="multi-select-dropdown">
+                  <div class="multi-select-option" data-value="shounen">
+                    <input type="checkbox" id="demo-shounen" />
+                    <label for="demo-shounen">Shounen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="shoujo">
+                    <input type="checkbox" id="demo-shoujo" />
+                    <label for="demo-shoujo">Shoujo</label>
+                  </div>
+                  <div class="multi-select-option" data-value="seinen">
+                    <input type="checkbox" id="demo-seinen" />
+                    <label for="demo-seinen">Seinen</label>
+                  </div>
+                  <div class="multi-select-option" data-value="josei">
+                    <input type="checkbox" id="demo-josei" />
+                    <label for="demo-josei">Josei</label>
+                  </div>
+                  <div class="multi-select-option" data-value="kids">
+                    <input type="checkbox" id="demo-kids" />
+                    <label for="demo-kids">Kids</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="filter-field">
+              <label for="filter-source">Search Source</label>
+              <select id="filter-source">
+                <option value="">All Sources</option>
+              </select>
+            </div>
+
+            <!-- Year From Picker -->
+            <div class="filter-field">
+              <label>Year From</label>
+              <div class="year-picker" id="filter-year-start">
+                <button type="button" class="year-display">Any</button>
+                <div class="year-picker-dropdown">
+                  <button
+                    type="button"
+                    class="year-option year-any"
+                    data-year="">
+                    Any
+                  </button>
+                  <div class="year-grid">
+                    <button type="button" class="year-option" data-year="2026">
+                      2026
+                    </button>
+                    <button type="button" class="year-option" data-year="2025">
+                      2025
+                    </button>
+                    <button type="button" class="year-option" data-year="2024">
+                      2024
+                    </button>
+                    <button type="button" class="year-option" data-year="2023">
+                      2023
+                    </button>
+                    <button type="button" class="year-option" data-year="2022">
+                      2022
+                    </button>
+                    <button type="button" class="year-option" data-year="2021">
+                      2021
+                    </button>
+                    <button type="button" class="year-option" data-year="2020">
+                      2020
+                    </button>
+                    <button type="button" class="year-option" data-year="2019">
+                      2019
+                    </button>
+                    <button type="button" class="year-option" data-year="2018">
+                      2018
+                    </button>
+                    <button type="button" class="year-option" data-year="2017">
+                      2017
+                    </button>
+                    <button type="button" class="year-option" data-year="2016">
+                      2016
+                    </button>
+                    <button type="button" class="year-option" data-year="2015">
+                      2015
+                    </button>
+                    <button type="button" class="year-option" data-year="2014">
+                      2014
+                    </button>
+                    <button type="button" class="year-option" data-year="2013">
+                      2013
+                    </button>
+                    <button type="button" class="year-option" data-year="2012">
+                      2012
+                    </button>
+                    <button type="button" class="year-option" data-year="2011">
+                      2011
+                    </button>
+                    <button type="button" class="year-option" data-year="2010">
+                      2010
+                    </button>
+                    <button type="button" class="year-option" data-year="2009">
+                      2009
+                    </button>
+                    <button type="button" class="year-option" data-year="2008">
+                      2008
+                    </button>
+                    <button type="button" class="year-option" data-year="2007">
+                      2007
+                    </button>
+                    <button type="button" class="year-option" data-year="2006">
+                      2006
+                    </button>
+                    <button type="button" class="year-option" data-year="2005">
+                      2005
+                    </button>
+                    <button type="button" class="year-option" data-year="2004">
+                      2004
+                    </button>
+                    <button type="button" class="year-option" data-year="2003">
+                      2003
+                    </button>
+                    <button type="button" class="year-option" data-year="2002">
+                      2002
+                    </button>
+                    <button type="button" class="year-option" data-year="2001">
+                      2001
+                    </button>
+                    <button type="button" class="year-option" data-year="2000">
+                      2000
+                    </button>
+                    <button type="button" class="year-option" data-year="1999">
+                      1999
+                    </button>
+                    <button type="button" class="year-option" data-year="1998">
+                      1998
+                    </button>
+                    <button type="button" class="year-option" data-year="1997">
+                      1997
+                    </button>
+                    <button type="button" class="year-option" data-year="1996">
+                      1996
+                    </button>
+                    <button type="button" class="year-option" data-year="1995">
+                      1995
+                    </button>
+                    <button type="button" class="year-option" data-year="1994">
+                      1994
+                    </button>
+                    <button type="button" class="year-option" data-year="1993">
+                      1993
+                    </button>
+                    <button type="button" class="year-option" data-year="1992">
+                      1992
+                    </button>
+                    <button type="button" class="year-option" data-year="1991">
+                      1991
+                    </button>
+                    <button type="button" class="year-option" data-year="1990">
+                      1990
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Year To Picker -->
+            <div class="filter-field">
+              <label>Year To</label>
+              <div class="year-picker" id="filter-year-end">
+                <button type="button" class="year-display">Any</button>
+                <div class="year-picker-dropdown">
+                  <button
+                    type="button"
+                    class="year-option year-any"
+                    data-year="">
+                    Any
+                  </button>
+                  <div class="year-grid">
+                    <button type="button" class="year-option" data-year="2026">
+                      2026
+                    </button>
+                    <button type="button" class="year-option" data-year="2025">
+                      2025
+                    </button>
+                    <button type="button" class="year-option" data-year="2024">
+                      2024
+                    </button>
+                    <button type="button" class="year-option" data-year="2023">
+                      2023
+                    </button>
+                    <button type="button" class="year-option" data-year="2022">
+                      2022
+                    </button>
+                    <button type="button" class="year-option" data-year="2021">
+                      2021
+                    </button>
+                    <button type="button" class="year-option" data-year="2020">
+                      2020
+                    </button>
+                    <button type="button" class="year-option" data-year="2019">
+                      2019
+                    </button>
+                    <button type="button" class="year-option" data-year="2018">
+                      2018
+                    </button>
+                    <button type="button" class="year-option" data-year="2017">
+                      2017
+                    </button>
+                    <button type="button" class="year-option" data-year="2016">
+                      2016
+                    </button>
+                    <button type="button" class="year-option" data-year="2015">
+                      2015
+                    </button>
+                    <button type="button" class="year-option" data-year="2014">
+                      2014
+                    </button>
+                    <button type="button" class="year-option" data-year="2013">
+                      2013
+                    </button>
+                    <button type="button" class="year-option" data-year="2012">
+                      2012
+                    </button>
+                    <button type="button" class="year-option" data-year="2011">
+                      2011
+                    </button>
+                    <button type="button" class="year-option" data-year="2010">
+                      2010
+                    </button>
+                    <button type="button" class="year-option" data-year="2009">
+                      2009
+                    </button>
+                    <button type="button" class="year-option" data-year="2008">
+                      2008
+                    </button>
+                    <button type="button" class="year-option" data-year="2007">
+                      2007
+                    </button>
+                    <button type="button" class="year-option" data-year="2006">
+                      2006
+                    </button>
+                    <button type="button" class="year-option" data-year="2005">
+                      2005
+                    </button>
+                    <button type="button" class="year-option" data-year="2004">
+                      2004
+                    </button>
+                    <button type="button" class="year-option" data-year="2003">
+                      2003
+                    </button>
+                    <button type="button" class="year-option" data-year="2002">
+                      2002
+                    </button>
+                    <button type="button" class="year-option" data-year="2001">
+                      2001
+                    </button>
+                    <button type="button" class="year-option" data-year="2000">
+                      2000
+                    </button>
+                    <button type="button" class="year-option" data-year="1999">
+                      1999
+                    </button>
+                    <button type="button" class="year-option" data-year="1998">
+                      1998
+                    </button>
+                    <button type="button" class="year-option" data-year="1997">
+                      1997
+                    </button>
+                    <button type="button" class="year-option" data-year="1996">
+                      1996
+                    </button>
+                    <button type="button" class="year-option" data-year="1995">
+                      1995
+                    </button>
+                    <button type="button" class="year-option" data-year="1994">
+                      1994
+                    </button>
+                    <button type="button" class="year-option" data-year="1993">
+                      1993
+                    </button>
+                    <button type="button" class="year-option" data-year="1992">
+                      1992
+                    </button>
+                    <button type="button" class="year-option" data-year="1991">
+                      1991
+                    </button>
+                    <button type="button" class="year-option" data-year="1990">
+                      1990
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Score Min Star Rating -->
+            <div class="filter-field">
+              <label>Score Min</label>
+              <div class="star-rating" id="filter-score-min" data-value="">
+                <div class="star-container">
+                  <span class="star" data-star="1">★</span>
+                  <span class="star" data-star="2">★</span>
+                  <span class="star" data-star="3">★</span>
+                  <span class="star" data-star="4">★</span>
+                  <span class="star" data-star="5">★</span>
+                  <span class="star" data-star="6">★</span>
+                  <span class="star" data-star="7">★</span>
+                  <span class="star" data-star="8">★</span>
+                  <span class="star" data-star="9">★</span>
+                  <span class="star" data-star="10">★</span>
+                </div>
+                <button type="button" class="star-clear" title="Clear">
+                  ×
+                </button>
+                <span class="star-value">Any</span>
+              </div>
+            </div>
+
+            <!-- Score Max Star Rating -->
+            <div class="filter-field">
+              <label>Score Max</label>
+              <div class="star-rating" id="filter-score-max" data-value="">
+                <div class="star-container">
+                  <span class="star" data-star="1">★</span>
+                  <span class="star" data-star="2">★</span>
+                  <span class="star" data-star="3">★</span>
+                  <span class="star" data-star="4">★</span>
+                  <span class="star" data-star="5">★</span>
+                  <span class="star" data-star="6">★</span>
+                  <span class="star" data-star="7">★</span>
+                  <span class="star" data-star="8">★</span>
+                  <span class="star" data-star="9">★</span>
+                  <span class="star" data-star="10">★</span>
+                </div>
+                <button type="button" class="star-clear" title="Clear">
+                  ×
+                </button>
+                <span class="star-value">Any</span>
+              </div>
+            </div>
+
+            <div class="filter-field">
+              <label for="filter-sort">Sort</label>
+              <select id="filter-sort">
+                <option value="popularity">Popularity</option>
+                <option value="score">Score</option>
+                <option value="title">Title</option>
+                <option value="chapters">Chapters</option>
+                <option value="year">Year</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-order">Order</label>
+              <select id="filter-order">
+                <option value="desc">High → Low</option>
+                <option value="asc">Low → High</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-density">Grid Density</label>
+              <select id="filter-density">
+                <option value="comfortable">Comfortable</option>
+                <option value="normal" selected>Normal</option>
+                <option value="compact">Compact</option>
+                <option value="list">List</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-meta">Card Metadata</label>
+              <select id="filter-meta">
+                <option value="on">Show</option>
+                <option value="off">Hide</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-pagination">Pagination</label>
+              <select id="filter-pagination">
+                <option value="paged">Paged</option>
+                <option value="infinite">Infinite Scroll</option>
+              </select>
+            </div>
+            <div class="filter-field">
+              <label for="filter-data-saver">Data Saver</label>
+              <select id="filter-data-saver">
+                <option value="off">Off</option>
+                <option value="on">On</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="control-btn" id="filter-reset">Reset</button>
+          <button class="control-btn primary" id="filter-apply">Apply</button>
+        </div>
+      </div>
     </div>
 
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal-overlay">
-        <div class="modal-panel settings-modal">
-            <div class="modal-header">
-                <h3 class="modal-title">Settings</h3>
-                <button class="modal-close" id="close-settings-modal">
-                    <i data-lucide="x" width="18"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="settings-section">
-                    <h4>Reading Stats</h4>
-                    <div id="stats-grid" class="stats-grid">
-                        <div class="stat-card">
-                            <span class="stat-label">Library</span>
-                            <span class="stat-value" data-stat="library">0</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Chapters Read</span>
-                            <span class="stat-value" data-stat="chapters">0</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Pages Read</span>
-                            <span class="stat-value" data-stat="pages">0</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Last Read</span>
-                            <span class="stat-value" data-stat="last-read">-</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Storage</span>
-                            <span class="stat-value" data-stat="storage">-</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Data Usage</span>
-                            <span class="stat-value" data-stat="data-usage">-</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Streak</span>
-                            <span class="stat-value" data-stat="streak">0</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Top Genre</span>
-                            <span class="stat-value" data-stat="top-genre">-</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Reading Time</span>
-                            <span class="stat-value" data-stat="time">-</span>
-                        </div>
-                    </div>
-                    <div id="reading-calendar" class="reading-calendar"></div>
-                    <div id="genre-breakdown" class="genre-breakdown"></div>
-                </div>
-                <div class="settings-section">
-                    <h4>Appearance</h4>
-                    <div class="settings-actions">
-                        <div class="select-wrap">
-                            <label for="theme-schedule">Theme Schedule</label>
-                            <select id="theme-schedule">
-                                <option value="off">Manual</option>
-                                <option value="system">System</option>
-                                <option value="night">Night Auto</option>
-                            </select>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="accent-color">Accent Color</label>
-                            <input id="accent-color" type="color" value="#dc2626" />
-                        </div>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Reader Enhancements</h4>
-                    <div class="settings-sliders">
-                        <div class="slider-row">
-                            <label for="reader-brightness">Brightness</label>
-                            <input id="reader-brightness" type="range" min="80" max="130" value="100" />
-                        </div>
-                        <div class="slider-row">
-                            <label for="reader-contrast">Contrast</label>
-                            <input id="reader-contrast" type="range" min="80" max="140" value="100" />
-                        </div>
-                        <div class="slider-row">
-                            <label for="reader-sharpen">Sharpen</label>
-                            <input id="reader-sharpen" type="range" min="0" max="10" value="0" />
-                        </div>
-                        <div class="slider-row">
-                            <label for="reader-crop">Trim Borders</label>
-                            <input id="reader-crop" type="range" min="0" max="6" value="0" />
-                        </div>
-                    </div>
-                    <div class="settings-actions">
-                        <div class="select-wrap">
-                            <label for="reader-prefetch">Prefetch</label>
-                            <select id="reader-prefetch">
-                                <option value="0">Off</option>
-                                <option value="1">1 Chapter</option>
-                                <option value="2">2 Chapters</option>
-                                <option value="3">3 Chapters</option>
-                            </select>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="merge-chapters">Merge Sources</label>
-                            <select id="merge-chapters">
-                                <option value="off">Off</option>
-                                <option value="on">On</option>
-                            </select>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="auto-download-favorites">Auto-download Favorites</label>
-                            <select id="auto-download-favorites">
-                                <option value="off">Off</option>
-                                <option value="on">On</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Install</h4>
-                    <div class="settings-actions">
-                        <button class="control-btn" id="install-btn">Install App</button>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Backup & Restore</h4>
-                    <div class="settings-actions">
-                        <button class="control-btn" id="export-library-btn">Export Library</button>
-                        <input id="import-library-input" type="file" accept="application/json" class="hidden" />
-                        <button class="control-btn" id="import-library-btn">Import Library</button>
-                        <button class="control-btn" id="backup-export-btn">Export Full Backup</button>
-                        <input id="backup-import-input" type="file" accept="application/json" class="hidden" />
-                        <button class="control-btn" id="backup-import-btn">Import Backup</button>
-                        <div class="select-wrap">
-                            <label for="auto-backup-toggle">Auto Backup</label>
-                            <select id="auto-backup-toggle">
-                                <option value="off">Off</option>
-                                <option value="on">On</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Cloud Sync</h4>
-                    <div class="settings-actions">
-                        <div class="input-wrap">
-                            <label for="cloud-sync-id">Sync Key</label>
-                            <div class="input-inline">
-                                <input id="cloud-sync-id" type="text" />
-                                <button class="control-btn" id="copy-cloud-sync">Copy</button>
-                            </div>
-                        </div>
-                        <div class="select-wrap">
-                            <label for="cloud-sync-toggle">Cloud Sync</label>
-                            <select id="cloud-sync-toggle">
-                                <option value="off">Off</option>
-                                <option value="on">On</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="settings-actions">
-                        <button class="control-btn" id="cloud-sync-now">Sync Now</button>
-                        <button class="control-btn" id="cloud-sync-pull">Pull</button>
-                        <button class="control-btn" id="cloud-sync-push">Push</button>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Cloud Sync</h4>
-                    <div class="settings-actions">
-                        <button class="control-btn" id="sync-pull-btn">Pull from Server</button>
-                        <button class="control-btn" id="sync-push-btn">Push to Server</button>
-                    </div>
-                </div>
-                <div class="settings-section">
-                    <h4>Cache</h4>
-                    <div class="settings-actions">
-                        <button class="control-btn" id="clear-cache-btn">Clear Cache</button>
-                    </div>
-                </div>
-            </div>
+      <div class="modal-panel settings-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Settings</h3>
+          <button class="modal-close" id="close-settings-modal">
+            <i data-lucide="x" width="18"></i>
+          </button>
         </div>
+        <div class="modal-body">
+          <div class="settings-section">
+            <h4>Reading Stats</h4>
+            <div id="stats-grid" class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-label">Library</span>
+                <span class="stat-value" data-stat="library">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Chapters Read</span>
+                <span class="stat-value" data-stat="chapters">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Pages Read</span>
+                <span class="stat-value" data-stat="pages">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Last Read</span>
+                <span class="stat-value" data-stat="last-read">-</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Storage</span>
+                <span class="stat-value" data-stat="storage">-</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Data Usage</span>
+                <span class="stat-value" data-stat="data-usage">-</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Streak</span>
+                <span class="stat-value" data-stat="streak">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Top Genre</span>
+                <span class="stat-value" data-stat="top-genre">-</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Reading Time</span>
+                <span class="stat-value" data-stat="time">-</span>
+              </div>
+            </div>
+            <div id="reading-calendar" class="reading-calendar"></div>
+            <div id="genre-breakdown" class="genre-breakdown"></div>
+          </div>
+          <div class="settings-section">
+            <h4>Appearance</h4>
+            <div class="settings-actions">
+              <div class="select-wrap">
+                <label for="theme-schedule">Theme Schedule</label>
+                <select id="theme-schedule">
+                  <option value="off">Manual</option>
+                  <option value="system">System</option>
+                  <option value="night">Night Auto</option>
+                </select>
+              </div>
+              <div class="select-wrap">
+                <label for="accent-color">Accent Color</label>
+                <input id="accent-color" type="color" value="#dc2626" />
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Reader Enhancements</h4>
+            <div class="settings-sliders">
+              <div class="slider-row">
+                <label for="reader-brightness">Brightness</label>
+                <input
+                  id="reader-brightness"
+                  type="range"
+                  min="80"
+                  max="130"
+                  value="100" />
+              </div>
+              <div class="slider-row">
+                <label for="reader-contrast">Contrast</label>
+                <input
+                  id="reader-contrast"
+                  type="range"
+                  min="80"
+                  max="140"
+                  value="100" />
+              </div>
+              <div class="slider-row">
+                <label for="reader-sharpen">Sharpen</label>
+                <input
+                  id="reader-sharpen"
+                  type="range"
+                  min="0"
+                  max="10"
+                  value="0" />
+              </div>
+              <div class="slider-row">
+                <label for="reader-crop">Trim Borders</label>
+                <input
+                  id="reader-crop"
+                  type="range"
+                  min="0"
+                  max="6"
+                  value="0" />
+              </div>
+            </div>
+            <div class="settings-actions">
+              <div class="select-wrap">
+                <label for="reader-prefetch">Prefetch</label>
+                <select id="reader-prefetch">
+                  <option value="0">Off</option>
+                  <option value="1">1 Chapter</option>
+                  <option value="2">2 Chapters</option>
+                  <option value="3">3 Chapters</option>
+                </select>
+              </div>
+              <div class="select-wrap">
+                <label for="merge-chapters">Merge Sources</label>
+                <select id="merge-chapters">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+              <div class="select-wrap">
+                <label for="auto-download-favorites"
+                  >Auto-download Favorites</label
+                >
+                <select id="auto-download-favorites">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Install</h4>
+            <div class="settings-actions">
+              <button class="control-btn" id="install-btn">Install App</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Backup & Restore</h4>
+            <div class="settings-actions">
+              <button class="control-btn" id="export-library-btn">
+                Export Library
+              </button>
+              <input
+                id="import-library-input"
+                type="file"
+                accept="application/json"
+                class="hidden" />
+              <button class="control-btn" id="import-library-btn">
+                Import Library
+              </button>
+              <button class="control-btn" id="backup-export-btn">
+                Export Full Backup
+              </button>
+              <input
+                id="backup-import-input"
+                type="file"
+                accept="application/json"
+                class="hidden" />
+              <button class="control-btn" id="backup-import-btn">
+                Import Backup
+              </button>
+              <div class="select-wrap">
+                <label for="auto-backup-toggle">Auto Backup</label>
+                <select id="auto-backup-toggle">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Cloud Sync</h4>
+            <div class="settings-actions">
+              <div class="input-wrap">
+                <label for="cloud-sync-id">Sync Key</label>
+                <div class="input-inline">
+                  <input id="cloud-sync-id" type="text" />
+                  <button class="control-btn" id="copy-cloud-sync">Copy</button>
+                </div>
+              </div>
+              <div class="select-wrap">
+                <label for="cloud-sync-toggle">Cloud Sync</label>
+                <select id="cloud-sync-toggle">
+                  <option value="off">Off</option>
+                  <option value="on">On</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-actions">
+              <button class="control-btn" id="cloud-sync-now">Sync Now</button>
+              <button class="control-btn" id="cloud-sync-pull">Pull</button>
+              <button class="control-btn" id="cloud-sync-push">Push</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Cloud Sync</h4>
+            <div class="settings-actions">
+              <button class="control-btn" id="sync-pull-btn">
+                Pull from Server
+              </button>
+              <button class="control-btn" id="sync-push-btn">
+                Push to Server
+              </button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>Cache</h4>
+            <div class="settings-actions">
+              <button class="control-btn" id="clear-cache-btn">
+                Clear Cache
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Source Status Modal -->
     <div id="source-status-modal" class="modal-overlay">
-        <div class="modal-panel">
-            <button class="modal-close" id="close-source-modal">
-                <i data-lucide="x" width="16"></i>
-            </button>
-            <h2 class="modal-title">Sources</h2>
-            <p class="modal-subtitle">Manage favorites, hidden sources, and status</p>
-            <div id="source-status-grid" class="source-status-grid">
-                <div class="loading-state">
-                    <div class="spinner"></div>
-                    <span class="loading-text">Checking sources...</span>
-                </div>
-            </div>
+      <div class="modal-panel">
+        <button class="modal-close" id="close-source-modal">
+          <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title">Sources</h2>
+        <p class="modal-subtitle">
+          Manage favorites, hidden sources, and status
+        </p>
+        <div id="source-status-grid" class="source-status-grid">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <span class="loading-text">Checking sources...</span>
+          </div>
         </div>
+      </div>
     </div>
 
     <!-- Console Modal -->
     <div id="console-modal" class="modal-overlay">
-        <div class="modal-panel" style="max-width: 700px; max-height: 600px;">
-            <button class="modal-close" id="console-close">
-                <i data-lucide="x" width="16"></i>
-            </button>
-            <h2 class="modal-title">Console Logs</h2>
-            <p class="modal-subtitle">Application debug output</p>
-            <div id="console-content" style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; color: var(--text-muted); max-height: 450px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 16px; border-radius: 12px; margin-top: 16px;">
-                <!-- Console logs injected here -->
-            </div>
+      <div class="modal-panel" style="max-width: 700px; max-height: 600px">
+        <button class="modal-close" id="console-close">
+          <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title">Console Logs</h2>
+        <p class="modal-subtitle">Application debug output</p>
+        <div
+          id="console-content"
+          style="
+            font-family:
+              &quot;JetBrains Mono&quot;, &quot;Fira Code&quot;, monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            max-height: 450px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 16px;
+            border-radius: 12px;
+            margin-top: 16px;
+          ">
+          <!-- Console logs injected here -->
         </div>
+      </div>
     </div>
 
     <!-- Download Queue Modal -->
     <div id="download-queue-modal" class="modal-overlay">
-        <div class="modal-panel" style="max-width: 600px; max-height: 80vh;">
-            <button class="modal-close" id="close-queue-modal">
-                <i data-lucide="x" width="16"></i>
-            </button>
-            <h2 class="modal-title">Download Queue</h2>
-            <p class="modal-subtitle" id="queue-subtitle">Manage your downloads</p>
+      <div class="modal-panel" style="max-width: 600px; max-height: 80vh">
+        <button class="modal-close" id="close-queue-modal">
+          <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title">Download Queue</h2>
+        <p class="modal-subtitle" id="queue-subtitle">Manage your downloads</p>
 
-            <div class="queue-controls" style="display: flex; gap: 8px; margin: 16px 0;">
-                <button class="control-btn" id="queue-pause-all">
-                    <i data-lucide="pause" width="14"></i>
-                    Pause All
-                </button>
-                <button class="control-btn" id="queue-resume-all">
-                    <i data-lucide="play" width="14"></i>
-                    Resume All
-                </button>
-                <button class="control-btn" id="queue-clear-completed">
-                    <i data-lucide="trash-2" width="14"></i>
-                    Clear Done
-                </button>
-            </div>
-
-            <div id="queue-list" class="queue-list" style="max-height: 400px; overflow-y: auto;">
-                <div class="empty-state">
-                    <p class="empty-title">No Downloads</p>
-                    <p class="empty-text">Download queue is empty</p>
-                </div>
-            </div>
+        <div
+          class="queue-controls"
+          style="display: flex; gap: 8px; margin: 16px 0">
+          <button class="control-btn" id="queue-pause-all">
+            <i data-lucide="pause" width="14"></i>
+            Pause All
+          </button>
+          <button class="control-btn" id="queue-resume-all">
+            <i data-lucide="play" width="14"></i>
+            Resume All
+          </button>
+          <button class="control-btn" id="queue-clear-completed">
+            <i data-lucide="trash-2" width="14"></i>
+            Clear Done
+          </button>
         </div>
+
+        <div
+          id="queue-list"
+          class="queue-list"
+          style="max-height: 400px; overflow-y: auto">
+          <div class="empty-state">
+            <p class="empty-title">No Downloads</p>
+            <p class="empty-text">Download queue is empty</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Confirm Modal -->
     <div id="confirm-modal" class="modal-overlay">
-        <div class="modal-panel" style="max-width: 400px;">
-            <h2 class="modal-title" id="confirm-title">Confirm Action</h2>
-            <p class="modal-subtitle" id="confirm-message" style="margin: 16px 0;">Are you sure?</p>
-            <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
-                <button class="control-btn" id="confirm-cancel">Cancel</button>
-                <button class="control-btn primary" id="confirm-ok" style="background: var(--accent); color: white;">Confirm</button>
-            </div>
+      <div class="modal-panel" style="max-width: 400px">
+        <h2 class="modal-title" id="confirm-title">Confirm Action</h2>
+        <p class="modal-subtitle" id="confirm-message" style="margin: 16px 0">
+          Are you sure?
+        </p>
+        <div
+          style="
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+          ">
+          <button class="control-btn" id="confirm-cancel">Cancel</button>
+          <button
+            class="control-btn primary"
+            id="confirm-ok"
+            style="background: var(--accent); color: white">
+            Confirm
+          </button>
         </div>
+      </div>
     </div>
 
     <!-- Auth Modal (Login/Register) -->
     <div id="auth-modal" class="modal-overlay">
-        <div class="modal-panel" style="max-width: 400px;">
-            <button class="modal-close" id="close-auth-modal">
-                <i data-lucide="x" width="16"></i>
-            </button>
-            <h2 class="modal-title" id="auth-modal-title">Login</h2>
-            <p class="modal-subtitle" id="auth-modal-subtitle" style="margin-bottom: 20px; color: var(--text-secondary);">
-                Sign in to sync your library across devices
-            </p>
+      <div class="modal-panel" style="max-width: 400px">
+        <button class="modal-close" id="close-auth-modal">
+          <i data-lucide="x" width="16"></i>
+        </button>
+        <h2 class="modal-title" id="auth-modal-title">Login</h2>
+        <p
+          class="modal-subtitle"
+          id="auth-modal-subtitle"
+          style="margin-bottom: 20px; color: var(--text-secondary)">
+          Sign in to sync your library across devices
+        </p>
 
-            <!-- Auth Error Display -->
-            <div id="auth-error" style="display: none; padding: 12px; margin-bottom: 16px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; color: #ef4444; font-size: 14px;"></div>
+        <!-- Auth Error Display -->
+        <div
+          id="auth-error"
+          style="
+            display: none;
+            padding: 12px;
+            margin-bottom: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            color: #ef4444;
+            font-size: 14px;
+          "></div>
 
-            <!-- Login Form -->
-            <form id="auth-form" style="display: flex; flex-direction: column; gap: 16px;">
-                <div class="form-group">
-                    <label for="auth-email" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Email</label>
-                    <input type="email" id="auth-email" name="email" required autocomplete="email"
-                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
-                           placeholder="your@email.com">
-                </div>
+        <!-- Login Form -->
+        <form
+          id="auth-form"
+          style="display: flex; flex-direction: column; gap: 16px">
+          <div class="form-group">
+            <label
+              for="auth-email"
+              style="
+                display: block;
+                margin-bottom: 6px;
+                font-size: 14px;
+                color: var(--text-secondary);
+              "
+              >Email</label
+            >
+            <input
+              type="email"
+              id="auth-email"
+              name="email"
+              required
+              autocomplete="email"
+              style="
+                width: 100%;
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                color: var(--text-primary);
+                font-size: 15px;
+              "
+              placeholder="your@email.com" />
+          </div>
 
-                <div class="form-group">
-                    <label for="auth-password" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Password</label>
-                    <input type="password" id="auth-password" name="password" required autocomplete="current-password"
-                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
-                           placeholder="Min. 8 characters" minlength="8">
-                </div>
+          <div class="form-group">
+            <label
+              for="auth-password"
+              style="
+                display: block;
+                margin-bottom: 6px;
+                font-size: 14px;
+                color: var(--text-secondary);
+              "
+              >Password</label
+            >
+            <input
+              type="password"
+              id="auth-password"
+              name="password"
+              required
+              autocomplete="current-password"
+              style="
+                width: 100%;
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                color: var(--text-primary);
+                font-size: 15px;
+              "
+              placeholder="Min. 8 characters"
+              minlength="8" />
+          </div>
 
-                <!-- Display Name (only for register) -->
-                <div class="form-group" id="auth-name-group" style="display: none;">
-                    <label for="auth-display-name" style="display: block; margin-bottom: 6px; font-size: 14px; color: var(--text-secondary);">Display Name (optional)</label>
-                    <input type="text" id="auth-display-name" name="display_name" autocomplete="name"
-                           style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-size: 15px;"
-                           placeholder="How should we call you?">
-                </div>
+          <!-- Display Name (only for register) -->
+          <div class="form-group" id="auth-name-group" style="display: none">
+            <label
+              for="auth-display-name"
+              style="
+                display: block;
+                margin-bottom: 6px;
+                font-size: 14px;
+                color: var(--text-secondary);
+              "
+              >Display Name (optional)</label
+            >
+            <input
+              type="text"
+              id="auth-display-name"
+              name="display_name"
+              autocomplete="name"
+              style="
+                width: 100%;
+                padding: 12px;
+                background: var(--bg-tertiary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                color: var(--text-primary);
+                font-size: 15px;
+              "
+              placeholder="How should we call you?" />
+          </div>
 
-                <!-- Remember Me (only for login) -->
-                <div id="auth-remember-group" style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="auth-remember" name="remember" style="width: 18px; height: 18px; accent-color: var(--accent);">
-                    <label for="auth-remember" style="font-size: 14px; color: var(--text-secondary); cursor: pointer;">Remember me</label>
-                </div>
+          <!-- Remember Me (only for login) -->
+          <div
+            id="auth-remember-group"
+            style="display: flex; align-items: center; gap: 8px">
+            <input
+              type="checkbox"
+              id="auth-remember"
+              name="remember"
+              style="width: 18px; height: 18px; accent-color: var(--accent)" />
+            <label
+              for="auth-remember"
+              style="
+                font-size: 14px;
+                color: var(--text-secondary);
+                cursor: pointer;
+              "
+              >Remember me</label
+            >
+          </div>
 
-                <button type="submit" id="auth-submit" class="control-btn primary" style="width: 100%; padding: 14px; background: var(--accent); color: white; font-weight: 600; font-size: 15px; margin-top: 8px;">
-                    Login
-                </button>
-            </form>
+          <button
+            type="submit"
+            id="auth-submit"
+            class="control-btn primary"
+            style="
+              width: 100%;
+              padding: 14px;
+              background: var(--accent);
+              color: white;
+              font-weight: 600;
+              font-size: 15px;
+              margin-top: 8px;
+            ">
+            Login
+          </button>
+        </form>
 
-            <!-- Toggle Login/Register -->
-            <div style="margin-top: 20px; text-align: center; font-size: 14px; color: var(--text-secondary);">
-                <span id="auth-toggle-text">Don't have an account?</span>
-                <button id="auth-toggle-btn" style="background: none; border: none; color: var(--accent); cursor: pointer; font-weight: 600; margin-left: 4px;">Register</button>
-            </div>
+        <!-- Toggle Login/Register -->
+        <div
+          style="
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+          ">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <button
+            id="auth-toggle-btn"
+            style="
+              background: none;
+              border: none;
+              color: var(--accent);
+              cursor: pointer;
+              font-weight: 600;
+              margin-left: 4px;
+            ">
+            Register
+          </button>
         </div>
+      </div>
     </div>
 
     <!-- Account Settings Modal -->
     <div id="account-settings-modal" class="modal-overlay">
-        <div class="modal-panel account-settings-modal">
-            <div class="modal-header">
-                <h3 class="modal-title">Account Settings</h3>
-                <button class="modal-close" id="close-account-settings">
-                    <i data-lucide="x" width="18"></i>
-                </button>
-            </div>
-
-            <!-- Settings Tabs -->
-            <div class="settings-tabs" role="tablist">
-                <button class="settings-tab active" data-tab="profile" role="tab" aria-selected="true">Profile</button>
-                <button class="settings-tab" data-tab="security" role="tab" aria-selected="false">Security</button>
-                <button class="settings-tab" data-tab="preferences" role="tab" aria-selected="false">Preferences</button>
-            </div>
-
-            <div class="modal-body">
-                <!-- Profile Tab -->
-                <div id="settings-tab-profile" class="settings-tab-content active" role="tabpanel">
-                    <div class="settings-section">
-                        <h4>Profile Information</h4>
-                        <div class="profile-avatar-section">
-                            <img id="settings-avatar-preview" class="settings-avatar-preview" src="/static/images/default-avatar.png" alt="Avatar preview" />
-                            <div class="avatar-actions">
-                                <div class="input-wrap">
-                                    <label for="settings-avatar-url">Avatar URL</label>
-                                    <input id="settings-avatar-url" type="url" placeholder="https://example.com/avatar.png" />
-                                </div>
-                                <button class="control-btn" id="preview-avatar-btn" type="button">Preview</button>
-                            </div>
-                        </div>
-                        <div class="input-wrap">
-                            <label for="settings-display-name">Display Name</label>
-                            <input id="settings-display-name" type="text" placeholder="Your display name" maxlength="100" />
-                        </div>
-                        <div class="input-wrap">
-                            <label for="settings-email">Email</label>
-                            <input id="settings-email" type="email" disabled readonly />
-                            <span class="input-hint">Email cannot be changed</span>
-                        </div>
-                    </div>
-                    <div class="settings-section">
-                        <div class="settings-actions">
-                            <button class="control-btn primary" id="save-profile-btn" type="button">Save Profile</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Security Tab -->
-                <div id="settings-tab-security" class="settings-tab-content" role="tabpanel">
-                    <div class="settings-section">
-                        <h4>Change Password</h4>
-                        <div id="password-change-error" class="settings-error hidden"></div>
-                        <div id="password-change-success" class="settings-success hidden"></div>
-                        <div class="input-wrap">
-                            <label for="current-password">Current Password</label>
-                            <input id="current-password" type="password" autocomplete="current-password" />
-                        </div>
-                        <div class="input-wrap">
-                            <label for="new-password">New Password</label>
-                            <input id="new-password" type="password" autocomplete="new-password" minlength="8" />
-                            <span class="input-hint">Minimum 8 characters</span>
-                        </div>
-                        <div class="input-wrap">
-                            <label for="confirm-password">Confirm New Password</label>
-                            <input id="confirm-password" type="password" autocomplete="new-password" />
-                        </div>
-                        <div class="settings-actions">
-                            <button class="control-btn primary" id="change-password-btn" type="button">Change Password</button>
-                        </div>
-                    </div>
-
-                    <div class="settings-section">
-                        <h4>Active Sessions</h4>
-                        <p class="settings-note">Devices where you're currently logged in.</p>
-                        <div id="active-sessions-list" class="active-sessions-list">
-                            <div class="loading-state">
-                                <div class="spinner"></div>
-                                <span class="loading-text">Loading sessions...</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Preferences Tab -->
-                <div id="settings-tab-preferences" class="settings-tab-content" role="tabpanel">
-                    <div class="settings-section">
-                        <h4>Reading Preferences</h4>
-                        <p class="settings-note">These settings sync with your account across devices.</p>
-                        <div class="preferences-grid">
-                            <div class="select-wrap">
-                                <label for="pref-default-reader-mode">Default Reader Mode</label>
-                                <select id="pref-default-reader-mode">
-                                    <option value="strip">Vertical (Strip)</option>
-                                    <option value="paged">Paged</option>
-                                </select>
-                            </div>
-                            <div class="select-wrap">
-                                <label for="pref-reading-direction">Reading Direction</label>
-                                <select id="pref-reading-direction">
-                                    <option value="ltr">Left to Right</option>
-                                    <option value="rtl">Right to Left</option>
-                                </select>
-                            </div>
-                            <div class="select-wrap">
-                                <label for="pref-image-fit">Image Fit Mode</label>
-                                <select id="pref-image-fit">
-                                    <option value="fit-width">Fit Width</option>
-                                    <option value="fit-height">Fit Height</option>
-                                    <option value="fit-screen">Fit Screen</option>
-                                    <option value="fit-original">Original Size</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="settings-section">
-                        <div class="settings-actions">
-                            <button class="control-btn primary" id="save-preferences-btn" type="button">Save Preferences</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <div class="modal-panel account-settings-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Account Settings</h3>
+          <button class="modal-close" id="close-account-settings">
+            <i data-lucide="x" width="18"></i>
+          </button>
         </div>
+
+        <!-- Settings Tabs -->
+        <div class="settings-tabs" role="tablist">
+          <button
+            class="settings-tab active"
+            data-tab="profile"
+            role="tab"
+            aria-selected="true">
+            Profile
+          </button>
+          <button
+            class="settings-tab"
+            data-tab="security"
+            role="tab"
+            aria-selected="false">
+            Security
+          </button>
+          <button
+            class="settings-tab"
+            data-tab="preferences"
+            role="tab"
+            aria-selected="false">
+            Preferences
+          </button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Profile Tab -->
+          <div
+            id="settings-tab-profile"
+            class="settings-tab-content active"
+            role="tabpanel">
+            <div class="settings-section">
+              <h4>Profile Information</h4>
+              <div class="profile-avatar-section">
+                <img
+                  id="settings-avatar-preview"
+                  class="settings-avatar-preview"
+                  src="/static/images/default-avatar.png"
+                  alt="Avatar preview" />
+                <div class="avatar-actions">
+                  <div class="input-wrap">
+                    <label for="settings-avatar-url">Avatar URL</label>
+                    <input
+                      id="settings-avatar-url"
+                      type="url"
+                      placeholder="https://example.com/avatar.png" />
+                  </div>
+                  <button
+                    class="control-btn"
+                    id="preview-avatar-btn"
+                    type="button">
+                    Preview
+                  </button>
+                </div>
+              </div>
+              <div class="input-wrap">
+                <label for="settings-display-name">Display Name</label>
+                <input
+                  id="settings-display-name"
+                  type="text"
+                  placeholder="Your display name"
+                  maxlength="100" />
+              </div>
+              <div class="input-wrap">
+                <label for="settings-email">Email</label>
+                <input id="settings-email" type="email" disabled readonly />
+                <span class="input-hint">Email cannot be changed</span>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-actions">
+                <button
+                  class="control-btn primary"
+                  id="save-profile-btn"
+                  type="button">
+                  Save Profile
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security Tab -->
+          <div
+            id="settings-tab-security"
+            class="settings-tab-content"
+            role="tabpanel">
+            <div class="settings-section">
+              <h4>Change Password</h4>
+              <div
+                id="password-change-error"
+                class="settings-error hidden"></div>
+              <div
+                id="password-change-success"
+                class="settings-success hidden"></div>
+              <div class="input-wrap">
+                <label for="current-password">Current Password</label>
+                <input
+                  id="current-password"
+                  type="password"
+                  autocomplete="current-password" />
+              </div>
+              <div class="input-wrap">
+                <label for="new-password">New Password</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="8" />
+                <span class="input-hint">Minimum 8 characters</span>
+              </div>
+              <div class="input-wrap">
+                <label for="confirm-password">Confirm New Password</label>
+                <input
+                  id="confirm-password"
+                  type="password"
+                  autocomplete="new-password" />
+              </div>
+              <div class="settings-actions">
+                <button
+                  class="control-btn primary"
+                  id="change-password-btn"
+                  type="button">
+                  Change Password
+                </button>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <h4>Active Sessions</h4>
+              <p class="settings-note">
+                Devices where you're currently logged in.
+              </p>
+              <div id="active-sessions-list" class="active-sessions-list">
+                <div class="loading-state">
+                  <div class="spinner"></div>
+                  <span class="loading-text">Loading sessions...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Preferences Tab -->
+          <div
+            id="settings-tab-preferences"
+            class="settings-tab-content"
+            role="tabpanel">
+            <div class="settings-section">
+              <h4>Reading Preferences</h4>
+              <p class="settings-note">
+                These settings sync with your account across devices.
+              </p>
+              <div class="preferences-grid">
+                <div class="select-wrap">
+                  <label for="pref-default-reader-mode"
+                    >Default Reader Mode</label
+                  >
+                  <select id="pref-default-reader-mode">
+                    <option value="strip">Vertical (Strip)</option>
+                    <option value="paged">Paged</option>
+                  </select>
+                </div>
+                <div class="select-wrap">
+                  <label for="pref-reading-direction">Reading Direction</label>
+                  <select id="pref-reading-direction">
+                    <option value="ltr">Left to Right</option>
+                    <option value="rtl">Right to Left</option>
+                  </select>
+                </div>
+                <div class="select-wrap">
+                  <label for="pref-image-fit">Image Fit Mode</label>
+                  <select id="pref-image-fit">
+                    <option value="fit-width">Fit Width</option>
+                    <option value="fit-height">Fit Height</option>
+                    <option value="fit-screen">Fit Screen</option>
+                    <option value="fit-original">Original Size</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-actions">
+                <button
+                  class="control-btn primary"
+                  id="save-preferences-btn"
+                  type="button">
+                  Save Preferences
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Toast -->
     <div id="toast" class="toast">
-        <div class="toast-dot"></div>
-        <span id="toast-message" class="toast-msg">Message</span>
+      <div class="toast-dot"></div>
+      <span id="toast-message" class="toast-msg">Message</span>
     </div>
 
     <!-- Redesign JavaScript -->
     <script type="module" src="/static/js/main.js"></script>
-</body>
+  </body>
 </html>

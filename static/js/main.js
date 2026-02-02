@@ -1,4 +1,4 @@
-// MangaNegus Redesign - Main Application
+// MangaNegus - Main Application
 // Integrates with existing Flask backend APIs
 
 import { Storage } from './storage.js';
@@ -71,6 +71,7 @@ const state = {
     library: [],
     currentManga: null,
     currentLibraryKey: null,
+    currentRating: 0,
     lastRead: null,
     currentChapters: [],
     selectedChapters: new Set(),
@@ -5130,29 +5131,31 @@ function getCollectionsForEntry(entry) {
 }
 
 function loadNotesForCurrent() {
-    if (!state.currentManga || !els.notesInput || !els.ratingInput || !els.ratingValue) return;
+    if (!state.currentManga) return;
     const key = getNotesStorageKey(state.currentManga.id, state.currentManga.source);
     try {
         const raw = localStorage.getItem(key);
         const data = raw ? JSON.parse(raw) : {};
-        els.notesInput.value = data.notes || '';
-        els.ratingInput.value = data.rating || '';
-        els.ratingValue.textContent = data.rating || '-';
+        state.currentRating = data.rating || 0;
+        updateStarRatingDisplay(state.currentRating);
         if (els.reviewInput) {
             els.reviewInput.value = data.review || '';
         }
     } catch {
-        els.notesInput.value = '';
-        els.ratingInput.value = '';
-        els.ratingValue.textContent = '-';
+        state.currentRating = 0;
+        updateStarRatingDisplay(0);
         if (els.reviewInput) {
             els.reviewInput.value = '';
         }
     }
-    if (els.collectionsInput) {
-        const collectionsRaw = localStorage.getItem(getCollectionsStorageKey(state.currentManga.id, state.currentManga.source));
-        els.collectionsInput.value = collectionsRaw ? JSON.parse(collectionsRaw).join(', ') : '';
-    }
+}
+
+function updateStarRatingDisplay(rating) {
+    if (!els.starRating) return;
+    const stars = els.starRating.querySelectorAll('.star-btn');
+    stars.forEach((star, index) => {
+        star.classList.toggle('active', index < rating);
+    });
 }
 
 function scheduleNotesSave() {
@@ -5167,22 +5170,13 @@ function scheduleNotesSave() {
 }
 
 function saveNotesForCurrent() {
-    if (!state.currentManga || !els.notesInput || !els.ratingInput) return;
+    if (!state.currentManga) return;
     const key = getNotesStorageKey(state.currentManga.id, state.currentManga.source);
     const payload = {
-        notes: els.notesInput.value.trim(),
-        rating: els.ratingInput.value ? Number(els.ratingInput.value) : null,
+        rating: state.currentRating || null,
         review: els.reviewInput ? els.reviewInput.value.trim() : ''
     };
     localStorage.setItem(key, JSON.stringify(payload));
-    if (els.collectionsInput) {
-        const collections = parseFilterList(els.collectionsInput.value);
-        localStorage.setItem(
-            getCollectionsStorageKey(state.currentManga.id, state.currentManga.source),
-            JSON.stringify(collections)
-        );
-        populateCollectionFilterOptions();
-    }
     if (state.currentLibraryKey) {
         const entry = state.library.find(item => item.key === state.currentLibraryKey);
         if (entry) {
@@ -5418,11 +5412,16 @@ async function openMangaDetails(mangaId, source, title, mangaData = null) {
     // Set initial details
     els.detailsTitle.textContent = title;
 
-    // Show description if available
+    // Show description if available and reset expand state
     if (mangaData?.synopsis) {
         els.detailsDescription.textContent = mangaData.synopsis;
     } else {
         els.detailsDescription.textContent = 'No description available.';
+    }
+    // Reset description to collapsed state
+    els.detailsDescription.classList.remove('expanded');
+    if (els.expandDescBtn) {
+        els.expandDescBtn.textContent = 'Show more';
     }
 
     // Show meta if available
@@ -7970,16 +7969,10 @@ function initElements() {
         detailsTitle: document.getElementById('details-title'),
         detailsMeta: document.getElementById('details-meta'),
         detailsDescription: document.getElementById('details-description'),
+        expandDescBtn: document.getElementById('expand-desc-btn'),
         addToLibraryBtn: document.getElementById('add-to-library-btn'),
-        favoriteBtn: document.getElementById('favorite-btn'),
         markAllReadBtn: document.getElementById('mark-all-read-btn'),
-        downloadAllBtn: document.getElementById('download-all-btn'),
-        notesInput: document.getElementById('notes-input'),
-        ratingInput: document.getElementById('rating-input'),
-        ratingValue: document.getElementById('rating-value'),
-        reviewInput: document.getElementById('review-input'),
-        shareReviewBtn: document.getElementById('share-review-btn'),
-        collectionsInput: document.getElementById('collections-input'),
+        starRating: document.getElementById('star-rating'),
         detailsSources: document.getElementById('details-sources'),
         detailsSourcesList: document.getElementById('details-sources-list'),
         similarGrid: document.getElementById('similar-grid'),
@@ -10439,12 +10432,37 @@ async function init() {
         setView(state.previousView || 'discover');
     });
 
-    if (els.favoriteBtn) {
-        els.favoriteBtn.addEventListener('click', () => {
-            if (!state.currentManga) return;
-            const nowFav = toggleFavoriteManga(state.currentManga.id, state.currentManga.source);
-            updateFavoriteButton();
-            showToast(nowFav ? 'Added to favorites' : 'Removed from favorites');
+    // Expandable description toggle
+    if (els.expandDescBtn) {
+        els.expandDescBtn.addEventListener('click', () => {
+            const isExpanded = els.detailsDescription.classList.contains('expanded');
+            els.detailsDescription.classList.toggle('expanded', !isExpanded);
+            els.expandDescBtn.textContent = isExpanded ? 'Show more' : 'Show less';
+        });
+    }
+
+    // Star rating event handlers
+    if (els.starRating) {
+        els.starRating.addEventListener('click', (e) => {
+            const starBtn = e.target.closest('.star-btn');
+            if (!starBtn) return;
+            const rating = parseInt(starBtn.dataset.rating, 10);
+            state.currentRating = rating;
+            updateStarRatingDisplay(rating);
+            scheduleNotesSave();
+        });
+        els.starRating.addEventListener('mouseover', (e) => {
+            const starBtn = e.target.closest('.star-btn');
+            if (!starBtn) return;
+            const hoverRating = parseInt(starBtn.dataset.rating, 10);
+            const stars = els.starRating.querySelectorAll('.star-btn');
+            stars.forEach((star, index) => {
+                star.classList.toggle('hovered', index < hoverRating);
+            });
+        });
+        els.starRating.addEventListener('mouseleave', () => {
+            const stars = els.starRating.querySelectorAll('.star-btn');
+            stars.forEach(star => star.classList.remove('hovered'));
         });
     }
 
@@ -10464,31 +10482,13 @@ async function init() {
     if (els.markAllReadBtn) {
         els.markAllReadBtn.addEventListener('click', markAllRead);
     }
-    if (els.notesInput) {
-        els.notesInput.addEventListener('input', scheduleNotesSave);
-    }
     if (els.reviewInput) {
         els.reviewInput.addEventListener('input', scheduleNotesSave);
-    }
-    if (els.shareReviewBtn) {
-        els.shareReviewBtn.addEventListener('click', shareCurrentReview);
-    }
-    if (els.ratingInput) {
-        els.ratingInput.addEventListener('input', () => {
-            els.ratingValue.textContent = els.ratingInput.value || '-';
-            scheduleNotesSave();
-        });
-    }
-    if (els.collectionsInput) {
-        els.collectionsInput.addEventListener('input', scheduleNotesSave);
     }
 
     els.selectAllChaptersBtn.addEventListener('click', selectAllChapters);
     els.deselectAllChaptersBtn.addEventListener('click', deselectAllChapters);
     els.downloadSelectedBtn.addEventListener('click', downloadSelectedChapters);
-    if (els.downloadNextBtn) {
-        els.downloadNextBtn.addEventListener('click', () => downloadNextChapters(5));
-    }
     if (els.downloadNextChaptersBtn) {
         els.downloadNextChaptersBtn.addEventListener('click', () => downloadNextChapters(5));
     }
