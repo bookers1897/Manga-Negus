@@ -1,5 +1,6 @@
 const els = {
     backBtn: document.getElementById('reader-back-btn'),
+    topbar: document.querySelector('.reader-topbar'),
     mangaTitle: document.getElementById('reader-manga-title'),
     chapterTitle: document.getElementById('reader-chapter-title'),
     prevBtn: document.getElementById('reader-prev-btn'),
@@ -23,6 +24,8 @@ const state = {
     totalChapters: null,
     libraryKey: '',
     cover: '',
+    mangaType: '',
+    mangaTags: [],
     pages: [],
     currentPage: 0,
     startPage: 0,
@@ -36,11 +39,14 @@ const state = {
     progressTimer: null,
     csrfToken: null,
     dataSaver: false,
+    prefetchDistance: 1,
     chapterList: [],
     chapterIndex: -1,
     sessionStart: Date.now(),
     sessionStartPage: 0,
     settingsOpen: false,
+    controlsVisible: true,
+    controlsTimer: null,
     renderGeneration: 0,
     initialScrollDone: false,
     isNavigating: false,
@@ -63,12 +69,44 @@ const state = {
     nextChapterPages: null
 };
 
+function inferContentProfile() {
+    const type = state.mangaType || '';
+    const tags = new Set(state.mangaTags || []);
+    const isWebtoon = type.includes('webtoon')
+        || type.includes('manhwa')
+        || type.includes('manhua')
+        || tags.has('webtoon')
+        || tags.has('long strip')
+        || tags.has('vertical');
+    return {
+        isWebtoon,
+        defaultMode: isWebtoon ? 'webtoon' : 'strip',
+        defaultDirection: isWebtoon ? 'ltr' : 'rtl',
+        defaultFit: isWebtoon ? 'fit-width' : 'fit-height'
+    };
+}
+
+function getPrefetchAhead() {
+    if (state.dataSaver) return 0;
+    const distance = Math.max(0, state.prefetchDistance || 1);
+    if (distance === 0) return 0;
+    if (distance === 1) return 5;
+    if (distance === 2) return 8;
+    return 12;
+}
+
+function getNextChapterPrefetchCount() {
+    if (state.dataSaver) return 1;
+    const distance = Math.max(0, state.prefetchDistance || 1);
+    if (distance <= 1) return 3;
+    if (distance === 2) return 5;
+    return 8;
+}
+
 // ========================================
 // Prefetcher - Preload pages ahead for smooth reading
 // ========================================
 const Prefetcher = {
-    // How many pages to prefetch ahead
-    PREFETCH_AHEAD: 5,
     // When to trigger chapter prefetch (percentage of current chapter)
     CHAPTER_PREFETCH_THRESHOLD: 0.8,
     // IndexedDB for image caching
@@ -195,8 +233,9 @@ const Prefetcher = {
      */
     prefetchPagesAhead(currentIndex, pages) {
         if (!pages || !pages.length) return;
-
-        const endIndex = Math.min(currentIndex + this.PREFETCH_AHEAD, pages.length - 1);
+        const ahead = getPrefetchAhead();
+        if (!ahead) return;
+        const endIndex = Math.min(currentIndex + ahead, pages.length - 1);
 
         for (let i = currentIndex + 1; i <= endIndex; i++) {
             const page = pages[i];
@@ -253,8 +292,8 @@ const Prefetcher = {
             const pages = response?.pages_data || response?.pages || [];
             state.nextChapterPages = pages;
 
-            // Prefetch first 3 pages of next chapter
-            for (let i = 0; i < Math.min(3, pages.length); i++) {
+            const count = Math.min(getNextChapterPrefetchCount(), pages.length);
+            for (let i = 0; i < count; i++) {
                 const page = pages[i];
                 const url = typeof page === 'string' ? page : page.url;
                 const referer = typeof page === 'object' ? page.referer : null;
@@ -295,6 +334,11 @@ function parseParams() {
     state.chapterName = params.get('chapter_title') || 'Chapter';
     state.cover = params.get('cover') || '';
     state.libraryKey = params.get('library_key') || '';
+    state.mangaType = (params.get('manga_type') || '').toLowerCase();
+    const rawTags = params.get('manga_tags') || '';
+    state.mangaTags = rawTags
+        ? rawTags.split(',').map(tag => tag.trim().toLowerCase()).filter(Boolean)
+        : [];
     state.startPage = parseInt(params.get('start_page') || '0', 10);
     state.chapterNumber = params.get('chapter_number');
     if (state.chapterNumber !== null) {
@@ -306,23 +350,49 @@ function parseParams() {
 }
 
 function loadReaderPreferences() {
-    const mode = localStorage.getItem('manganegus.readerMode');
-    if (mode === 'strip' || mode === 'paged' || mode === 'webtoon') {
-        state.readerMode = mode;
+    let userPrefs = null;
+    try {
+        const rawPrefs = localStorage.getItem('userPreferences');
+        if (rawPrefs) {
+            userPrefs = JSON.parse(rawPrefs);
+        }
+    } catch {
+        userPrefs = null;
     }
-    const fit = localStorage.getItem('manganegus.readerFitMode');
-    if (fit && ['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(fit)) {
-        state.readerFit = fit;
+
+    const modePref = localStorage.getItem('manganegus.readerMode');
+    const fitPref = localStorage.getItem('manganegus.readerFitMode');
+    const directionPref = localStorage.getItem('manganegus.readerDirection');
+    const backgroundPref = localStorage.getItem('manganegus.readerBackground');
+    const spreadPref = localStorage.getItem('manganegus.readerSpread');
+
+    if (modePref && ['strip', 'paged', 'webtoon'].includes(modePref)) {
+        state.readerMode = modePref;
+    } else if (userPrefs?.defaultReaderMode && ['strip', 'paged', 'webtoon'].includes(userPrefs.defaultReaderMode)) {
+        state.readerMode = userPrefs.defaultReaderMode;
     }
-    const direction = localStorage.getItem('manganegus.readerDirection');
-    if (direction === 'rtl' || direction === 'ltr') {
-        state.readerDirection = direction;
+
+    if (fitPref && ['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(fitPref)) {
+        state.readerFit = fitPref;
+    } else if (userPrefs?.imageFit && ['fit-width', 'fit-height', 'fit-screen', 'fit-original'].includes(userPrefs.imageFit)) {
+        state.readerFit = userPrefs.imageFit;
     }
-    const background = localStorage.getItem('manganegus.readerBackground');
-    if (background && ['dark', 'light', 'sepia', 'black', 'white'].includes(background)) {
-        state.readerBackground = background;
+
+    if (directionPref && (directionPref === 'rtl' || directionPref === 'ltr')) {
+        state.readerDirection = directionPref;
+    } else if (userPrefs?.readingDirection && (userPrefs.readingDirection === 'rtl' || userPrefs.readingDirection === 'ltr')) {
+        state.readerDirection = userPrefs.readingDirection;
     }
-    state.readerSpread = localStorage.getItem('manganegus.readerSpread') === '1';
+
+    if (backgroundPref && ['dark', 'light', 'sepia', 'black', 'white'].includes(backgroundPref)) {
+        state.readerBackground = backgroundPref;
+    }
+    state.readerSpread = spreadPref === '1';
+
+    const savedPrefetch = parseInt(localStorage.getItem('manganegus.prefetchDistance') || '1', 10);
+    if (!Number.isNaN(savedPrefetch)) {
+        state.prefetchDistance = savedPrefetch;
+    }
 
     try {
         const raw = localStorage.getItem('manganegus.filters');
@@ -333,6 +403,21 @@ function loadReaderPreferences() {
     } catch {
         state.dataSaver = false;
     }
+
+    const hasModePref = Boolean(modePref || userPrefs?.defaultReaderMode);
+    const hasFitPref = Boolean(fitPref || userPrefs?.imageFit);
+    const hasDirectionPref = Boolean(directionPref || userPrefs?.readingDirection);
+
+    const contentProfile = inferContentProfile();
+    if (!hasModePref && contentProfile.defaultMode) {
+        state.readerMode = contentProfile.defaultMode;
+    }
+    if (!hasFitPref && contentProfile.defaultFit) {
+        state.readerFit = contentProfile.defaultFit;
+    }
+    if (!hasDirectionPref && contentProfile.defaultDirection) {
+        state.readerDirection = contentProfile.defaultDirection;
+    }
 }
 
 function applySettings() {
@@ -341,6 +426,49 @@ function applySettings() {
     document.body.dataset.readerBg = state.readerBackground;
     document.body.dataset.readerDirection = state.readerDirection;
     updateSettingsUI();
+}
+
+function isMobileView() {
+    return window.innerWidth <= 960;
+}
+
+function updateLayoutMetrics() {
+    document.documentElement.style.setProperty('--reader-vh', `${window.innerHeight}px`);
+    if (els.topbar) {
+        document.documentElement.style.setProperty('--reader-topbar-height', `${els.topbar.offsetHeight}px`);
+    }
+}
+
+function scheduleControlsHide() {
+    if (state.controlsTimer) {
+        clearTimeout(state.controlsTimer);
+        state.controlsTimer = null;
+    }
+    if (!isMobileView() || state.settingsOpen) return;
+    state.controlsTimer = setTimeout(() => {
+        setControlsVisible(false);
+    }, 2600);
+}
+
+function setControlsVisible(visible, { persist = false } = {}) {
+    state.controlsVisible = visible;
+    document.body.classList.toggle('controls-hidden', !visible);
+    if (visible) {
+        if (!persist) {
+            scheduleControlsHide();
+        }
+    } else if (state.controlsTimer) {
+        clearTimeout(state.controlsTimer);
+        state.controlsTimer = null;
+    }
+}
+
+function syncControlsForViewport() {
+    if (isMobileView()) {
+        setControlsVisible(false, { persist: true });
+    } else {
+        setControlsVisible(true, { persist: true });
+    }
 }
 
 function updateSettingsUI() {
@@ -590,11 +718,40 @@ function getPageNode(index) {
     node = document.createElement('img');
     node.className = 'reader-page';
     node.dataset.pageIndex = String(index);
-    node.loading = 'lazy';
+    const pageUrl = typeof page === 'string' ? page : page.url;
+    const isPriority = index === state.currentPage || index === state.currentPage + 1;
+    node.loading = isPriority ? 'eager' : 'lazy';
+    node.fetchPriority = isPriority ? 'high' : 'low';
+    node.decoding = 'async';
     node.alt = `Page ${index + 1}`;
-    node.src = buildProxyUrl(page);
+    const proxyUrl = buildProxyUrl(page);
+    node.dataset.proxySrc = proxyUrl;
+    let srcAssigned = false;
+    const assignSrc = (src, isBlob = false) => {
+        if (srcAssigned) return;
+        srcAssigned = true;
+        node.src = src;
+        if (isBlob) {
+            node.dataset.blobUrl = src;
+        }
+    };
+    if (pageUrl) {
+        Prefetcher.getCached(pageUrl).then(blob => {
+            if (!blob) return;
+            const blobUrl = URL.createObjectURL(blob);
+            assignSrc(blobUrl, true);
+        });
+    }
+    setTimeout(() => {
+        if (!srcAssigned) assignSrc(proxyUrl);
+    }, 60);
     node.addEventListener('load', () => {
         node.classList.add('loaded');
+        const blobUrl = node.dataset.blobUrl;
+        if (blobUrl) {
+            URL.revokeObjectURL(blobUrl);
+            delete node.dataset.blobUrl;
+        }
         if (!node.naturalWidth || !node.naturalHeight) return;
         const ratio = node.naturalWidth / node.naturalHeight;
         if (ratio > 1.25) {
@@ -624,9 +781,8 @@ function getPageNode(index) {
             const delay = 500 * Math.pow(2, retryCount); // 500ms, 1000ms
             setTimeout(() => {
                 node.classList.remove('load-error');
-                const page = state.pages[index];
-                if (page) {
-                    node.src = buildProxyUrl(page) + '&retry=' + (retryCount + 1) + '&t=' + Date.now();
+                if (node.dataset.proxySrc) {
+                    node.src = node.dataset.proxySrc + '&retry=' + (retryCount + 1) + '&t=' + Date.now();
                 }
             }, delay);
         } else {
@@ -640,9 +796,8 @@ function getPageNode(index) {
                 node.style.cursor = '';
                 node.dataset.retryCount = '0';
                 node.onclick = null;
-                const page = state.pages[index];
-                if (page) {
-                    node.src = buildProxyUrl(page) + '&force=' + Date.now();
+                if (node.dataset.proxySrc) {
+                    node.src = node.dataset.proxySrc + '&force=' + Date.now();
                 }
             };
         }
@@ -919,13 +1074,22 @@ function setupReaderObserver() {
 }
 
 function handleReaderTap(event) {
-    if (state.readerMode === 'webtoon') return;
     if (event.target.closest('.reader-settings') || event.target.closest('.reader-topbar')) return;
+    if (event.target.closest('#reader-settings-toggle')) return;
     const rect = els.pages.getBoundingClientRect();
     if (!rect.width) return;
     const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
     const ratio = x / rect.width;
+    const yRatio = rect.height ? (y / rect.height) : 0;
+    const isTopZone = yRatio <= 0.18;
+    const isCenterZone = ratio >= 0.33 && ratio <= 0.66;
+    if (isTopZone || isCenterZone) {
+        setControlsVisible(!state.controlsVisible);
+        return;
+    }
     const isRtl = state.readerDirection === 'rtl';
+    if (state.readerMode === 'webtoon') return;
     if (ratio < 0.33) {
         moveReader(isRtl ? 'next' : 'prev');
     } else if (ratio > 0.66) {
@@ -1150,6 +1314,11 @@ function setSettingsOpen(open) {
         els.settings.classList.toggle('open', open);
     }
     document.body.classList.toggle('settings-collapsed', !open);
+    if (open) {
+        setControlsVisible(true, { persist: true });
+    } else if (isMobileView()) {
+        scheduleControlsHide();
+    }
 }
 
 function bindEvents() {
@@ -1197,6 +1366,11 @@ function bindEvents() {
         setSettingsOpen(false);
     });
 
+    window.addEventListener('resize', () => {
+        updateLayoutMetrics();
+        syncControlsForViewport();
+    });
+
     window.addEventListener('beforeunload', () => {
         void saveReadingProgress();
         recordReadingSession();
@@ -1206,15 +1380,18 @@ function bindEvents() {
 async function init() {
     parseParams();
     loadReaderPreferences();
+    updateLayoutMetrics();
     applySettings();
     state.settingsOpen = window.innerWidth > 960;
     setSettingsOpen(state.settingsOpen);
+    syncControlsForViewport();
 
     if (els.mangaTitle) els.mangaTitle.textContent = state.mangaTitle || 'Manga';
     if (els.chapterTitle) els.chapterTitle.textContent = state.chapterName || 'Chapter';
     if (state.chapterName) {
         document.title = state.mangaTitle ? `${state.chapterName} • ${state.mangaTitle}` : state.chapterName;
     }
+    requestAnimationFrame(updateLayoutMetrics);
     bindEvents();
 
     // Initialize prefetcher IndexedDB cache
