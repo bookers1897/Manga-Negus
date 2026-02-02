@@ -23,6 +23,7 @@ HOW FALLBACK WORKS:
 import os
 import sys
 import importlib
+import importlib.util
 import pkgutil
 import threading
 import time
@@ -306,12 +307,63 @@ class SourceManager:
         This is how HakuNeko discovers its 730+ connectors!
         """
         sources_dir = os.path.dirname(__file__)
+
+        def _parse_env_list(name: str) -> set[str]:
+            raw = os.environ.get(name, "")
+            if not raw:
+                return set()
+            return {item.strip() for item in raw.split(",") if item.strip()}
+
+        # Module-level allow/block lists (by module name)
+        module_allowlist = _parse_env_list("SOURCE_MODULE_ALLOWLIST")
+        module_blocklist = _parse_env_list("SOURCE_MODULE_BLOCKLIST")
+        skip_default_modules = os.environ.get("SKIP_DEFAULT_SOURCE_MODULES", "1").lower() in {"1", "true", "yes", "on"}
+
+        # ID-level allow/block lists (by connector id)
+        source_allowlist = _parse_env_list("SOURCE_ALLOWLIST")
+        source_blocklist = _parse_env_list("SOURCE_BLOCKLIST")
+
+        # Prefer V2 connectors when their dependencies are available
+        prefer_v2 = os.environ.get("PREFER_V2_SOURCES", "1").lower() in {"1", "true", "yes", "on"}
+        has_curl_cffi = importlib.util.find_spec("curl_cffi") is not None
+        has_bs4 = importlib.util.find_spec("bs4") is not None
+        has_playwright = (
+            importlib.util.find_spec("playwright") is not None and
+            importlib.util.find_spec("playwright_stealth") is not None
+        )
         
         # Classes to skip (adapters/factories that need constructor args)
         skip_classes = {'LuaSourceAdapter'}
         skip_playwright_modules = {'mangafire_v2'}
         skip_playwright = os.environ.get("SKIP_PLAYWRIGHT_SOURCES", "").lower() in {"1", "true", "yes", "on"}
         skip_discovery = os.environ.get("SKIP_SOURCE_DISCOVERY", "").lower() in {"1", "true", "yes", "on"}
+
+        skip_modules: set[str] = set()
+        if skip_default_modules:
+            skip_modules.update({
+                "annasarchive",
+                "libgen",
+                "gallerydl_adapter",
+                "webdriver",
+                "lua_adapter"
+            })
+
+        if prefer_v2 and has_curl_cffi and has_bs4:
+            skip_modules.update({
+                "weebcentral",
+                "mangasee",
+                "manganato"
+            })
+
+        if prefer_v2 and has_playwright and has_bs4 and not skip_playwright:
+            skip_modules.add("mangafire")
+
+        if module_blocklist:
+            skip_modules.update(module_blocklist)
+
+        if module_allowlist:
+            # Explicit allowlist overrides default skips to honor operator intent.
+            skip_modules = set(module_blocklist)
 
         if skip_discovery:
             print("⚠️ Skipping source discovery (SKIP_SOURCE_DISCOVERY=1)")
@@ -320,6 +372,15 @@ class SourceManager:
         for _, module_name, _ in pkgutil.iter_modules([sources_dir]):
             # Skip base module, __init__, and utility modules
             if module_name in ('base', '__init__', 'lua_runtime', 'async_base', 'async_utils'):
+                continue
+            if module_allowlist and module_name not in module_allowlist:
+                continue
+            if module_name in skip_modules:
+                self._skipped_sources.append({
+                    "id": module_name,
+                    "name": module_name,
+                    "reason": "module_skip"
+                })
                 continue
             if skip_playwright and module_name in skip_playwright_modules:
                 print(f"⚠️ Skipping {module_name} (Playwright disabled via SKIP_PLAYWRIGHT_SOURCES)")
@@ -347,6 +408,20 @@ class SourceManager:
 
                         # Instantiate and register
                         connector = attr()
+                        if source_allowlist and connector.id not in source_allowlist:
+                            self._skipped_sources.append({
+                                "id": connector.id,
+                                "name": connector.name,
+                                "reason": "allowlist"
+                            })
+                            continue
+                        if connector.id in source_blocklist:
+                            self._skipped_sources.append({
+                                "id": connector.id,
+                                "name": connector.name,
+                                "reason": "blocklist"
+                            })
+                            continue
                         connector.session = self._session
                         self._sources[connector.id] = connector
 
@@ -354,23 +429,57 @@ class SourceManager:
                 print(f"⚠️ Failed to load source '{module_name}': {e}")
 
         # Discover Lua sources (FMD-compatible modules)
-        if HAS_LUA_SOURCES:
+        enable_lua = os.environ.get("ENABLE_LUA_SOURCES", "0").lower() in {"1", "true", "yes", "on"}
+        if HAS_LUA_SOURCES and enable_lua:
             try:
                 lua_sources = discover_lua_sources()
                 for adapter in lua_sources:
+                    if source_allowlist and adapter.id not in source_allowlist:
+                        self._skipped_sources.append({
+                            "id": adapter.id,
+                            "name": adapter.name,
+                            "reason": "allowlist"
+                        })
+                        continue
+                    if adapter.id in source_blocklist:
+                        self._skipped_sources.append({
+                            "id": adapter.id,
+                            "name": adapter.name,
+                            "reason": "blocklist"
+                        })
+                        continue
                     adapter.session = self._session
                     self._sources[adapter.id] = adapter
                     print(f"✨ Loaded Lua source: {adapter.name}")
             except Exception as e:
                 print(f"⚠️ Failed to load Lua sources: {e}")
+        elif HAS_LUA_SOURCES and not enable_lua:
+            self._skipped_sources.append({
+                "id": "lua",
+                "name": "Lua Sources",
+                "reason": "disabled"
+            })
 
         # Also register our built-in MangaDex Lua adapter (uses direct API)
-        if HAS_LUA_SOURCES and 'lua-mangadex' not in self._sources:
+        if HAS_LUA_SOURCES and enable_lua and 'lua-mangadex' not in self._sources:
             try:
                 adapter = LuaSourceAdapter('MangaDex')
-                adapter.session = self._session
-                self._sources[adapter.id] = adapter
-                print(f"✨ Loaded MangaDex Lua adapter")
+                if source_allowlist and adapter.id not in source_allowlist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "allowlist"
+                    })
+                elif adapter.id in source_blocklist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "blocklist"
+                    })
+                else:
+                    adapter.session = self._session
+                    self._sources[adapter.id] = adapter
+                    print(f"✨ Loaded MangaDex Lua adapter")
             except Exception as e:
                 print(f"⚠️ Failed to load MangaDex Lua adapter: {e}")
 
@@ -378,8 +487,21 @@ class SourceManager:
         if HAS_WEEBCENTRAL_V2 and 'weebcentral-v2' not in self._sources:
             try:
                 adapter = WeebCentralV2Connector()
-                self._sources[adapter.id] = adapter
-                print(f"✨ Loaded WeebCentral V2 adapter (Cloudflare bypass)")
+                if source_allowlist and adapter.id not in source_allowlist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "allowlist"
+                    })
+                elif adapter.id in source_blocklist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "blocklist"
+                    })
+                else:
+                    self._sources[adapter.id] = adapter
+                    print(f"✨ Loaded WeebCentral V2 adapter (Cloudflare bypass)")
             except Exception as e:
                 print(f"⚠️ Failed to load WeebCentral V2 adapter: {e}")
 
@@ -387,8 +509,21 @@ class SourceManager:
         if HAS_MANGASEE_V2 and 'mangasee-v2' not in self._sources:
             try:
                 adapter = MangaSeeV2Connector()
-                self._sources[adapter.id] = adapter
-                print(f"✨ Loaded MangaSee V2 adapter (Cloudflare bypass)")
+                if source_allowlist and adapter.id not in source_allowlist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "allowlist"
+                    })
+                elif adapter.id in source_blocklist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "blocklist"
+                    })
+                else:
+                    self._sources[adapter.id] = adapter
+                    print(f"✨ Loaded MangaSee V2 adapter (Cloudflare bypass)")
             except Exception as e:
                 print(f"⚠️ Failed to load MangaSee V2 adapter: {e}")
 
@@ -396,8 +531,21 @@ class SourceManager:
         if HAS_MANGANATO_V2 and 'manganato-v2' not in self._sources:
             try:
                 adapter = MangaNatoV2Connector()
-                self._sources[adapter.id] = adapter
-                print(f"✨ Loaded MangaNato V2 adapter (Cloudflare bypass)")
+                if source_allowlist and adapter.id not in source_allowlist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "allowlist"
+                    })
+                elif adapter.id in source_blocklist:
+                    self._skipped_sources.append({
+                        "id": adapter.id,
+                        "name": adapter.name,
+                        "reason": "blocklist"
+                    })
+                else:
+                    self._sources[adapter.id] = adapter
+                    print(f"✨ Loaded MangaNato V2 adapter (Cloudflare bypass)")
             except Exception as e:
                 print(f"⚠️ Failed to load MangaNato V2 adapter: {e}")
 
@@ -426,6 +574,14 @@ class SourceManager:
                     "source": source_id,
                     "reason": "disabled"
                 })
+        if self._active_source_id in disabled or self._active_source_id not in self._sources:
+            self._active_source_id = None
+            for preferred in self._priority_order:
+                if preferred in self._sources:
+                    self._active_source_id = preferred
+                    break
+            if not self._active_source_id and self._sources:
+                self._active_source_id = list(self._sources.keys())[0]
 
     def _init_source_metrics(self) -> None:
         """Initialize health metrics for all sources."""
@@ -437,6 +593,8 @@ class SourceManager:
                 'total_response_time': 0.0,
                 'last_failure_time': 0,
                 'consecutive_failures': 0,
+                'empty_results': 0,
+                'empty_streak': 0,
                 'cooldown_until': 0,
                 'health_score': 100.0  # Start with perfect health
             }
@@ -458,6 +616,7 @@ class SourceManager:
         successes = metrics['successes']
         failures = metrics['failures']
         consecutive_failures = metrics['consecutive_failures']
+        empty_streak = metrics.get('empty_streak', 0)
 
         # Success rate component (60% weight)
         success_rate = (successes / total) * 100 if total > 0 else 100
@@ -477,7 +636,8 @@ class SourceManager:
         else:
             time_component = 0
 
-        return max(0, success_component + failure_component + time_component)
+        empty_penalty = min(10, empty_streak * 2)
+        return max(0, success_component + failure_component + time_component - empty_penalty)
 
     def _record_success(self, source_id: str, response_time: float) -> None:
         """Record a successful request for a source."""
@@ -487,6 +647,21 @@ class SourceManager:
 
             metrics = self._source_metrics[source_id]
             metrics['successes'] += 1
+            metrics['total_requests'] += 1
+            metrics['total_response_time'] += response_time
+            metrics['consecutive_failures'] = 0
+            metrics['empty_streak'] = 0
+            metrics['health_score'] = self._get_health_score(source_id)
+
+    def _record_empty(self, source_id: str, response_time: float) -> None:
+        """Record an empty-but-successful request for a source."""
+        with self._lock:
+            if source_id not in self._source_metrics:
+                self._init_source_metrics()
+
+            metrics = self._source_metrics[source_id]
+            metrics['empty_results'] += 1
+            metrics['empty_streak'] += 1
             metrics['total_requests'] += 1
             metrics['total_response_time'] += response_time
             metrics['consecutive_failures'] = 0
@@ -636,6 +811,11 @@ class SourceManager:
                 continue
 
             health = self._source_metrics.get(source_id, {}).get('health_score', 100.0)
+            priority_index = (
+                self._priority_order.index(source_id)
+                if source_id in self._priority_order
+                else len(self._priority_order) + 1
+            )
 
             # Boost priority sources slightly
             if source_id in self._priority_order:
@@ -647,12 +827,12 @@ class SourceManager:
             if breaker and breaker.state == CircuitState.HALF_OPEN:
                 health = max(0, health - 20)
 
-            scored_sources.append((source, health))
+            scored_sources.append((source, health, priority_index))
 
-        # Sort by health score (highest first)
-        scored_sources.sort(key=lambda x: x[1], reverse=True)
+        # Sort by health score (highest first), then priority order
+        scored_sources.sort(key=lambda x: (-x[1], x[2]))
 
-        for source, _ in scored_sources:
+        for source, _, _ in scored_sources:
             ordered.append(source)
 
         return ordered
@@ -740,6 +920,7 @@ class SourceManager:
 
                 # Empty result - don't penalize circuit but don't reward either
                 response_time = time.time() - start_time
+                self._record_empty(source.id, response_time)
                 self._log(f"⚪ [{operation_name}] #{attempt_num} {source.id} EMPTY - no results in {response_time:.2f}s (trying next)")
 
             except Exception as e:
@@ -765,7 +946,7 @@ class SourceManager:
         self._log(f"❌ [{operation_name}] All {attempt_num} sources exhausted - no results")
         return None
 
-    def _parallel_search(self, query: str, page: int = 1, max_workers: int = 3) -> List[MangaResult]:
+    def _parallel_search(self, query: str, page: int = 1, max_workers: int = 6) -> List[MangaResult]:
         """
         Search multiple sources in parallel for faster results.
 
@@ -815,6 +996,9 @@ class SourceManager:
                             results_list.append(manga)
                         # Cache this manga-source mapping
                         self._cache_manga_source(manga.title, source_id, manga.id)
+                else:
+                    self._record_empty(source_id, response_time)
+                    self._log(f"⚪ Parallel search empty for {source_id} ({response_time:.2f}s)")
 
         return results_list
     
@@ -893,6 +1077,18 @@ class SourceManager:
         cached = self._cache_get(self._search_cache, cache_key)
         if cached is not None:
             return cached
+
+        parallel_enabled = os.environ.get("PARALLEL_SEARCH", "1").lower() in {"1", "true", "yes", "on"}
+        max_workers = int(os.environ.get("PARALLEL_SEARCH_MAX_WORKERS", "6"))
+        fallback_on_empty = os.environ.get("PARALLEL_SEARCH_FALLBACK", "1").lower() in {"1", "true", "yes", "on"}
+
+        if parallel_enabled:
+            results = self._parallel_search(query, page, max_workers=max_workers)
+            if results:
+                self._cache_set(self._search_cache, cache_key, results)
+                return results
+            if not fallback_on_empty:
+                return []
 
         def search_op(source: BaseConnector):
             return source.search(query, page)
@@ -1071,6 +1267,8 @@ class SourceManager:
                 ),
                 'total_requests': metrics.get('total_requests', 0),
                 'consecutive_failures': metrics.get('consecutive_failures', 0),
+                'empty_results': metrics.get('empty_results', 0),
+                'empty_streak': metrics.get('empty_streak', 0),
                 'on_cooldown': self._is_source_on_cooldown(source.id),
                 'cooldown_remaining': max(0, metrics.get('cooldown_until', 0) - time.time()),
                 # Circuit breaker info
@@ -1125,6 +1323,8 @@ class SourceManager:
                     'total_response_time': 0.0,
                     'last_failure_time': 0,
                     'consecutive_failures': 0,
+                    'empty_results': 0,
+                    'empty_streak': 0,
                     'cooldown_until': 0,
                     'health_score': 100.0
                 }

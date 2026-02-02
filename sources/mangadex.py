@@ -12,14 +12,176 @@ FIXES IN THIS VERSION:
 ================================================================================
 """
 
+import asyncio
+import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 from .base import (
-    BaseConnector, MangaResult, ChapterResult, PageResult, SourceStatus
+    BaseConnector, MangaResult, ChapterResult, PageResult
 )
+from .async_base import AsyncBaseConnector, HAS_CURL_CFFI
 
 
-class MangaDexConnector(BaseConnector):
+_ASYNC_UNSET = object()
+
+
+class MangaDexParsingMixin:
+    # IMPORTANT: User-Agent must identify your app, NOT spoof a browser
+    USER_AGENT = "MangaNegus"
+
+    CONTENT_RATINGS = ["safe", "suggestive", "erotica"]
+
+    def _headers(self, for_images: bool = False) -> Dict[str, str]:
+        """Get request headers."""
+        if for_images:
+            return {
+                "User-Agent": self.USER_AGENT,
+                "Accept": "image/webp,image/png,image/jpeg,*/*"
+            }
+        return {
+            "User-Agent": self.USER_AGENT,
+            "Accept": "application/json"
+        }
+
+    def _get_english_title(self, manga_data: Dict) -> str:
+        """
+        Extract the best English title from manga data.
+
+        Priority:
+        1. English title (altTitles or main title)
+        2. Romaji title (ja-ro)
+        3. Japanese title
+        4. Any available title
+        """
+        attrs = manga_data.get("attributes", {})
+        titles = attrs.get("title", {})
+        alt_titles = attrs.get("altTitles", [])
+
+        # Check main title for English
+        if "en" in titles:
+            return titles["en"]
+
+        # Check alternate titles for English
+        for alt in alt_titles:
+            if isinstance(alt, dict) and "en" in alt:
+                return alt["en"]
+
+        # Try romaji (Japanese romanized)
+        if "ja-ro" in titles:
+            return titles["ja-ro"]
+
+        for alt in alt_titles:
+            if isinstance(alt, dict) and "ja-ro" in alt:
+                return alt["ja-ro"]
+
+        # Try Japanese
+        if "ja" in titles:
+            return titles["ja"]
+
+        # Fallback to any available title
+        if titles:
+            return next(iter(titles.values()))
+
+        # Last resort: check alt titles
+        for alt in alt_titles:
+            if isinstance(alt, dict):
+                return next(iter(alt.values()), "Unknown")
+
+        return "Unknown"
+
+    def _extract_cover(self, manga_data: Dict) -> Optional[str]:
+        """Extract cover URL from manga relationships."""
+        manga_id = manga_data.get("id", "")
+
+        for rel in manga_data.get("relationships", []):
+            if rel.get("type") == "cover_art":
+                filename = rel.get("attributes", {}).get("fileName")
+                if filename:
+                    # Use 256px thumbnail for speed
+                    return f"https://uploads.mangadex.org/covers/{manga_id}/{filename}.256.jpg"
+        return None
+
+    def _parse_manga(self, data: Dict) -> MangaResult:
+        """Parse MangaDex manga data into standardized MangaResult."""
+        attrs = data.get("attributes", {})
+        rels = data.get("relationships", [])
+
+        # Get best English title
+        title = self._get_english_title(data)
+
+        # Get description (prefer English)
+        desc = attrs.get("description", {})
+        description = desc.get("en") if isinstance(desc, dict) else None
+        if not description and isinstance(desc, dict):
+            description = next(iter(desc.values()), None)
+
+        # Get author from relationships
+        author = None
+        for rel in rels:
+            if rel.get("type") == "author":
+                author = rel.get("attributes", {}).get("name")
+                break
+
+        # Get genres from tags
+        genres = []
+        for tag in attrs.get("tags", []):
+            tag_name = tag.get("attributes", {}).get("name", {})
+            if isinstance(tag_name, dict):
+                genres.append(tag_name.get("en", ""))
+            elif isinstance(tag_name, str):
+                genres.append(tag_name)
+
+        # Get alternate titles
+        alt_titles = []
+        for alt in attrs.get("altTitles", []):
+            if isinstance(alt, dict):
+                for _, t in alt.items():
+                    if t and t != title:
+                        alt_titles.append(t)
+
+        return MangaResult(
+            id=data.get("id", ""),
+            title=title,
+            source=self.id,
+            cover_url=self._extract_cover(data),
+            description=description,
+            author=author,
+            status=attrs.get("status"),
+            url=f"https://mangadex.org/title/{data.get('id')}",
+            genres=genres,
+            alt_titles=alt_titles[:5],  # Limit to 5
+            year=attrs.get("year")
+        )
+
+    def _parse_chapter(self, data: Dict) -> ChapterResult:
+        """Parse MangaDex chapter into standardized ChapterResult."""
+        attrs = data.get("attributes", {})
+        if attrs.get("externalUrl"):
+            return None
+
+        # Get scanlation group
+        scanlator = None
+        for rel in data.get("relationships", []):
+            if rel.get("type") == "scanlation_group":
+                scanlator = rel.get("attributes", {}).get("name")
+                break
+
+        return ChapterResult(
+            id=data.get("id", ""),
+            chapter=attrs.get("chapter") or "0",
+            title=attrs.get("title"),
+            volume=attrs.get("volume"),
+            language=attrs.get("translatedLanguage", "en"),
+            pages=attrs.get("pages", 0),
+            scanlator=scanlator,
+            published=attrs.get("publishAt"),
+            url=f"https://mangadex.org/chapter/{data.get('id')}",
+            source=self.id
+        )
+
+
+class MangaDexConnector(MangaDexParsingMixin, BaseConnector):
     """
     MangaDex API connector with improved title handling.
     """
@@ -39,9 +201,9 @@ class MangaDexConnector(BaseConnector):
     ]
 
     # Rate limiting - MangaDex allows 5/sec, we use 3/sec for safety
-    rate_limit = 3.0          # 3 requests per second
-    rate_limit_burst = 5      # Reasonable burst
-    request_timeout = 30      # Increased timeout
+    rate_limit = 5.0          # 3 requests per second
+    rate_limit_burst = 3      # Reasonable burst
+    request_timeout = 5      # Increased timeout
 
     supports_latest = True
     supports_popular = True
@@ -49,26 +211,47 @@ class MangaDexConnector(BaseConnector):
 
     languages = ["en", "ja", "ko", "zh", "es", "fr", "de", "it", "pt-br", "ru"]
 
-    # IMPORTANT: User-Agent must identify your app, NOT spoof a browser
-    USER_AGENT = "MangaNegus/2.3 (https://github.com/bookers1897/Manga-Negus)"
+    # =========================================================================
+    # INITIALIZATION & ASYNC TOGGLE
+    # =========================================================================
 
-    CONTENT_RATINGS = ["safe", "suggestive", "erotica"]
+    def __init__(self):
+        super().__init__()
+        self._prefer_async = os.environ.get("MANGADEX_ASYNC", "1").lower() in {"1", "true", "yes", "on"}
+
+    def _run_coroutine(self, coro):
+        """Run async coroutine from sync context, with safe thread fallback."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        return self._run_coroutine_in_thread(coro)
+
+    def _run_coroutine_in_thread(self, coro):
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(lambda: asyncio.run(coro)).result()
+
+    def _try_async(self, method_name: str, *args, **kwargs):
+        """Attempt async path, return _ASYNC_UNSET when unused or failed."""
+        if not self._prefer_async or not HAS_CURL_CFFI:
+            return _ASYNC_UNSET
+
+        async def runner():
+            client = MangaDexAsyncConnector()
+            try:
+                return await getattr(client, method_name)(*args, **kwargs)
+            finally:
+                await client.close()
+
+        try:
+            return self._run_coroutine(runner())
+        except Exception as e:
+            self._log(f"⚠️ MangaDex async path failed, falling back: {e}")
+            return _ASYNC_UNSET
 
     # =========================================================================
     # REQUEST HELPERS
     # =========================================================================
-
-    def _headers(self, for_images: bool = False) -> Dict[str, str]:
-        """Get request headers."""
-        if for_images:
-            return {
-                "User-Agent": self.USER_AGENT,
-                "Accept": "image/webp,image/png,image/jpeg,*/*"
-            }
-        return {
-            "User-Agent": self.USER_AGENT,
-            "Accept": "application/json"
-        }
 
     def _request(
         self,
@@ -143,155 +326,15 @@ class MangaDexConnector(BaseConnector):
         source_log(msg)
 
     # =========================================================================
-    # TITLE EXTRACTION (FIXED)
-    # =========================================================================
-
-    def _get_english_title(self, manga_data: Dict) -> str:
-        """
-        Extract the best English title from manga data.
-
-        Priority:
-        1. English title (altTitles or main title)
-        2. Romaji title (ja-ro)
-        3. Japanese title
-        4. Any available title
-        """
-        attrs = manga_data.get("attributes", {})
-        titles = attrs.get("title", {})
-        alt_titles = attrs.get("altTitles", [])
-
-        # Check main title for English
-        if "en" in titles:
-            return titles["en"]
-
-        # Check alternate titles for English
-        for alt in alt_titles:
-            if isinstance(alt, dict) and "en" in alt:
-                return alt["en"]
-
-        # Try romaji (Japanese romanized)
-        if "ja-ro" in titles:
-            return titles["ja-ro"]
-
-        for alt in alt_titles:
-            if isinstance(alt, dict) and "ja-ro" in alt:
-                return alt["ja-ro"]
-
-        # Try Japanese
-        if "ja" in titles:
-            return titles["ja"]
-
-        # Fallback to any available title
-        if titles:
-            return next(iter(titles.values()))
-
-        # Last resort: check alt titles
-        for alt in alt_titles:
-            if isinstance(alt, dict):
-                return next(iter(alt.values()), "Unknown")
-
-        return "Unknown"
-
-    # =========================================================================
-    # PARSING HELPERS
-    # =========================================================================
-
-    def _extract_cover(self, manga_data: Dict) -> Optional[str]:
-        """Extract cover URL from manga relationships."""
-        manga_id = manga_data.get("id", "")
-
-        for rel in manga_data.get("relationships", []):
-            if rel.get("type") == "cover_art":
-                filename = rel.get("attributes", {}).get("fileName")
-                if filename:
-                    # Use 256px thumbnail for speed
-                    return f"https://uploads.mangadex.org/covers/{manga_id}/{filename}.256.jpg"
-        return None
-
-    def _parse_manga(self, data: Dict) -> MangaResult:
-        """Parse MangaDex manga data into standardized MangaResult."""
-        attrs = data.get("attributes", {})
-        rels = data.get("relationships", [])
-
-        # Get best English title
-        title = self._get_english_title(data)
-
-        # Get description (prefer English)
-        desc = attrs.get("description", {})
-        description = desc.get("en") if isinstance(desc, dict) else None
-        if not description and isinstance(desc, dict):
-            description = next(iter(desc.values()), None)
-
-        # Get author from relationships
-        author = None
-        for rel in rels:
-            if rel.get("type") == "author":
-                author = rel.get("attributes", {}).get("name")
-                break
-
-        # Get genres from tags
-        genres = []
-        for tag in attrs.get("tags", []):
-            tag_name = tag.get("attributes", {}).get("name", {})
-            if isinstance(tag_name, dict):
-                genres.append(tag_name.get("en", ""))
-            elif isinstance(tag_name, str):
-                genres.append(tag_name)
-
-        # Get alternate titles
-        alt_titles = []
-        for alt in attrs.get("altTitles", []):
-            if isinstance(alt, dict):
-                for lang, t in alt.items():
-                    if t and t != title:
-                        alt_titles.append(t)
-
-        return MangaResult(
-            id=data.get("id", ""),
-            title=title,
-            source=self.id,
-            cover_url=self._extract_cover(data),
-            description=description,
-            author=author,
-            status=attrs.get("status"),
-            url=f"https://mangadex.org/title/{data.get('id')}",
-            genres=genres,
-            alt_titles=alt_titles[:5],  # Limit to 5
-            year=attrs.get("year")
-        )
-
-    def _parse_chapter(self, data: Dict) -> ChapterResult:
-        """Parse MangaDex chapter data into standardized ChapterResult."""
-        attrs = data.get("attributes", {})
-        if attrs.get("externalUrl"):
-            return None
-
-        # Get scanlation group
-        scanlator = None
-        for rel in data.get("relationships", []):
-            if rel.get("type") == "scanlation_group":
-                scanlator = rel.get("attributes", {}).get("name")
-                break
-
-        return ChapterResult(
-            id=data.get("id", ""),
-            chapter=attrs.get("chapter") or "0",
-            title=attrs.get("title"),
-            volume=attrs.get("volume"),
-            language=attrs.get("translatedLanguage", "en"),
-            pages=attrs.get("pages", 0),
-            scanlator=scanlator,
-            published=attrs.get("publishAt"),
-            url=f"https://mangadex.org/chapter/{data.get('id')}",
-            source=self.id
-        )
-
-    # =========================================================================
     # PUBLIC API METHODS
     # =========================================================================
 
     def search(self, query: str, page: int = 1) -> List[MangaResult]:
         """Search MangaDex for manga by title."""
+        async_result = self._try_async("search", query, page)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         self._log(f"🔍 Searching MangaDex: {query}")
 
         limit = 15
@@ -323,6 +366,10 @@ class MangaDexConnector(BaseConnector):
 
     def get_popular(self, page: int = 1) -> List[MangaResult]:
         """Get most popular manga by follower count."""
+        async_result = self._try_async("get_popular", page)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         limit = 15
         offset = (page - 1) * limit
 
@@ -343,6 +390,10 @@ class MangaDexConnector(BaseConnector):
 
     def get_latest(self, page: int = 1) -> List[MangaResult]:
         """Get recently updated manga."""
+        async_result = self._try_async("get_latest", page)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         limit = 15
         offset = (page - 1) * limit
 
@@ -372,6 +423,10 @@ class MangaDexConnector(BaseConnector):
         FIXED: Now properly handles pagination to get ALL chapters,
         not just the first 100.
         """
+        async_result = self._try_async("get_chapters", manga_id, language)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         self._log(f"📖 Fetching chapters from MangaDex...")
 
         all_chapters = []
@@ -453,6 +508,10 @@ class MangaDexConnector(BaseConnector):
 
         Uses /at-home/server/ endpoint for geo-optimized CDN URLs.
         """
+        async_result = self._try_async("get_pages", chapter_id)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         data = self._request(f"/at-home/server/{chapter_id}")
         if not data:
             return []
@@ -482,9 +541,243 @@ class MangaDexConnector(BaseConnector):
 
     def get_manga_details(self, manga_id: str) -> Optional[MangaResult]:
         """Get full details for a specific manga."""
+        async_result = self._try_async("get_manga_details", manga_id)
+        if async_result is not _ASYNC_UNSET:
+            return async_result
+
         params = {"includes[]": ["cover_art", "author", "artist"]}
 
         data = self._request(f"/manga/{manga_id}", params)
+        if not data or "data" not in data:
+            return None
+
+        return self._parse_manga(data["data"])
+
+
+class MangaDexAsyncConnector(MangaDexParsingMixin, AsyncBaseConnector):
+    """
+    Async MangaDex connector using AsyncBaseConnector + curl_cffi.
+
+    This is used internally by MangaDexConnector when async is enabled.
+    """
+
+    id = "mangadex"
+    name = "MangaDex"
+    base_url = "https://api.mangadex.org"
+    icon = "🥭"
+
+    url_patterns = [
+        r'https?://(?:www\.)?mangadex\.org/title/([a-f0-9-]+)',
+    ]
+
+    rate_limit = 5.0
+    rate_limit_burst = 3
+    request_timeout = 5.0
+
+    supports_latest = True
+    supports_popular = True
+    requires_cloudflare = False
+
+    languages = ["en", "ja", "ko", "zh", "es", "fr", "de", "it", "pt-br", "ru"]
+
+    async def _request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
+        url = f"{self.base_url}{endpoint}"
+        return await self._get_json(url, params=params, headers=self._headers())
+
+    async def search(self, query: str, page: int = 1) -> List[MangaResult]:
+        """Search MangaDex for manga by title."""
+        self._log(f"🔍 Searching MangaDex: {query}")
+
+        limit = 15
+        offset = (page - 1) * limit
+
+        params = {
+            "title": query,
+            "limit": limit,
+            "offset": offset,
+            "includes[]": ["cover_art", "author"],
+            "contentRating[]": self.CONTENT_RATINGS,
+            "order[relevance]": "desc"
+        }
+
+        data = await self._request("/manga", params)
+        if not data:
+            return []
+
+        results = []
+        for manga in data.get("data", []):
+            try:
+                results.append(self._parse_manga(manga))
+            except Exception as e:
+                self._log(f"⚠️ Parse error: {e}")
+                continue
+
+        self._log(f"✅ Found {len(results)} results")
+        return results
+
+    async def get_popular(self, page: int = 1) -> List[MangaResult]:
+        """Get most popular manga by follower count."""
+        limit = 15
+        offset = (page - 1) * limit
+
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "includes[]": ["cover_art", "author"],
+            "contentRating[]": self.CONTENT_RATINGS,
+            "availableTranslatedLanguage[]": ["en"],
+            "order[followedCount]": "desc"
+        }
+
+        data = await self._request("/manga", params)
+        if not data:
+            return []
+
+        return [self._parse_manga(m) for m in data.get("data", [])]
+
+    async def get_latest(self, page: int = 1) -> List[MangaResult]:
+        """Get recently updated manga."""
+        limit = 15
+        offset = (page - 1) * limit
+
+        params = {
+            "limit": limit,
+            "offset": offset,
+            "includes[]": ["cover_art", "author"],
+            "contentRating[]": self.CONTENT_RATINGS,
+            "availableTranslatedLanguage[]": ["en"],
+            "order[latestUploadedChapter]": "desc"
+        }
+
+        data = await self._request("/manga", params)
+        if not data:
+            return []
+
+        return [self._parse_manga(m) for m in data.get("data", [])]
+
+    async def get_chapters(self, manga_id: str, language: str = "en") -> List[ChapterResult]:
+        """
+        Get ALL chapters for a manga with proper pagination.
+        """
+        self._log(f"📖 Fetching chapters from MangaDex (async)...")
+
+        limit = 100
+        params = {
+            "manga": manga_id,
+            "translatedLanguage[]": [language],
+            "limit": limit,
+            "offset": 0,
+            "order[chapter]": "asc",
+            "includes[]": ["scanlation_group"],
+            "contentRating[]": self.CONTENT_RATINGS
+        }
+
+        data = await self._request("/chapter", params)
+        if not data:
+            self._log("⚠️ Failed to fetch chapters at offset 0")
+            return []
+
+        all_chapters = list(data.get("data", []))
+        total = data.get("total", len(all_chapters))
+        self._log(f"📖 Total chapters available: {total}")
+
+        # Optional concurrent pagination (default 1 to stay ban-safe)
+        concurrency = int(os.environ.get("MANGADEX_ASYNC_CONCURRENCY", "1"))
+        offsets = list(range(limit, total, limit))
+
+        if concurrency > 1 and offsets:
+            sem = asyncio.Semaphore(concurrency)
+
+            async def fetch_page(offset: int):
+                async with sem:
+                    page_params = dict(params)
+                    page_params["offset"] = offset
+                    return await self._request("/chapter", page_params)
+
+            results = await asyncio.gather(
+                *[fetch_page(offset) for offset in offsets],
+                return_exceptions=True
+            )
+            for result in results:
+                if isinstance(result, Exception) or not result:
+                    continue
+                all_chapters.extend(result.get("data", []))
+        else:
+            for offset in offsets:
+                page_params = dict(params)
+                page_params["offset"] = offset
+                page_data = await self._request("/chapter", page_params)
+                if not page_data:
+                    self._log(f"⚠️ Failed to fetch chapters at offset {offset}")
+                    break
+                all_chapters.extend(page_data.get("data", []))
+                await asyncio.sleep(0.5)
+
+        self._log(f"📖 Fetched {len(all_chapters)} raw chapters")
+
+        # Deduplicate by chapter number (keep first occurrence)
+        unique = {}
+        for ch in all_chapters:
+            num = ch.get("attributes", {}).get("chapter")
+            if num is None:
+                num = "0"
+            key = str(num)
+            if key not in unique:
+                unique[key] = ch
+
+        # Sort by chapter number
+        def sort_key(x):
+            ch = x.get("attributes", {}).get("chapter")
+            try:
+                return float(ch) if ch else 0
+            except (ValueError, TypeError):
+                return 0
+
+        sorted_chapters = sorted(unique.values(), key=sort_key)
+
+        results = []
+        for ch in sorted_chapters:
+            parsed = self._parse_chapter(ch)
+            if parsed is not None:
+                results.append(parsed)
+        self._log(f"✅ Found {len(results)} unique chapters")
+
+        return results
+
+    async def get_pages(self, chapter_id: str) -> List[PageResult]:
+        """Get page image URLs for a chapter."""
+        data = await self._request(f"/at-home/server/{chapter_id}")
+        if not data:
+            return []
+
+        base_url = data.get("baseUrl", "")
+        chapter_data = data.get("chapter", {})
+        hash_code = chapter_data.get("hash", "")
+        filenames = chapter_data.get("data", [])
+        if not filenames:
+            filenames = chapter_data.get("dataSaver", [])
+
+        if not base_url or not hash_code:
+            self._handle_error("Missing baseUrl or hash for chapter pages")
+            return []
+
+        pages = []
+        for i, filename in enumerate(filenames):
+            url = f"{base_url}/data/{hash_code}/{filename}"
+            pages.append(PageResult(
+                url=url,
+                index=i,
+                headers=self._headers(for_images=True),
+                referer="https://mangadex.org/"
+            ))
+
+        return pages
+
+    async def get_manga_details(self, manga_id: str) -> Optional[MangaResult]:
+        """Get full details for a specific manga."""
+        params = {"includes[]": ["cover_art", "author", "artist"]}
+
+        data = await self._request(f"/manga/{manga_id}", params)
         if not data or "data" not in data:
             return None
 

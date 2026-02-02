@@ -12,16 +12,19 @@ Provides image proxying with:
 from flask import Blueprint, request, jsonify, Response
 from manganegus_app.rate_limit import limit_heavy
 from manganegus_app.log import log
+from manganegus_app.cache import global_cache
+from sources.http_client import SmartSession
+import base64
+import hashlib
+import os
 import requests
-from urllib.parse import unquote
 from io import BytesIO
-import time
 from typing import Optional, Tuple
 
 proxy_bp = Blueprint('proxy_api', __name__, url_prefix='/api/proxy')
 
 # Session with proper headers for image proxying
-session = requests.Session()
+session = SmartSession(timeout=20)
 session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 })
@@ -69,6 +72,50 @@ ALLOWED_IMAGE_DOMAINS = {
     'gg.asuracam.net',
     'cdn.mangabuddy.com'
 }
+
+# Image cache configuration
+# Increased defaults to keep images hot longer and cache larger pages.
+IMAGE_CACHE_TTL = int(os.environ.get("IMAGE_CACHE_TTL", "7776000"))  # 90 days
+IMAGE_CACHE_MAX_BYTES = int(os.environ.get("IMAGE_CACHE_MAX_BYTES", str(12 * 1024 * 1024)))  # 12 MB
+IMAGE_CACHE_CONTROL = f"public, max-age={IMAGE_CACHE_TTL}, immutable"
+
+
+def _build_cache_key(prefix: str, *parts: str) -> str:
+    """Build a stable cache key for image content."""
+    raw = "|".join(parts)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
+
+
+def _load_cached_image(cache_key: str) -> Optional[Tuple[bytes, str]]:
+    """Load cached image bytes + content type from GlobalCache."""
+    entry = global_cache.get_json(cache_key)
+    if not entry:
+        return None
+    data_b64 = entry.get("data")
+    content_type = entry.get("content_type")
+    if not data_b64 or not content_type:
+        return None
+    try:
+        return base64.b64decode(data_b64), content_type
+    except Exception:
+        return None
+
+
+def _store_cached_image(cache_key: str, data: bytes, content_type: str) -> None:
+    """Store image bytes + content type in GlobalCache with TTL/size guard."""
+    if IMAGE_CACHE_TTL <= 0:
+        return
+    if not data or len(data) > IMAGE_CACHE_MAX_BYTES:
+        return
+    try:
+        payload = {
+            "data": base64.b64encode(data).decode("ascii"),
+            "content_type": content_type
+        }
+        global_cache.set_json(cache_key, payload, ttl=IMAGE_CACHE_TTL)
+    except Exception:
+        return
 
 
 def _validate_image_url(url: str) -> Tuple[bool, str]:
@@ -131,7 +178,7 @@ def _validate_image_url(url: str) -> Tuple[bool, str]:
     return True, ''
 
 
-def _validate_image_content(response: requests.Response) -> Tuple[bool, str]:
+def _validate_image_content(response) -> Tuple[bool, str]:
     """Validate response is actually an image."""
     content_type = response.headers.get('content-type', '').lower()
     
@@ -248,50 +295,107 @@ def proxy_image():
     if output_format == 'jpg':
         output_format = 'jpeg'
     
-    try:
-        # Fetch image with timeout
-        headers = {'User-Agent': session.headers.get('User-Agent')}
-        if referer:
-            headers['Referer'] = referer
-        
-        log(f'🖼️ Proxying image: {image_url[:60]}... (timeout={timeout}s, format={output_format})')
-        
-        response = session.get(
+    cache_source_key = _build_cache_key("imgproxy:src", image_url)
+    cache_variant_key = None
+    cache_status = "MISS"
+
+    # Variant cache check (format/quality-specific)
+    if output_format:
+        cache_variant_key = _build_cache_key(
+            "imgproxy:var",
             image_url,
-            headers=headers,
-            timeout=timeout,
-            stream=True,
-            allow_redirects=True,
-            verify=True  # SSL verification
+            output_format,
+            str(quality)
         )
-        response.raise_for_status()
+        cached_variant = _load_cached_image(cache_variant_key)
+        if cached_variant:
+            image_data, cached_type = cached_variant
+            log(f'⚡ Cache hit (variant): {image_url[:60]}...')
+            return Response(
+                image_data,
+                mimetype=cached_type,
+                headers={
+                    'Cache-Control': IMAGE_CACHE_CONTROL,
+                    'Content-Length': len(image_data),
+                    'X-Content-Type-Options': 'nosniff',
+                    'Access-Control-Allow-Origin': '*',
+                    'X-Image-Cache': 'HIT'
+                }
+            )
 
-        # Check for redirects and validate destination (DNS rebinding/open redirect protection)
-        if response.url != image_url:
-            is_valid, error = _validate_image_url(response.url)
-            if not is_valid:
-                log(f'🚫 Redirect to disallowed URL: {error} (from {image_url[:60]}... to {response.url[:60]}...)')
-                return jsonify({'error': f'Redirect blocked: {error}'}), 400
-            log(f'↪️ Redirect validated: {image_url[:60]}... → {response.url[:60]}...')
+    # Source cache check (original format)
+    cached_source = _load_cached_image(cache_source_key)
+    if cached_source and not output_format:
+        image_data, cached_type = cached_source
+        log(f'⚡ Cache hit (source): {image_url[:60]}...')
+        return Response(
+            image_data,
+            mimetype=cached_type,
+            headers={
+                'Cache-Control': IMAGE_CACHE_CONTROL,
+                'Content-Length': len(image_data),
+                'X-Content-Type-Options': 'nosniff',
+                'Access-Control-Allow-Origin': '*',
+                'X-Image-Cache': 'HIT'
+            }
+        )
 
-        # Validate response is actually an image
-        is_image, error = _validate_image_content(response)
-        if not is_image:
-            log(f'⚠️ {error}')
-            return jsonify({'error': error}), 400
+    try:
+        if cached_source:
+            image_data, original_content_type = cached_source
+            cache_status = "HIT"
+        else:
+            # Fetch image with timeout
+            headers = {'User-Agent': session.headers.get('User-Agent')}
+            if referer:
+                headers['Referer'] = referer
+
+            log(f'🖼️ Proxying image: {image_url[:60]}... (timeout={timeout}s, format={output_format})')
+
+            response = session.get(
+                image_url,
+                headers=headers,
+                timeout=timeout,
+                stream=True,
+                allow_redirects=True,
+                verify=True  # SSL verification
+            )
+
+            if response is None or getattr(response, "status_code", 500) >= 400:
+                status_code = getattr(response, "status_code", 502)
+                log(f'❌ Proxy fetch failed (status={status_code}): {image_url[:60]}...')
+                return jsonify({'error': f'Image fetch failed (status={status_code})'}), 502
+
+            # Check for redirects and validate destination (DNS rebinding/open redirect protection)
+            if response.url != image_url:
+                is_valid, error = _validate_image_url(response.url)
+                if not is_valid:
+                    log(f'🚫 Redirect to disallowed URL: {error} (from {image_url[:60]}... to {response.url[:60]}...)')
+                    return jsonify({'error': f'Redirect blocked: {error}'}), 400
+                log(f'↪️ Redirect validated: {image_url[:60]}... → {response.url[:60]}...')
+
+            # Validate response is actually an image
+            is_image, error = _validate_image_content(response)
+            if not is_image:
+                log(f'⚠️ {error}')
+                return jsonify({'error': error}), 400
+            
+            # Read image data
+            image_data = response.content
+            if not image_data:
+                log(f'⚠️ Empty image response from {image_url[:60]}')
+                return jsonify({'error': 'Empty image response'}), 400
+            
+            # Get original content type
+            original_content_type = response.headers.get('content-type', 'image/jpeg').lower()
+            original_content_type = original_content_type.split(';')[0].strip()
         
-        # Read image data
-        image_data = response.content
-        if not image_data:
-            log(f'⚠️ Empty image response from {image_url[:60]}')
-            return jsonify({'error': 'Empty image response'}), 400
-        
-        # Get original content type
-        original_content_type = response.headers.get('content-type', 'image/jpeg').lower()
-        original_content_type = original_content_type.split(';')[0].strip()
-        
+        # Cache original before conversion (if not already cached)
+        if not cached_source:
+            _store_cached_image(cache_source_key, image_data, original_content_type)
+
         # Convert format if requested
-        if output_format and output_format not in original_content_type:
+        if output_format and original_content_type != f"image/{output_format}":
             converted = _convert_image_format(image_data, output_format, quality)
             if converted:
                 image_data = converted
@@ -299,16 +403,21 @@ def proxy_image():
                 log(f'✅ Converted to {output_format} (quality={quality}, size={len(image_data)} bytes)')
             else:
                 log(f'⚠️ Conversion to {output_format} failed, serving original')
+
+        # Cache variant after conversion (or original if format already matches)
+        if output_format and cache_variant_key:
+            _store_cached_image(cache_variant_key, image_data, original_content_type)
         
         # Return image with proper cache headers
         return Response(
             image_data,
             mimetype=original_content_type,
             headers={
-                'Cache-Control': 'public, max-age=2592000, immutable',  # 30 days
+                'Cache-Control': IMAGE_CACHE_CONTROL,
                 'Content-Length': len(image_data),
                 'X-Content-Type-Options': 'nosniff',
-                'Access-Control-Allow-Origin': '*'  # Allow CORS
+                'Access-Control-Allow-Origin': '*',
+                'X-Image-Cache': cache_status
             }
         )
         

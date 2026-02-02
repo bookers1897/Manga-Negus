@@ -54,9 +54,9 @@ class MangaFireConnector(BaseConnector):
         r'https?://(?:www\.)?mangafire\.to/read/([a-z0-9.-]+)',   # e.g., /read/naruto.4m
     ]
 
-    rate_limit = 2.0
-    rate_limit_burst = 4
-    request_timeout = 30
+    rate_limit = 1.0
+    rate_limit_burst = 2
+    request_timeout = 5
 
     supports_latest = True
     supports_popular = True

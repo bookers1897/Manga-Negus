@@ -55,9 +55,9 @@ class WeebCentralV2Connector(BaseConnector):
         r'https?://(?:www\.)?weebcentral\.com/series/([a-z0-9-]+)',  # e.g., /series/naruto-colored
     ]
 
-    rate_limit = 2.0  # Increased for faster downloads
-    rate_limit_burst = 5
-    request_timeout = 30
+    rate_limit = 1.0  # Increased for faster downloads
+    rate_limit_burst = 2
+    request_timeout = 5
 
     supports_latest = True
     supports_popular = True

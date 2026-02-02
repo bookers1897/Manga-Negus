@@ -34,6 +34,7 @@ class SmartSession:
 
     def __init__(self, timeout: int = 20):
         self._timeout = timeout
+        self._aggressive = os.environ.get("SCRAPER_AGGRESSIVE", "1").lower() in {"1", "true", "yes", "on"}
         self._max_retries = int(os.environ.get("SCRAPER_MAX_RETRIES", "2"))
         self._retry_base_delay = float(os.environ.get("SCRAPER_RETRY_BASE_DELAY", "0.5"))
         self._retry_max_delay = float(os.environ.get("SCRAPER_RETRY_MAX_DELAY", "8.0"))
@@ -43,6 +44,9 @@ class SmartSession:
         self._cache_max_bytes = int(os.environ.get("SCRAPER_CACHE_MAX_BYTES", str(2 * 1024 * 1024)))
         self._cache_max_entries = int(os.environ.get("SCRAPER_CACHE_MAX_ENTRIES", "256"))
         self._host_max_concurrency = int(os.environ.get("SCRAPER_HOST_MAX_CONCURRENCY", "3"))
+        if self._aggressive:
+            aggressive_concurrency = int(os.environ.get("SCRAPER_AGGRESSIVE_HOST_CONCURRENCY", "6"))
+            self._host_max_concurrency = max(self._host_max_concurrency, aggressive_concurrency)
         self._host_backoff_base = float(os.environ.get("SCRAPER_HOST_BACKOFF_BASE", "5.0"))
         self._host_backoff_max = float(os.environ.get("SCRAPER_HOST_BACKOFF_MAX", "120.0"))
         self._session = requests.Session()

@@ -10,6 +10,7 @@ impersonating real browser fingerprints at the C level.
 """
 
 import asyncio
+import os
 import random
 import time
 from abc import ABC, abstractmethod
@@ -64,6 +65,9 @@ class AsyncBaseConnector(ABC):
     rate_limit: float = 2.0  # Requests per second
     rate_limit_burst: int = 5
     request_timeout: float = 30.0
+    max_retries: int = 2
+    backoff_base: float = 2.0
+    backoff_max: float = 30.0
 
     # Features
     supports_latest: bool = False
@@ -84,6 +88,9 @@ class AsyncBaseConnector(ABC):
         self._error_count = 0
         self._last_error = None
         self._initialized = False
+        self._max_retries = int(os.environ.get("ASYNC_SCRAPER_MAX_RETRIES", str(self.max_retries)))
+        self._backoff_base = float(os.environ.get("ASYNC_SCRAPER_BACKOFF_BASE", str(self.backoff_base)))
+        self._backoff_max = float(os.environ.get("ASYNC_SCRAPER_BACKOFF_MAX", str(self.backoff_max)))
 
     async def _get_session(self) -> Optional[AsyncSession]:
         """Get or create curl_cffi AsyncSession."""
@@ -121,49 +128,78 @@ class AsyncBaseConnector(ABC):
         Returns:
             Response object or None on failure
         """
-        await self._limiter.wait()
-
         session = await self._get_session()
         if not session:
             return None
 
-        try:
-            # Build headers
-            request_headers = {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Referer": self.base_url,
-            }
-            if headers:
-                request_headers.update(headers)
+        # Build headers
+        request_headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": self.base_url,
+        }
+        if headers:
+            request_headers.update(headers)
 
-            response = await session.get(
-                url,
-                params=params,
-                headers=request_headers,
-                timeout=self.request_timeout
-            )
+        for attempt in range(self._max_retries + 1):
+            await self._limiter.wait()
+            try:
+                response = await session.get(
+                    url,
+                    params=params,
+                    headers=request_headers,
+                    timeout=self.request_timeout
+                )
+            except Exception as e:
+                self._handle_error(str(e))
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._get_retry_delay(None, attempt))
+                    continue
+                return None
 
             if response.status_code == 200:
                 self._handle_success()
                 return response
 
             if response.status_code in [403, 429]:
+                retry_after = response.headers.get("Retry-After")
+                retry_after_val = None
+                try:
+                    retry_after_val = float(retry_after)
+                except (TypeError, ValueError):
+                    retry_after_val = None
                 self._log(f"Rate limited or blocked ({response.status_code})")
-                self._handle_rate_limit(30)
-                await asyncio.sleep(5)
+                self._handle_rate_limit(int(retry_after_val or 30))
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._get_retry_delay(response, attempt))
+                    continue
                 return None
 
             if response.status_code >= 500:
                 self._log(f"Server error ({response.status_code})")
+                if attempt < self._max_retries:
+                    await asyncio.sleep(self._get_retry_delay(response, attempt))
+                    continue
                 return None
 
             self._handle_error(f"HTTP {response.status_code}")
             return None
 
-        except Exception as e:
-            self._handle_error(str(e))
-            return None
+        return None
+
+    def _get_retry_delay(self, response, attempt: int) -> float:
+        """Compute retry delay with backoff and jitter."""
+        delay = min(self._backoff_base * (2 ** attempt), self._backoff_max)
+        if response is not None:
+            retry_after = response.headers.get("Retry-After")
+            try:
+                retry_after_val = float(retry_after)
+            except (TypeError, ValueError):
+                retry_after_val = None
+            if retry_after_val is not None:
+                delay = max(delay, retry_after_val)
+        jitter = random.uniform(0.0, 0.35)
+        return min(delay + jitter, self._backoff_max)
 
     async def _get_json(
         self,
