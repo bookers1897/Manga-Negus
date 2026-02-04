@@ -40,6 +40,7 @@ from .circuit_breaker import (
     CircuitBreaker, CircuitBreakerRegistry, CircuitBreakerConfig,
     CircuitState, CircuitOpenError
 )
+from .source_graph import SourceReliabilityGraph
 
 # Try to import Lua source discovery
 try:
@@ -133,6 +134,12 @@ class SourceManager:
         self._skipped_sources: list[dict[str, str]] = []
 
         # =========================================================================
+        # SOURCE RELIABILITY GRAPH
+        # =========================================================================
+        self._graph_enabled = os.environ.get("SOURCE_GRAPH_ENABLED", "1").lower() in {"1", "true", "yes", "on"}
+        self._source_graph = SourceReliabilityGraph()
+
+        # =========================================================================
         # CIRCUIT BREAKER (Reliability)
         # =========================================================================
         # Proper circuit breaker pattern: CLOSED -> OPEN -> HALF_OPEN -> CLOSED
@@ -172,6 +179,7 @@ class SourceManager:
         self._create_session()
         self._discover_sources()
         self._apply_disabled_sources()
+        self._init_source_graph()
         self._init_source_metrics()
         self._init_result_caches()
     
@@ -599,6 +607,14 @@ class SourceManager:
                 'health_score': 100.0  # Start with perfect health
             }
 
+    def _init_source_graph(self) -> None:
+        """Initialize the source reliability graph with current sources."""
+        if not self._graph_enabled:
+            return
+        self._source_graph.reset()
+        for source_id in self._sources:
+            self._source_graph.add_node(source_id)
+
     def _get_health_score(self, source_id: str) -> float:
         """
         Calculate dynamic health score for a source (0-100).
@@ -652,6 +668,8 @@ class SourceManager:
             metrics['consecutive_failures'] = 0
             metrics['empty_streak'] = 0
             metrics['health_score'] = self._get_health_score(source_id)
+        if self._graph_enabled:
+            self._source_graph.record_success(source_id)
 
     def _record_empty(self, source_id: str, response_time: float) -> None:
         """Record an empty-but-successful request for a source."""
@@ -874,6 +892,8 @@ class SourceManager:
             self._log(f"⚠️ [{operation_name}] All sources unavailable (circuit open or cooldown), forcing retry...")
 
         attempt_num = 0
+        pending_fallback_from: Optional[str] = None
+        pending_fallback_weight: float = 1.0
         for source in sources:
             attempt_num += 1
             # Get or create circuit breaker for this source
@@ -889,6 +909,14 @@ class SourceManager:
                 self._log(f"🔴 [{operation_name}] #{attempt_num} {source.id} SKIP - circuit {cb_state}, retry in {retry_in:.0f}s")
                 breaker.record_rejection()
                 continue
+
+            if pending_fallback_from and self._graph_enabled:
+                self._source_graph.record_fallback(
+                    pending_fallback_from,
+                    source.id,
+                    weight=pending_fallback_weight
+                )
+                pending_fallback_from = None
 
             self._log(f"🔵 [{operation_name}] #{attempt_num} {source.id} TRYING - circuit {cb_state} (failures: {cb_failures})")
 
@@ -922,6 +950,8 @@ class SourceManager:
                 response_time = time.time() - start_time
                 self._record_empty(source.id, response_time)
                 self._log(f"⚪ [{operation_name}] #{attempt_num} {source.id} EMPTY - no results in {response_time:.2f}s (trying next)")
+                pending_fallback_from = source.id
+                pending_fallback_weight = 0.5
 
             except Exception as e:
                 response_time = time.time() - start_time
@@ -941,6 +971,8 @@ class SourceManager:
                     source._handle_error(str(e))
                 except Exception:
                     pass
+                pending_fallback_from = source.id
+                pending_fallback_weight = 1.0
                 continue
 
         self._log(f"❌ [{operation_name}] All {attempt_num} sources exhausted - no results")
@@ -1246,6 +1278,17 @@ class SourceManager:
         """Get list of all source connectors."""
         return list(self._sources.values())
 
+    def get_source_graph_report(self, include_ranks: bool = True) -> Dict[str, Any]:
+        """Return a snapshot of the source reliability graph and optional ranks."""
+        if not self._graph_enabled:
+            return {"enabled": False, "nodes": [], "edges": {}, "ranks": {}}
+
+        report = self._source_graph.snapshot()
+        report["enabled"] = True
+        if include_ranks:
+            report["ranks"] = self._source_graph.compute_ranks()
+        return report
+
     def get_health_report(self) -> Dict[str, Any]:
         """Get comprehensive health status of all sources with circuit breaker and adaptive metrics."""
         source_reports = []
@@ -1299,6 +1342,7 @@ class SourceManager:
                 "pages": len(self._pages_cache) if self._pages_cache else 0,
                 "details": len(self._details_cache) if self._details_cache else 0
             },
+            "source_graph": self.get_source_graph_report(include_ranks=True),
             # Circuit breaker summary
             "circuit_breakers": {
                 "open_count": cb_status.get("open_count", 0),
@@ -1341,6 +1385,8 @@ class SourceManager:
         self._circuit_breakers.reset_all()
         # Reinitialize all metrics
         self._init_source_metrics()
+        # Reset graph
+        self._init_source_graph()
         # Clear manga-source cache
         self._manga_source_cache.clear()
         self._clear_result_caches()
